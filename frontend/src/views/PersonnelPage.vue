@@ -53,7 +53,10 @@ onMounted(async () => {
 
 function getFillUrl(token) {
   if (!token) return null
-  return `${window.location.origin}/fill/${token}`
+  // 生产环境 base = '/devtracker/'，开发环境 base = '/'
+  const base = import.meta.env.BASE_URL || '/'
+  const normalizedBase = base.endsWith('/') ? base : base + '/'
+  return `${window.location.origin}${normalizedBase}fill/${token}`
 }
 
 function openCreate() {
