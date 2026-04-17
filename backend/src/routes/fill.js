@@ -54,23 +54,30 @@ router.get('/:token', async (req, res, next) => {
 
     if (resolved.type === 'system') {
       const { sfl } = resolved;
-      // 查找首选任务
-      const preferredTask = await CollectionTask.findOne({
+
+      // v1.6.2: 优先取首选任务；若无首选则自动取最新的 active 任务；都没有才为 null
+      let currentTask = await CollectionTask.findOne({
         where: { is_preferred: true, status: 'active' }
       });
+      if (!currentTask) {
+        currentTask = await CollectionTask.findOne({
+          where: { status: 'active' },
+          order: [['created_at', 'DESC']]
+        });
+      }
 
       let records = [];
       let draft_records = null;
       let draft_saved_at = null;
       let is_submitted = false;
 
-      if (preferredTask) {
-        // 查询该成员在首选任务下的已提交记录
+      if (currentTask) {
+        // 查询该成员在当前任务下的已提交记录
         records = await WorkRecord.findAll({
-          where: { staff_id: sfl.staff_id, task_id: preferredTask.id }
+          where: { staff_id: sfl.staff_id, task_id: currentTask.id }
         });
-        // 草稿只在当前首选任务下有效
-        if (sfl.draft_task_id === preferredTask.id) {
+        // 草稿只在当前任务下有效
+        if (sfl.draft_task_id === currentTask.id) {
           draft_records = sfl.draft_data || null;
           draft_saved_at = sfl.draft_saved_at || null;
         }
@@ -82,7 +89,7 @@ router.get('/:token', async (req, res, next) => {
         data: {
           linkType: 'system',
           staff: sfl.staff,
-          task: preferredTask || null,
+          task: currentTask || null,
           records,
           draft_records,
           draft_saved_at,
@@ -196,7 +203,9 @@ router.post('/:token/submit', async (req, res, next) => {
         created.push(rec);
       }
       // 更新活动状态
-      sfl.editing_task_id = null;
+      // v1.6.2: 保留 editing_task_id（不清空），使 activity 查询能找到此记录
+      // 前端 keep-alive 停止后，30s 内 editing_at 超时，editing 标签自然消失
+      // last_action = 'submitted' 30s 内显示"提交了"标签
       sfl.editing_at = null;
       sfl.last_action = 'submitted';
       sfl.last_action_at = new Date();

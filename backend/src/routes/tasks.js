@@ -148,7 +148,8 @@ router.get('/:id/activity', async (req, res, next) => {
         editing.push(staffName);
       }
       if (sfl.last_action === 'submitted' && sfl.last_action_at) {
-        if ((now - new Date(sfl.last_action_at).getTime()) < 5000) {
+        // 30 秒内展示"提交了"标签，保证 5s 轮询可靠触发
+        if ((now - new Date(sfl.last_action_at).getTime()) < 30000) {
           submitted.push(staffName);
         }
       }

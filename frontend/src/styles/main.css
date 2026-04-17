@@ -373,6 +373,7 @@ html, body {
   border-radius: var(--radius-circle);
   font-size: 12px;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .dt-badge::before {
@@ -513,7 +514,7 @@ html, body {
 .dt-fill-layout {
   min-height: 100vh;
   background: var(--color-bg-body);
-  padding: 40px 25px;
+  padding: 16px 25px 40px;
 }
 
 /* === 页面切换过渡 === */

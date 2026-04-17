@@ -41,6 +41,16 @@ const hasPreferredTask = computed(() => !!fillData.value?.task)
 /** 左侧面板是否可填写（有首选任务或正在编辑历史任务） */
 const canFill = computed(() => !!currentTask.value)
 
+/**
+ * v1.6.2: 当前任务是否可编辑保存
+ * - 编辑首选任务：始终可编辑（active）
+ * - 编辑历史任务：仅 active 时可编辑，closed 时只读
+ */
+const isEditable = computed(() => {
+  if (!currentTask.value) return false
+  return currentTask.value.status === 'active'
+})
+
 /** 创建空行 */
 function createEmptyRow() {
   return { requirement_title: '', version: '', product_managers: [], hours: null }
@@ -60,8 +70,8 @@ onMounted(async () => {
       } else {
         rows.value = [createEmptyRow()]
       }
-    } else {
-      rows.value = [createEmptyRow()]
+      // v1.6.2: 页面打开后立即发送 editing 通知，并维持 keep-alive
+      startEditingKeepAlive()
     }
     loadHistory()
   } catch {
@@ -72,12 +82,20 @@ onMounted(async () => {
 })
 
 function normalizeRows(list) {
-  return list.map(r => ({
-    requirement_title: r.requirement_title || '',
-    version: r.version || '',
-    product_managers: Array.isArray(r.product_managers) ? r.product_managers : [],
-    hours: (r.hours === null || r.hours === undefined || r.hours === '') ? null : parseFloat(r.hours)
-  }))
+  return list.map(r => {
+    // product_managers 可能是数组，也可能是 JSON 字符串（来自数据库原始返回）
+    let pm = r.product_managers
+    if (!Array.isArray(pm)) {
+      try { pm = JSON.parse(pm) } catch { pm = [] }
+      if (!Array.isArray(pm)) pm = []
+    }
+    return {
+      requirement_title: r.requirement_title || '',
+      version: r.version || '',
+      product_managers: pm,
+      hours: (r.hours === null || r.hours === undefined || r.hours === '') ? null : parseFloat(r.hours)
+    }
+  })
 }
 
 /** 新增行 */
@@ -94,23 +112,40 @@ const totalHours = computed(() =>
   rows.value.reduce((sum, r) => sum + (parseFloat(r.hours) || 0), 0).toFixed(2)
 )
 
-/* ========== REQ-17: 编辑状态通知 ========== */
+/* ========== REQ-17 / v1.6.2: 编辑状态通知 ========== */
 let editingTimer = null
+let keepAliveTimer = null  // 定时保持 editing 状态（避免 30s 超时）
 
 async function notifyEditing() {
   try {
     const taskId = currentTask.value?.id
+    if (!taskId) return
     await api.put(`/fill/${route.params.token}/editing`, { task_id: taskId })
   } catch { /* 静默失败 */ }
 }
 
+/** 输入框获焦时触发（节流 10 秒） */
 function handleInputFocus() {
   if (editingTimer) return
   notifyEditing()
   editingTimer = setTimeout(() => { editingTimer = null }, 10000)
 }
 
-onUnmounted(() => { if (editingTimer) clearTimeout(editingTimer) })
+/** 启动 keep-alive：每 20s 重新通知，维持 30s editing 窗口 */
+function startEditingKeepAlive() {
+  stopEditingKeepAlive()
+  notifyEditing()  // 立即通知一次
+  keepAliveTimer = setInterval(notifyEditing, 20000)
+}
+
+function stopEditingKeepAlive() {
+  if (keepAliveTimer) { clearInterval(keepAliveTimer); keepAliveTimer = null }
+}
+
+onUnmounted(() => {
+  if (editingTimer) clearTimeout(editingTimer)
+  stopEditingKeepAlive()
+})
 
 /** 提交工时 */
 async function handleSubmit() {
@@ -175,10 +210,13 @@ async function handleSaveDraft() {
 /** 点击历史任务"编辑"按钮 — 加载该任务记录到左侧表单 */
 async function loadHistoryForEdit(task) {
   try {
+    // 拦截器已解包: res = { code, data: { task, records } }
     const res = await api.get(`/fill/${route.params.token}/task/${task.id}/records`)
-    const records = res.data?.data?.records || []
+    const records = res.data?.records || []
     rows.value = records.length > 0 ? normalizeRows(records) : [createEmptyRow()]
     editingHistoryTask.value = task
+    // v1.6.2: 进入编辑模式后立即通知后台，keep-alive 重新绑定新任务 id
+    startEditingKeepAlive()
   } catch {
     ElMessage.error('加载历史数据失败')
   }
@@ -193,6 +231,8 @@ function returnToPreferred() {
   } else {
     rows.value = [createEmptyRow()]
   }
+  // v1.6.2: 切回首选任务后重新绑定 keep-alive（通知后台）
+  if (preferred) startEditingKeepAlive()
 }
 
 /* ========== 一键识别 ========== */
@@ -394,10 +434,15 @@ const historyQuarterCounts = computed(() => {
               </div>
             </div>
 
+            <!-- v1.6.2: 任务已停止时显示只读提示条 -->
+            <div v-if="!isEditable" class="fill-readonly-bar">
+              🔒 该任务已停止收集，数据仅供查看，无法提交或修改
+            </div>
+
             <!-- 表格区 -->
             <div style="padding:20px 32px;">
-              <!-- 一键识别 -->
-              <div style="background:var(--color-bg-2); border-radius:8px; padding:14px; margin-bottom:14px; border:1px solid var(--color-border-light);">
+              <!-- 一键识别（仅可编辑时显示） -->
+              <div v-if="isEditable" style="background:var(--color-bg-2); border-radius:8px; padding:14px; margin-bottom:14px; border:1px solid var(--color-border-light);">
                 <p style="font-size:12px; color:var(--color-text-3); margin-bottom:6px;">
                   粘贴文本，每行一条。格式：<code style="background:var(--color-bg-white); padding:2px 6px; border-radius:4px;">V4.633.0 用户中心改版 杨瑞 5h</code>
                 </p>
@@ -411,34 +456,38 @@ const historyQuarterCounts = computed(() => {
                 <el-table-column type="index" label="#" width="45" align="center" />
                 <el-table-column label="需求标题" min-width="260">
                   <template #default="{ row }">
-                    <el-input v-model="row.requirement_title" placeholder="输入需求名称" size="small" @focus="handleInputFocus" />
+                    <el-input v-model="row.requirement_title" placeholder="输入需求名称" size="small"
+                      :disabled="!isEditable" @focus="handleInputFocus" />
                   </template>
                 </el-table-column>
                 <el-table-column label="版本号" width="120">
                   <template #default="{ row }">
-                    <el-input v-model="row.version" placeholder="V4.633.0" size="small" @focus="handleInputFocus" />
+                    <el-input v-model="row.version" placeholder="V4.633.0" size="small"
+                      :disabled="!isEditable" @focus="handleInputFocus" />
                   </template>
                 </el-table-column>
                 <el-table-column label="产品经理" width="160">
                   <template #default="{ row }">
-                    <el-select v-model="row.product_managers" multiple collapse-tags collapse-tags-tooltip placeholder="选PM" size="small" style="width:100%;">
+                    <el-select v-model="row.product_managers" multiple collapse-tags collapse-tags-tooltip
+                      placeholder="选PM" size="small" style="width:100%;" :disabled="!isEditable">
                       <el-option v-for="pm in PM_OPTIONS" :key="pm" :label="pm" :value="pm" />
                     </el-select>
                   </template>
                 </el-table-column>
                 <el-table-column label="工时/h" width="100">
                   <template #default="{ row }">
-                    <el-input-number v-model="row.hours" :min="0.01" :max="200" :precision="2" :step="0.5" controls-position="right" size="small" style="width:100%;" />
+                    <el-input-number v-model="row.hours" :min="0.01" :max="200" :precision="2" :step="0.5"
+                      controls-position="right" size="small" style="width:100%;" :disabled="!isEditable" />
                   </template>
                 </el-table-column>
-                <el-table-column label="" width="45" align="center">
+                <el-table-column v-if="isEditable" label="" width="45" align="center">
                   <template #default="{ $index }">
                     <el-button type="danger" link size="small" @click="removeRow($index)">✕</el-button>
                   </template>
                 </el-table-column>
               </el-table>
 
-              <div style="margin-top:10px;">
+              <div v-if="isEditable" style="margin-top:10px;">
                 <el-button type="primary" link size="small" @click="addRow">+ 新增需求行</el-button>
               </div>
             </div>
@@ -451,13 +500,22 @@ const historyQuarterCounts = computed(() => {
               </span>
               <div style="display:flex; gap:12px;">
                 <el-button
-                  v-if="!editingHistoryTask"
+                  v-if="!editingHistoryTask && isEditable"
                   size="default"
                   @click="handleSaveDraft"
                   :loading="savingDraft"
                   style="min-width:140px; font-size:16px; height:44px; font-weight:600;"
                 >📝 暂存草稿</el-button>
+                <!-- 编辑历史且已停止：只显示关闭按钮 -->
                 <el-button
+                  v-if="editingHistoryTask && !isEditable"
+                  size="default"
+                  @click="returnToPreferred"
+                  style="min-width:140px; font-size:16px; height:44px; font-weight:600;"
+                >✖ 关闭查看</el-button>
+                <!-- 可编辑时才显示提交/保存按钮 -->
+                <el-button
+                  v-if="isEditable"
                   type="primary" size="default"
                   @click="handleSubmit"
                   :loading="submitting"
@@ -549,7 +607,7 @@ const historyQuarterCounts = computed(() => {
 </template>
 
 <style scoped>
-.fill-page-root { padding: 30px 10px; }
+.fill-page-root { padding: 8px 10px 30px; }
 
 /* 双栏布局 */
 .fill-dual-layout {
@@ -560,6 +618,16 @@ const historyQuarterCounts = computed(() => {
 }
 .fill-left-panel { min-width: 0; }
 .fill-right-panel { position: sticky; top: 30px; }
+
+/* v1.6.2: 任务已停止只读提示条 */
+.fill-readonly-bar {
+  background: #FFF7E8;
+  border-bottom: 1px solid #FFCA76;
+  padding: 8px 32px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #FF7D00;
+}
 
 /* v1.6.1: 编辑历史提示横条（卡片外） */
 .fill-edit-banner {

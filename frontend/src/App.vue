@@ -14,7 +14,7 @@ const route = useRoute()
 const isFillLayout = computed(() => route.meta.layout === 'fill')
 
 /** 版本信息常量 */
-const APP_VERSION = 'v1.4.4'
+const APP_VERSION = 'v1.6.2'
 const CURRENT_YEAR = new Date().getFullYear()
 const AUTHOR = '2698-jfzhu8023'
 </script>

@@ -1066,13 +1066,13 @@ function formatPM(val) {
 .dt-accordion-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
 }
 
 .dt-accordion-item {
   background: var(--color-bg-white, #fff);
-  border-radius: 10px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
   overflow: hidden;
   border: 1px solid var(--color-border-light, #F2F3F5);
 }
@@ -1081,10 +1081,10 @@ function formatPM(val) {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 14px 20px;
+  padding: 8px 16px;
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.34, 0.69, 0.1, 1);
-  font-size: 14px;
+  font-size: 13px;
   color: var(--color-text-2, #4E5969);
 }
 
@@ -1105,7 +1105,7 @@ function formatPM(val) {
 }
 
 .dt-accordion-body {
-  padding: 0 20px 16px;
+  padding: 0 16px 10px;
 }
 
 /* 手风琴展开/收起过渡 */
