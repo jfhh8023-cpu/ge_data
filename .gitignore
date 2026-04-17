@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+backend/node_modules/
+
+# Build output
+frontend/dist/
+
+# Environment files
+backend/.env
+backend/.env.production
+deploy/.env.production
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+logs/
+
+# Deploy (contains credentials / data)
+deploy/deploy.py
+deploy/export_db.py
+deploy/fix_week_dates.py
+deploy/check_nginx.py
+deploy/verify_pm.py
+deploy/.env.production
+deploy/devtracker_full.sql
+deploy/__pycache__/
+*.pyc
+
+# Playwright MCP
+.playwright-mcp/

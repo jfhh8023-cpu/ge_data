@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>研发效能度量 - DevTracker</title>
+    <meta name="description" content="DevTracker 开发人员工时统计与效能管理系统">
+    <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+
+    <!-- 顶部沉浸式导航栏 -->
+    <header class="dt-header">
+        <div class="dt-header-inner">
+            <div class="dt-logo">
+                <span class="dt-logo-icon"></span>
+                <span class="dt-logo-text">DevTracker</span>
+            </div>
+            <nav class="dt-nav">
+                <a href="#/tasks" class="dt-nav-item active" data-route="/tasks">任务清单</a>
+                <a href="#/report" class="dt-nav-item" data-route="/report">汇总报表</a>
+                <a href="#/stats" class="dt-nav-item" data-route="/stats">周期统计</a>
+            </nav>
+            <div class="dt-user-actions">
+                <button class="dt-btn dt-btn-primary" id="btn-create-task">新建收集</button>
+                <div class="dt-avatar">管理员</div>
+                <a class="dt-team-badge" href="#/personnel" title="团队人员管理">团</a>
+            </div>
+        </div>
+    </header>
+
+    <!-- 视图主空间 -->
+    <main class="dt-main-container">
+        <div class="dt-page-header">
+            <button class="dt-back-btn" id="btn-back" style="display:none" title="返回上一页">← 返回</button>
+            <div class="dt-page-title" id="page-title">任务清单</div>
+            <div class="dt-page-description" id="page-desc">按季度与月份分组的研发核心任务清单与进度追踪。</div>
+        </div>
+        <div class="dt-view-root" id="app-root"></div>
+    </main>
+
+    <!-- 通用弹窗遮罩 -->
+    <div class="dt-modal-overlay" id="modal-overlay">
+        <div class="dt-modal" id="modal-content"></div>
+    </div>
+
+    <script src="js/core.js"></script>
+</body>
+</html>

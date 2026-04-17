@@ -1,0 +1,1480 @@
+/* =======================================
+   DEVTRACKER - 东方新境，新一代数字工作台
+   设计语言：轻盈、秩序、通透
+   参考规范：ByteDance Semi Design / B 端高定
+======================================= */
+
+:root {
+  /* 极致考究的中文字体族 */
+  --font-base: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", Consolas, "PingFang SC", monospace;
+
+  /* 高级灰阶体系 - 字节跳动标准 */
+  --color-text-1: #1D2129; /* 强调文字/主标题 */
+  --color-text-2: #4E5969; /* 常规文字/正文 */
+  --color-text-3: #86909C; /* 次要信息/占位符 */
+  --color-text-4: #C9CDD4; /* 极弱文本 */
+
+  /* 背景体系 */
+  --color-bg-body: #F2F3F5; /* 护眼淡灰，凸显白色卡片层级 */
+  --color-bg-white: #FFFFFF;
+  --color-bg-1: #F2F3F5;
+  --color-bg-2: #F7F8FA;
+  --color-bg-3: #FDFDFE;
+
+  /* 精英主轴色彩 (菁英蓝) */
+  --color-primary: #165DFF;
+  --color-primary-hover: #4080FF;
+  --color-primary-active: #0E42D2;
+  --color-primary-light: #E8F3FF; /* 沁人心脾的浅蓝选中背景 */
+
+  /* 状态色彩体系 */
+  --color-success: #00B42A;
+  --color-success-bg: #E8FFEA;
+  --color-warning: #FF7D00;
+  --color-warning-bg: #FFF7E8;
+  --color-danger: #F53F3F;
+  --color-danger-bg: #FFECE8;
+
+  /* 优雅的边界与弥散阴影 */
+  --color-border: #E5E6EB;
+  --color-border-light: #F2F3F5;
+
+  --shadow-1: 0 4px 10px rgba(0, 0, 0, 0.04);
+  --shadow-2: 0 10px 30px rgba(0, 0, 0, 0.08); /* 用于浮层、下拉等高级深度 */
+  --shadow-card-hover: 0 12px 30px rgba(0, 0, 0, 0.05);
+
+  /* 大小与微调 */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 12px;
+  --radius-circle: 9999px;
+
+  --transition-base: all 0.25s cubic-bezier(0.34, 0.69, 0.1, 1);
+}
+
+/* --- Base & Reset --- */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  font-family: var(--font-base);
+  font-size: 14px; /* 中文 SaaS 最适阅读字号标准设为 14px */
+  line-height: 1.5715;
+  background-color: var(--color-bg-body);
+  color: var(--color-text-2);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* --- 穹顶导航条 (Header) --- */
+.dt-header {
+  position: sticky;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 56px;
+  background-color: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--color-border);
+  z-index: 100;
+  display: flex;
+  justify-content: center;
+}
+
+.dt-header-inner {
+  width: 100%;
+  height: 100%;
+  padding: 0 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dt-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.dt-logo-icon {
+  width: 24px;
+  height: 24px;
+  background: var(--color-primary);
+  border-radius: var(--radius-sm);
+  display: inline-block;
+  box-shadow: 0 2px 8px rgba(22, 93, 255, 0.3);
+}
+
+.dt-logo-text {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+
+.dt-nav {
+  display: flex;
+  height: 100%;
+  gap: 32px;
+}
+
+.dt-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 100%;
+  color: var(--color-text-2);
+  font-size: 15px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: var(--transition-base);
+}
+
+.dt-nav-item:hover {
+  color: var(--color-primary);
+}
+
+.dt-nav-item.active {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.dt-nav-item.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 10%;
+  width: 80%;
+  height: 3px;
+  background-color: var(--color-primary);
+  border-radius: 3px 3px 0 0;
+}
+
+.dt-user-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.dt-avatar {
+  background-color: var(--color-primary-light);
+  color: var(--color-primary);
+  padding: 6px 14px;
+  border-radius: var(--radius-circle);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dt-team-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #165DFF, #4080FF);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  transition: var(--transition-base);
+  box-shadow: 0 2px 6px rgba(22, 93, 255, 0.25);
+}
+
+.dt-team-badge:hover {
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(22, 93, 255, 0.4);
+}
+
+/* --- 核心容器层 --- */
+.dt-main-container {
+  width: 100%;
+  margin: 0 auto;
+  padding: 24px 40px 60px;
+}
+
+.dt-page-header {
+  margin-bottom: 20px;
+}
+
+.dt-page-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--color-text-1);
+  margin-bottom: 4px;
+}
+
+.dt-page-description {
+  font-size: 13px;
+  color: var(--color-text-3);
+}
+
+/* --- 返回按钮 --- */
+.dt-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 14px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-primary);
+  background: var(--color-primary-light);
+  border: 1px solid transparent;
+  border-radius: var(--radius-circle);
+  cursor: pointer;
+  transition: var(--transition-base);
+  font-family: var(--font-base);
+}
+
+.dt-back-btn:hover {
+  background: var(--color-primary);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(22, 93, 255, 0.25);
+}
+
+/* --- 高级按钮系统 --- */
+.dt-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  padding: 6px 16px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: var(--transition-base);
+  font-family: var(--font-base);
+  white-space: nowrap;
+}
+
+.dt-btn:active {
+  transform: scale(0.98);
+}
+
+.dt-btn-primary {
+  background-color: var(--color-primary);
+  color: #fff;
+  font-weight: 500;
+  box-shadow: 0 2px 6px rgba(22, 93, 255, 0.2);
+}
+
+.dt-btn-primary:hover {
+  background-color: var(--color-primary-hover);
+  box-shadow: 0 4px 10px rgba(22, 93, 255, 0.3);
+}
+
+.dt-btn-outline {
+  background-color: transparent;
+  border-color: var(--color-border);
+  color: var(--color-text-2);
+}
+
+.dt-btn-outline:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background-color: var(--color-primary-light);
+}
+
+/* --- 任务卡片视图 - 国版高级轻盈风格 --- */
+.dt-quarter-group {
+  margin-bottom: 32px;
+}
+
+.dt-quarter-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.dt-quarter-badge {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  font-size: 16px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-base);
+}
+
+.dt-quarter-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+
+.dt-task-list {
+  background: var(--color-bg-white);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+
+.dt-task-header {
+  display: grid;
+  grid-template-columns: 80px 2.5fr 1fr 1fr 100px;
+  gap: 16px;
+  padding: 8px 24px;
+  background-color: var(--color-bg-2);
+  border-bottom: 1px solid var(--color-border);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-3);
+}
+
+.dt-task-row {
+  display: grid;
+  grid-template-columns: 80px 2.5fr 1fr 1fr 100px;
+  gap: 16px;
+  padding: 12px 24px;
+  align-items: center;
+  border-bottom: 1px solid var(--color-border-light);
+  background-color: var(--color-bg-white);
+  transition: var(--transition-base);
+  position: relative;
+}
+
+.dt-task-row:last-child {
+  border-bottom: none;
+}
+
+.dt-task-row:hover {
+  background-color: var(--color-primary-light);
+  cursor: pointer;
+}
+
+.dt-task-cell-meta {
+  color: var(--color-text-3);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.dt-task-cell-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-1);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dt-task-cell-status {
+  display: flex;
+  align-items: center;
+}
+
+.dt-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--radius-circle);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.dt-badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.dt-badge-active { background: var(--color-success-bg); color: var(--color-success); }
+.dt-badge-active::before { background: var(--color-success); }
+
+.dt-badge-draft { background: var(--color-bg-1); color: var(--color-text-3); }
+.dt-badge-draft::before { background: var(--color-text-3); }
+
+/* --- 高级悬浮态与详情弹窗 --- */
+.dt-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(29, 33, 41, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.3s ease;
+}
+
+.dt-modal-overlay.active {
+  opacity: 1;
+  visibility: visible;
+}
+
+.dt-modal {
+  background: var(--color-bg-white);
+  width: 100%;
+  max-width: 800px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2);
+  transform: translateY(20px) scale(0.98);
+  transition: all 0.3s cubic-bezier(0.34, 0.69, 0.1, 1);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.dt-modal-overlay.active .dt-modal {
+  transform: translateY(0) scale(1);
+}
+
+.dt-modal-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.dt-modal-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+
+.dt-close {
+  cursor: pointer;
+  color: var(--color-text-3);
+  font-size: 20px;
+  transition: color 0.2s;
+  background: none;
+  border: none;
+}
+
+.dt-close:hover {
+  color: var(--color-text-1);
+}
+
+.dt-modal-body {
+  padding: 24px;
+  display: grid;
+  grid-template-columns: 1fr 300px; /* 经典表单+日历的双栏布局 */
+  gap: 32px;
+}
+
+.dt-form-item {
+  margin-bottom: 20px;
+}
+
+.dt-form-label {
+  display: block;
+  font-size: 13px;
+  color: var(--color-text-2);
+  margin-bottom: 8px;
+}
+
+.dt-input, .dt-select {
+  width: 100%;
+  height: 36px;
+  padding: 6px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-base);
+  font-size: 14px;
+  color: var(--color-text-1);
+  transition: var(--transition-base);
+  background-color: var(--color-bg-white);
+}
+
+.dt-input:focus, .dt-select:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-light);
+}
+
+.dt-calendar-mock {
+  background: var(--color-bg-2);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  border: 1px solid var(--color-border-light);
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-3);
+  font-size: 13px;
+}
+
+.dt-modal-footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  background: var(--color-bg-2);
+}
+
+/* ===========================================
+   扩展组件体系 — 全量 Demo 视图支撑
+=========================================== */
+
+/* --- Tab 切换栏 --- */
+.dt-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 24px;
+  background: var(--color-bg-white);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: 0 24px;
+}
+
+.dt-tab {
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-3);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: var(--transition-base);
+  position: relative;
+  top: 1px;
+  background: none;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  font-family: var(--font-base);
+}
+
+.dt-tab:hover { color: var(--color-primary); }
+
+.dt-tab.active {
+  color: var(--color-primary);
+  font-weight: 600;
+  border-bottom-color: var(--color-primary);
+}
+
+/* --- 工具条 (Toolbar) --- */
+.dt-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  gap: 12px;
+}
+
+.dt-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dt-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dt-search {
+  width: 260px;
+  height: 32px;
+  padding: 6px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-base);
+  font-size: 13px;
+  color: var(--color-text-1);
+  background: var(--color-bg-white);
+  transition: var(--transition-base);
+}
+
+.dt-search:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-light);
+}
+
+/* --- 通用数据表格 (Data Grid) --- */
+.dt-data-card {
+  background: var(--color-bg-white);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+
+.dt-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.dt-table thead th {
+  padding: 10px 16px;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-3);
+  background: var(--color-bg-2);
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.dt-table tbody td {
+  padding: 12px 16px;
+  font-size: 14px;
+  color: var(--color-text-2);
+  border-bottom: 1px solid var(--color-border-light);
+  vertical-align: middle;
+}
+
+.dt-table tbody tr:last-child td { border-bottom: none; }
+
+.dt-table tbody tr {
+  transition: var(--transition-base);
+}
+
+.dt-table tbody tr:hover {
+  background-color: var(--color-primary-light);
+}
+
+.dt-table .col-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* --- 按钮变体 --- */
+.dt-btn-sm {
+  height: 28px;
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
+.dt-btn-text {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: var(--transition-base);
+  font-family: var(--font-base);
+}
+
+.dt-btn-text:hover {
+  background: var(--color-primary-light);
+}
+
+.dt-btn-danger-text {
+  background: none;
+  border: none;
+  color: var(--color-danger);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: var(--transition-base);
+  font-family: var(--font-base);
+}
+
+.dt-btn-danger-text:hover {
+  background: var(--color-danger-bg);
+}
+
+/* --- Tag 标签 --- */
+.dt-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: var(--radius-circle);
+  font-size: 12px;
+  font-weight: 500;
+  gap: 4px;
+}
+
+.dt-tag-blue { background: var(--color-primary-light); color: var(--color-primary); }
+.dt-tag-green { background: var(--color-success-bg); color: var(--color-success); }
+.dt-tag-orange { background: var(--color-warning-bg); color: var(--color-warning); }
+.dt-tag-red { background: var(--color-danger-bg); color: var(--color-danger); }
+.dt-tag-gray { background: var(--color-bg-1); color: var(--color-text-3); }
+
+/* --- 人员选择分组按钮 (Capsule Group) --- */
+.dt-capsule-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.dt-capsule-label {
+  font-size: 13px;
+  color: var(--color-text-3);
+  padding: 6px 0;
+  margin-right: 8px;
+  font-weight: 500;
+}
+
+.dt-capsule {
+  padding: 6px 16px;
+  border-radius: var(--radius-circle);
+  border: 1px solid var(--color-border);
+  font-size: 13px;
+  color: var(--color-text-2);
+  cursor: pointer;
+  transition: var(--transition-base);
+  background: var(--color-bg-white);
+  font-family: var(--font-base);
+}
+
+.dt-capsule:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.dt-capsule.active {
+  background: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+}
+
+/* --- 统计概要卡片组 --- */
+.dt-stat-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.dt-stat-card {
+  background: var(--color-bg-white);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  box-shadow: var(--shadow-1);
+  transition: var(--transition-base);
+}
+
+.dt-stat-card:hover {
+  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-2px);
+}
+
+.dt-stat-card-label {
+  font-size: 13px;
+  color: var(--color-text-3);
+  margin-bottom: 8px;
+}
+
+.dt-stat-card-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--color-text-1);
+  line-height: 1.2;
+}
+
+.dt-stat-card-unit {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--color-text-3);
+  margin-left: 4px;
+}
+
+/* --- 手风琴折叠组件 (Accordion) --- */
+.dt-accordion {
+  background: var(--color-bg-white);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+
+.dt-accordion-item {
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.dt-accordion-item:last-child { border-bottom: none; }
+
+.dt-accordion-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  cursor: pointer;
+  transition: var(--transition-base);
+  background: none;
+  border: none;
+  width: 100%;
+  text-align: left;
+  font-family: var(--font-base);
+}
+
+.dt-accordion-head:hover { background: var(--color-bg-2); }
+
+.dt-accordion-head-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+
+.dt-accordion-head-meta {
+  font-size: 13px;
+  color: var(--color-text-3);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dt-accordion-arrow {
+  font-size: 12px;
+  color: var(--color-text-4);
+  transition: transform 0.25s ease;
+}
+
+.dt-accordion-item.open .dt-accordion-arrow {
+  transform: rotate(90deg);
+}
+
+.dt-accordion-body {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+}
+
+.dt-accordion-item.open .dt-accordion-body {
+  max-height: 600px;
+}
+
+.dt-accordion-content {
+  padding: 0 20px 16px;
+}
+
+/* --- 个人概要信息头 --- */
+.dt-profile-header {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  background: var(--color-bg-white);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  box-shadow: var(--shadow-1);
+  margin-bottom: 24px;
+}
+
+.dt-profile-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.dt-profile-info { flex: 1; }
+
+.dt-profile-name {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-1);
+  margin-bottom: 4px;
+}
+
+.dt-profile-role {
+  font-size: 13px;
+  color: var(--color-text-3);
+}
+
+.dt-profile-stats {
+  display: flex;
+  gap: 32px;
+}
+
+.dt-profile-stat-item {
+  text-align: center;
+}
+
+.dt-profile-stat-val {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--color-text-1);
+}
+
+.dt-profile-stat-lbl {
+  font-size: 12px;
+  color: var(--color-text-3);
+  margin-top: 2px;
+}
+
+/* --- 部门汇总表格（合并行） --- */
+.dt-dept-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.dt-dept-table thead th {
+  padding: 10px 12px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-3);
+  background: var(--color-bg-2);
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.dt-dept-table tbody td {
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--color-text-2);
+  border-bottom: 1px solid var(--color-border-light);
+  vertical-align: top;
+}
+
+.dt-dept-table tbody tr:last-child td { border-bottom: none; }
+
+.dt-dept-table tbody tr:hover { background: var(--color-primary-light); }
+
+.dt-dept-cell-people {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.dt-dept-person {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--color-bg-2);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+
+.dt-dept-person-hours {
+  color: var(--color-primary);
+  font-weight: 600;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+/* --- 链接管理器 --- */
+.dt-link-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.dt-link-row:last-child { border-bottom: none; }
+
+.dt-link-url {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-text-3);
+  background: var(--color-bg-2);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- 填写页独立布局 --- */
+.dt-fill-page {
+  min-height: 100vh;
+  background: var(--color-bg-body);
+  padding: 40px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.dt-fill-card {
+  width: 100%;
+  max-width: 900px;
+  background: var(--color-bg-white);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2);
+  overflow: hidden;
+}
+
+.dt-fill-header {
+  padding: 24px 32px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dt-fill-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-1);
+  margin-bottom: 4px;
+}
+
+.dt-fill-subtitle {
+  font-size: 13px;
+  color: var(--color-text-3);
+}
+
+.dt-fill-body {
+  padding: 24px 32px;
+}
+
+.dt-fill-row {
+  display: grid;
+  grid-template-columns: 40px 2fr 1fr 1.5fr 100px 40px;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.dt-fill-row:last-child { border-bottom: none; }
+
+.dt-fill-row-idx {
+  font-size: 13px;
+  color: var(--color-text-3);
+  text-align: center;
+  font-weight: 600;
+}
+
+.dt-fill-footer {
+  padding: 20px 32px;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--color-bg-2);
+}
+
+/* --- 日历面板 (Calendar Panel) --- */
+.dt-calendar {
+  background: var(--color-bg-white);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-light);
+  padding: 16px;
+}
+
+.dt-calendar-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.dt-calendar-nav-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-3);
+  font-size: 16px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: var(--transition-base);
+}
+
+.dt-calendar-nav-btn:hover {
+  background: var(--color-bg-2);
+  color: var(--color-text-1);
+}
+
+.dt-calendar-month {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+
+.dt-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  text-align: center;
+}
+
+.dt-calendar-weekday {
+  font-size: 12px;
+  color: var(--color-text-4);
+  padding: 6px 0;
+  font-weight: 500;
+}
+
+.dt-calendar-day {
+  padding: 6px 0;
+  font-size: 13px;
+  color: var(--color-text-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition-base);
+}
+
+.dt-calendar-day:hover {
+  background: var(--color-bg-2);
+}
+
+.dt-calendar-day.today {
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.dt-calendar-day.in-range {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+.dt-calendar-day.range-start,
+.dt-calendar-day.range-end {
+  background: var(--color-primary);
+  color: #fff;
+  font-weight: 600;
+}
+
+.dt-calendar-day.other-month {
+  color: var(--color-text-4);
+}
+
+/* --- 面包屑 / 返回导航 --- */
+.dt-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+
+.dt-breadcrumb a {
+  color: var(--color-text-3);
+  text-decoration: none;
+  transition: var(--transition-base);
+}
+
+.dt-breadcrumb a:hover { color: var(--color-primary); }
+
+.dt-breadcrumb-sep { color: var(--color-text-4); }
+
+.dt-breadcrumb-current {
+  color: var(--color-text-1);
+  font-weight: 500;
+}
+
+/* --- 空状态 --- */
+.dt-empty {
+  text-align: center;
+  padding: 80px 20px;
+  color: var(--color-text-3);
+}
+
+.dt-empty-icon {
+  font-size: 40px;
+  margin-bottom: 12px;
+  opacity: 0.4;
+}
+
+.dt-empty-text {
+  font-size: 14px;
+}
+
+/* --- Toast 提示 --- */
+.dt-toast {
+  position: fixed;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-20px);
+  background: var(--color-text-1);
+  color: #fff;
+  padding: 10px 24px;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  z-index: 2000;
+  opacity: 0;
+  transition: all 0.3s ease;
+  pointer-events: none;
+}
+
+.dt-toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* --- 快捷周期列表 --- */
+.dt-shortcut-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.dt-shortcut-item {
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--color-text-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition-base);
+  background: none;
+  border: none;
+  text-align: left;
+  font-family: var(--font-base);
+}
+
+.dt-shortcut-item:hover {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+.dt-shortcut-item.active {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+/* --- 回到顶部的辅助样式 --- */
+.dt-section-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-1);
+  margin-bottom: 12px;
+}
+
+.dt-divider {
+  border: none;
+  border-top: 1px solid var(--color-border-light);
+  margin: 20px 0;
+}
+
+/* --- Badge for closed --- */
+.dt-badge-closed { background: var(--color-bg-1); color: var(--color-text-3); }
+.dt-badge-closed::before { background: var(--color-text-4); }
+
+/* --- 加强的 flex 排列辅助 --- */
+.flex-between { display: flex; align-items: center; justify-content: space-between; }
+.flex-center { display: flex; align-items: center; justify-content: center; }
+.gap-8 { gap: 8px; }
+.gap-12 { gap: 12px; }
+.mt-16 { margin-top: 16px; }
+.mb-16 { margin-bottom: 16px; }
+.mb-24 { margin-bottom: 24px; }
+
+/* ==============================
+   v0.4.0 新增组件样式
+============================== */
+
+/* --- 填写页行布局 --- */
+.dt-fill-row {
+  display: grid;
+  grid-template-columns: 40px 2fr 1fr 1.5fr 100px 40px;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-border-light);
+  align-items: center;
+}
+.dt-fill-row-idx {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-3);
+  text-align: center;
+}
+
+/* --- 最新任务高亮 --- */
+.dt-task-row.latest {
+  border-left: 3px solid var(--color-primary) !important;
+  background: var(--color-primary-light) !important;
+}
+
+/* --- 按钮样式补充 --- */
+.dt-btn-outline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-2);
+  background: var(--color-bg-white);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition-base);
+  font-family: var(--font-base);
+}
+.dt-btn-outline:hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+/* --- Form Label --- */
+.dt-form-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-2);
+  margin-bottom: 6px;
+}
+
+/* --- 填写页全宽样式 --- */
+.dt-fill-page {
+  padding: 40px 0;
+  min-height: 100vh;
+  background: var(--color-bg-body);
+}
+.dt-fill-card {
+  background: var(--color-bg-white);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+.dt-fill-header {
+  padding: 32px 40px 24px;
+  border-bottom: 1px solid var(--color-border-light);
+}
+.dt-fill-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-text-1);
+  margin-bottom: 8px;
+}
+.dt-fill-subtitle {
+  font-size: 14px;
+  color: var(--color-text-3);
+}
+.dt-fill-body {
+  padding: 24px 40px;
+}
+.dt-fill-footer {
+  padding: 16px 40px;
+  border-top: 1px solid var(--color-border-light);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--color-bg-2);
+}
+
+/* --- 行内编辑时光标高亮 --- */
+.dt-table tr.editing td {
+  background: var(--color-primary-light);
+}
+.dt-table tr.editing .dt-input {
+  background: var(--color-bg-white);
+  border-color: var(--color-primary);
+}
+
+/* --- 分页样式 --- */
+.dt-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 16px;
+  font-size: 13px;
+  color: var(--color-text-3);
+}
+
+/* --- Canvas 容器 --- */
+canvas {
+  display: block;
+  width: 100%;
+}
+
+/* --- 自定义 PM 多选下拉 (GAP-03) --- */
+.dt-pm-selector {
+  position: relative;
+}
+
+.dt-pm-trigger {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  min-height: 36px;
+  padding: 4px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  background: var(--color-bg-white);
+  transition: var(--transition-base);
+}
+
+.dt-pm-trigger:hover {
+  border-color: var(--color-primary);
+}
+
+.dt-pm-placeholder {
+  color: var(--color-text-4);
+  font-size: 13px;
+}
+
+.dt-pm-dropdown {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--color-bg-white);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2);
+  z-index: 50;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px 0;
+  margin-top: 4px;
+}
+
+.dt-pm-selector.open .dt-pm-dropdown {
+  display: block;
+}
+
+.dt-pm-selector.open .dt-pm-trigger {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-light);
+}
+
+.dt-pm-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--color-text-2);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.dt-pm-option:hover {
+  background: var(--color-primary-light);
+}
+
+.dt-pm-option input[type="checkbox"] {
+  accent-color: var(--color-primary);
+  width: 14px;
+  height: 14px;
+}
+
+.dt-pm-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  border-radius: var(--radius-circle);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.dt-pm-tag-close {
+  cursor: pointer;
+  font-size: 14px;
+  margin-left: 2px;
+  opacity: 0.7;
+}
+
+.dt-pm-tag-close:hover {
+  opacity: 1;
+}
+

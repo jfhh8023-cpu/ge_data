@@ -1,0 +1,636 @@
+/* =======================================
+   DEVTRACKER v1.0.0 — 设计系统
+   迁移自 Demo v0.5.0
+   设计语言：轻盈、秩序、通透
+   参考规范：ByteDance Semi Design / B 端高定
+======================================= */
+
+/* === 全局工具类 === */
+.flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* === 设计令牌 (Design Tokens) === */
+:root {
+  /* 字体族 */
+  --font-base: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", Consolas, "PingFang SC", monospace;
+
+  /* 灰阶体系 */
+  --color-text-1: #1D2129;
+  --color-text-2: #4E5969;
+  --color-text-3: #86909C;
+  --color-text-4: #C9CDD4;
+
+  /* 背景体系 */
+  --color-bg-body: #F2F3F5;
+  --color-bg-white: #FFFFFF;
+  --color-bg-1: #F2F3F5;
+  --color-bg-2: #F7F8FA;
+  --color-bg-3: #FDFDFE;
+
+  /* 主轴色彩 (菁英蓝) */
+  --color-primary: #165DFF;
+  --color-primary-hover: #4080FF;
+  --color-primary-active: #0E42D2;
+  --color-primary-light: #E8F3FF;
+
+  /* 状态色彩 */
+  --color-success: #00B42A;
+  --color-success-bg: #E8FFEA;
+  --color-warning: #FF7D00;
+  --color-warning-bg: #FFF7E8;
+  --color-danger: #F53F3F;
+  --color-danger-bg: #FFECE8;
+
+  /* 边界与阴影 */
+  --color-border: #E5E6EB;
+  --color-border-light: #F2F3F5;
+  --shadow-1: 0 4px 10px rgba(0, 0, 0, 0.04);
+  --shadow-2: 0 10px 30px rgba(0, 0, 0, 0.08);
+  --shadow-card-hover: 0 12px 30px rgba(0, 0, 0, 0.05);
+
+  /* 圆角 */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 12px;
+  --radius-circle: 9999px;
+
+  /* 动画 */
+  --transition-base: all 0.25s cubic-bezier(0.34, 0.69, 0.1, 1);
+}
+
+/* === Base Reset === */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  font-family: var(--font-base);
+  font-size: 14px;
+  line-height: 1.5715;
+  background-color: var(--color-bg-body);
+  color: var(--color-text-2);
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* === Header 穹顶导航 === */
+.dt-header {
+  position: sticky;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 56px;
+  background-color: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--color-border);
+  z-index: 100;
+  display: flex;
+  justify-content: center;
+}
+
+.dt-header-inner {
+  width: 100%;
+  height: 100%;
+  padding: 0 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dt-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.dt-logo-icon-wrap {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  filter: drop-shadow(0 2px 6px rgba(22, 93, 255, 0.3));
+}
+
+.dt-logo-svg {
+  width: 28px;
+  height: 28px;
+}
+
+.dt-logo-text {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+
+.dt-nav {
+  display: flex;
+  height: 100%;
+  gap: 32px;
+}
+
+.dt-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 100%;
+  color: var(--color-text-2);
+  font-size: 15px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: var(--transition-base);
+}
+
+.dt-nav-item:hover {
+  color: var(--color-primary);
+}
+
+.dt-nav-item.active {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.dt-nav-item.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 10%;
+  width: 80%;
+  height: 3px;
+  background-color: var(--color-primary);
+  border-radius: 3px 3px 0 0;
+}
+
+.dt-user-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.dt-avatar {
+  background-color: var(--color-primary-light);
+  color: var(--color-primary);
+  padding: 6px 14px;
+  border-radius: var(--radius-circle);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dt-team-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #165DFF, #4080FF);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  transition: var(--transition-base);
+  box-shadow: 0 2px 6px rgba(22, 93, 255, 0.25);
+}
+
+.dt-team-badge:hover {
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(22, 93, 255, 0.4);
+}
+
+/* === 核心容器 === */
+.dt-main-container {
+  width: 100%;
+  margin: 0 auto;
+  padding: 24px 40px 60px;
+  flex: 1;
+}
+
+.dt-page-header {
+  margin-bottom: 20px;
+}
+
+.dt-page-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--color-text-1);
+  margin-bottom: 4px;
+}
+
+.dt-page-description {
+  font-size: 13px;
+  color: var(--color-text-3);
+}
+
+/* === 返回按钮 === */
+.dt-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 14px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-primary);
+  background: var(--color-primary-light);
+  border: 1px solid transparent;
+  border-radius: var(--radius-circle);
+  cursor: pointer;
+  transition: var(--transition-base);
+  font-family: var(--font-base);
+  text-decoration: none;
+}
+
+.dt-back-btn:hover {
+  background: var(--color-primary);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(22, 93, 255, 0.25);
+}
+
+/* === 按钮系统 === */
+.dt-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  padding: 6px 16px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: var(--transition-base);
+  font-family: var(--font-base);
+  white-space: nowrap;
+}
+
+.dt-btn:active { transform: scale(0.98); }
+
+.dt-btn-primary {
+  background-color: var(--color-primary);
+  color: #fff;
+  font-weight: 500;
+  box-shadow: 0 2px 6px rgba(22, 93, 255, 0.2);
+}
+
+.dt-btn-primary:hover {
+  background-color: var(--color-primary-hover);
+  box-shadow: 0 4px 10px rgba(22, 93, 255, 0.3);
+}
+
+.dt-btn-outline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-2);
+  background: var(--color-bg-white);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition-base);
+  font-family: var(--font-base);
+}
+
+.dt-btn-outline:hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  background-color: var(--color-primary-light);
+}
+
+.dt-btn-sm { height: 28px; padding: 4px 12px; font-size: 12px; }
+
+.dt-btn-text {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: var(--transition-base);
+  font-family: var(--font-base);
+}
+
+.dt-btn-text:hover { background: var(--color-primary-light); }
+
+.dt-btn-danger-text {
+  background: none;
+  border: none;
+  color: var(--color-danger);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: var(--transition-base);
+  font-family: var(--font-base);
+}
+
+.dt-btn-danger-text:hover { background: var(--color-danger-bg); }
+
+/* === Tag 标签 === */
+.dt-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: var(--radius-circle);
+  font-size: 12px;
+  font-weight: 500;
+  gap: 4px;
+}
+
+.dt-tag-blue { background: var(--color-primary-light); color: var(--color-primary); }
+.dt-tag-green { background: var(--color-success-bg); color: var(--color-success); }
+.dt-tag-orange { background: var(--color-warning-bg); color: var(--color-warning); }
+.dt-tag-red { background: var(--color-danger-bg); color: var(--color-danger); }
+.dt-tag-gray { background: var(--color-bg-1); color: var(--color-text-3); }
+
+/* === Badge 状态徽章 === */
+.dt-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--radius-circle);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.dt-badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.dt-badge-active { background: var(--color-success-bg); color: var(--color-success); }
+.dt-badge-active::before { background: var(--color-success); }
+.dt-badge-draft { background: var(--color-bg-1); color: var(--color-text-3); }
+.dt-badge-draft::before { background: var(--color-text-3); }
+.dt-badge-closed { background: var(--color-bg-1); color: var(--color-text-3); }
+.dt-badge-closed::before { background: var(--color-text-4); }
+
+/* === 数据表格 === */
+.dt-data-card {
+  background: var(--color-bg-white);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+
+.dt-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.dt-table thead th {
+  padding: 10px 16px;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-3);
+  background: var(--color-bg-2);
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.dt-table tbody td {
+  padding: 12px 16px;
+  font-size: 14px;
+  color: var(--color-text-2);
+  border-bottom: 1px solid var(--color-border-light);
+  vertical-align: middle;
+}
+
+.dt-table tbody tr:last-child td { border-bottom: none; }
+.dt-table tbody tr { transition: var(--transition-base); }
+.dt-table tbody tr:hover { background-color: var(--color-primary-light); }
+
+/* === 统计卡片 === */
+.dt-stat-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.dt-stat-card {
+  background: var(--color-bg-white);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  box-shadow: var(--shadow-1);
+  transition: var(--transition-base);
+}
+
+.dt-stat-card:hover {
+  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-2px);
+}
+
+.dt-stat-card-label {
+  font-size: 13px;
+  color: var(--color-text-3);
+  margin-bottom: 8px;
+}
+
+.dt-stat-card-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--color-text-1);
+  line-height: 1.2;
+}
+
+.dt-stat-card-unit {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--color-text-3);
+  margin-left: 4px;
+}
+
+/* === 空状态 === */
+.dt-empty {
+  text-align: center;
+  padding: 80px 20px;
+  color: var(--color-text-3);
+}
+
+.dt-empty-icon {
+  font-size: 40px;
+  margin-bottom: 12px;
+  opacity: 0.4;
+}
+
+.dt-empty-text { font-size: 14px; }
+
+/* === 面包屑 === */
+.dt-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+
+.dt-breadcrumb a {
+  color: var(--color-text-3);
+  text-decoration: none;
+  transition: var(--transition-base);
+}
+
+.dt-breadcrumb a:hover { color: var(--color-primary); }
+.dt-breadcrumb-sep { color: var(--color-text-4); }
+.dt-breadcrumb-current { color: var(--color-text-1); font-weight: 500; }
+
+/* === 工具类 === */
+.flex-between { display: flex; align-items: center; justify-content: space-between; }
+.flex-center { display: flex; align-items: center; justify-content: center; }
+.gap-8 { gap: 8px; }
+.gap-12 { gap: 12px; }
+.mt-16 { margin-top: 16px; }
+.mb-16 { margin-bottom: 16px; }
+.mb-24 { margin-bottom: 24px; }
+
+/* === 填写页独立布局 === */
+.dt-fill-layout {
+  min-height: 100vh;
+  background: var(--color-bg-body);
+  padding: 40px 25px;
+}
+
+/* === 页面切换过渡 === */
+.page-enter-active,
+.page-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.page-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+/* === REQ-17: 实时活动标签 === */
+.dt-activity-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid;
+  animation: activityPulse 2s ease-in-out infinite;
+}
+
+.dt-activity-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  animation: dotBlink 1.5s ease-in-out infinite;
+}
+
+@keyframes activityPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+@keyframes dotBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* === 周期统计表格：PM高亮 + 总计行 === */
+.el-table .dt-row-selected td {
+  background-color: #C9DFFF !important;
+}
+
+.el-table .dt-total-row td {
+  background-color: #F0F0F0 !important;
+  border-top: 2px solid var(--color-border) !important;
+}
+
+/* === App 布局（flex 撑满视口） === */
+.dt-app-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* === 底部版本信息 === */
+.dt-footer {
+  flex-shrink: 0;
+  padding: 16px 40px;
+  border-top: 1px solid var(--color-border-light);
+  background: var(--color-bg-white);
+}
+
+.dt-footer-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--color-text-4);
+  letter-spacing: 0.3px;
+}
+
+.dt-footer-version {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--color-text-3);
+}
+
+.dt-footer-divider {
+  color: var(--color-border);
+  user-select: none;
+}
+
+.dt-footer-author {
+  font-family: var(--font-mono);
+  font-weight: 500;
+}
+
+/* === v1.4.3: 全局页面加载动画 === */
+.dt-page-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 50vh;
+}
+
+.dt-page-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #E5E6EB;
+  border-top-color: var(--color-primary, #165DFF);
+  border-radius: 50%;
+  animation: dtSpin 0.8s linear infinite;
+}
+
+@keyframes dtSpin {
+  to { transform: rotate(360deg); }
+}
