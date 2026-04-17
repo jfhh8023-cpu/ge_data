@@ -351,6 +351,17 @@ const historyQuarterCounts = computed(() => {
     <div v-else class="fill-dual-layout">
       <!-- ====== 左栏：填写表单 ====== -->
       <div class="fill-left-panel">
+        <!-- v1.6.1: 编辑历史提示横条（卡片外部，顶部） -->
+        <div v-if="editingHistoryTask" class="fill-edit-banner">
+          <span class="fill-edit-banner-title">【编辑历史数据】{{ editingHistoryTask.title }}</span>
+          <el-button
+            v-if="hasPreferredTask"
+            type="primary" link size="small"
+            class="fill-edit-banner-back"
+            @click="returnToPreferred"
+          >← 返回最新工时收集</el-button>
+        </div>
+
         <div style="background:var(--color-bg-white); border-radius:12px; box-shadow:var(--shadow-1); overflow:hidden;">
 
           <!-- v1.6.0: 无首选任务空态 -->
@@ -364,17 +375,9 @@ const historyQuarterCounts = computed(() => {
           <template v-else>
             <!-- 标题区 -->
             <div style="padding:28px 32px 20px; border-bottom:1px solid var(--color-border-light);">
-              <!-- v1.6.0: 编辑历史时的返回按钮 -->
-              <div v-if="editingHistoryTask && hasPreferredTask" class="fill-back-bar">
-                <el-button type="primary" link size="small" @click="returnToPreferred">
-                  ← 返回最新工时收集
-                </el-button>
-              </div>
-
               <div style="display:flex; justify-content:space-between; align-items:flex-start;">
                 <div>
                   <h1 style="font-size:20px; font-weight:700; color:var(--color-text-1); margin-bottom:6px;">
-                    <span v-if="editingHistoryTask" style="color:#FF7D00; font-size:14px; font-weight:600; display:block; margin-bottom:4px;">【编辑历史数据】</span>
                     {{ currentTask?.title || '工作统计' }}
                   </h1>
                   <p style="font-size:14px; color:var(--color-text-3);">
@@ -498,7 +501,7 @@ const historyQuarterCounts = computed(() => {
 
             <div v-else class="fill-history-list">
               <div v-for="task in filteredHistory" :key="task.id" class="fill-history-item">
-                <!-- 任务头 -->
+                <!-- 任务头（点击折叠） -->
                 <div class="fill-history-task-header" @click="toggleHistoryTask(task.id)">
                   <span class="fill-history-arrow" :class="{ 'fill-history-arrow-open': historyExpanded[task.id] }">▶</span>
                   <div style="flex:1; min-width:0;">
@@ -508,20 +511,6 @@ const historyQuarterCounts = computed(() => {
                     <div style="font-size:11px; color:var(--color-text-4); margin-top:2px;">
                       {{ task.start_date }} ~ {{ task.end_date }}
                     </div>
-                  </div>
-                  <div style="text-align:right; flex-shrink:0;">
-                    <span style="font-weight:700; color:var(--color-primary); font-size:13px;">{{ task.totalHours?.toFixed(1) || 0 }}H</span>
-                    <div style="margin-top:2px;">
-                      <span class="fill-status-tag" :class="task.status === 'active' ? 'fill-status-active' : 'fill-status-closed'">
-                        {{ task.status === 'active' ? '收集中' : '已停止' }}
-                      </span>
-                    </div>
-                    <!-- v1.6.0: 编辑历史按钮 -->
-                    <el-button
-                      type="warning" link size="small"
-                      style="font-size:11px; padding:0; margin-top:4px; height:auto;"
-                      @click.stop="loadHistoryForEdit(task)"
-                    >编辑</el-button>
                   </div>
                 </div>
 
@@ -537,6 +526,19 @@ const historyQuarterCounts = computed(() => {
                     </div>
                   </div>
                 </transition>
+
+                <!-- v1.6.1: 任务底部固定横行 — 工时 | 状态 | 编辑 -->
+                <div class="fill-history-task-footer">
+                  <span class="fill-footer-hours">{{ task.totalHours?.toFixed(1) || 0 }}H</span>
+                  <span class="fill-status-tag" :class="task.status === 'active' ? 'fill-status-active' : 'fill-status-closed'">
+                    {{ task.status === 'active' ? '收集中' : '已停止' }}
+                  </span>
+                  <el-button
+                    type="warning" link size="small"
+                    class="fill-footer-edit-btn"
+                    @click.stop="loadHistoryForEdit(task)"
+                  >编辑</el-button>
+                </div>
               </div>
             </div>
           </div>
@@ -559,6 +561,51 @@ const historyQuarterCounts = computed(() => {
 .fill-left-panel { min-width: 0; }
 .fill-right-panel { position: sticky; top: 30px; }
 
+/* v1.6.1: 编辑历史提示横条（卡片外） */
+.fill-edit-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  margin-bottom: 8px;
+  background: rgba(22, 93, 255, 0.06);
+  border: 1px solid var(--color-primary-light, #BEDAFF);
+  border-radius: 8px;
+}
+.fill-edit-banner-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #FF7D00;
+}
+.fill-edit-banner-back {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* v1.6.1: 历史任务底部固定横行 */
+.fill-history-task-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 8px 12px;
+  border-top: 1px solid var(--color-border-light);
+  background: var(--color-bg-2);
+}
+.fill-footer-hours {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+.fill-footer-edit-btn {
+  margin-left: auto;
+  font-size: 12px;
+  padding: 0;
+  height: auto;
+}
+
 /* v1.6.0: 无首选任务空态 */
 .fill-no-task {
   padding: 80px 40px;
@@ -568,14 +615,6 @@ const historyQuarterCounts = computed(() => {
 .fill-no-task-text { font-size: 16px; font-weight: 600; color: var(--color-text-2); margin-bottom: 8px; }
 .fill-no-task-sub { font-size: 13px; color: var(--color-text-4); }
 
-/* v1.6.0: 编辑历史返回栏 */
-.fill-back-bar {
-  margin-bottom: 12px;
-  padding: 8px 12px;
-  background: rgba(22, 93, 255, 0.04);
-  border-radius: 8px;
-  border: 1px solid var(--color-primary-light, #BEDAFF);
-}
 
 /* 历史记录卡片 */
 .fill-history-card { background: var(--color-bg-white); border-radius: 12px; box-shadow: var(--shadow-1); overflow: hidden; }

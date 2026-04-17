@@ -11,6 +11,7 @@ const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
 const { CollectionTask, FillLink, WorkRecord, MatchGroup, Staff, StaffFillLink } = require('../models');
+const { Op } = require('sequelize');
 
 /* GET /api/tasks */
 router.get('/', async (req, res, next) => {
@@ -30,16 +31,24 @@ router.get('/', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-/* POST /api/tasks */
+/* POST /api/tasks — v1.6.1: 新建任务自动成为收集首选，关闭旧首选 */
 router.post('/', async (req, res, next) => {
   try {
     const { title, time_dimension, start_date, end_date, week_number, year, status } = req.body;
     if (!title || !start_date || !end_date || !year) {
       return res.status(400).json({ code: 1, message: '必填字段缺失' });
     }
+    // 关闭旧首选任务（停止收集 + 取消首选）
+    await CollectionTask.update(
+      { is_preferred: false, status: 'closed', updated_at: new Date() },
+      { where: { is_preferred: true } }
+    );
+    // 新建任务默认成为首选收集项
     const task = await CollectionTask.create({
       id: uuidv4(), title, time_dimension: time_dimension || 'week',
-      start_date, end_date, week_number, year, status: status || 'active'
+      start_date, end_date, week_number, year,
+      status: 'active',
+      is_preferred: true
     });
     res.json({ code: 0, data: task });
   } catch (err) { next(err); }

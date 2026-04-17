@@ -1,14 +1,13 @@
 /**
  * Staff 路由 — RESTful CRUD
- * GET    /api/staff          获取全部人员
- * POST   /api/staff          新增人员
- * PUT    /api/staff/:id      更新人员
- * DELETE /api/staff/:id      删除人员
+ * v1.6.1: 删除前工时检查 + 数据交接接口
+ * v1.6.0: GET / 携带 fillToken；新增 ensure-links；POST 自动创建链接
  */
 const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
-const { Staff, StaffFillLink } = require('../models');
+const { Staff, StaffFillLink, WorkRecord, CollectionTask } = require('../models');
+const { Op } = require('sequelize');
 
 /* 常量 */
 const MIN_NAME_LENGTH = 2;
@@ -44,6 +43,58 @@ router.post('/ensure-links', async (req, res, next) => {
       }
     }
     res.json({ code: 0, data: { created }, message: `新生成 ${created} 条链接` });
+  } catch (err) { next(err); }
+});
+
+/* GET /api/staff/:id/records-summary — v1.6.1: 工时汇总（交接弹窗用） */
+router.get('/:id/records-summary', async (req, res, next) => {
+  try {
+    const staff = await Staff.findByPk(req.params.id);
+    if (!staff) return res.status(404).json({ code: 1, message: '人员不存在' });
+
+    const records = await WorkRecord.findAll({ where: { staff_id: req.params.id } });
+    if (records.length === 0) {
+      return res.json({ code: 0, data: { staff, tasks: [], totalRecords: 0 } });
+    }
+
+    const taskIds = [...new Set(records.map(r => r.task_id))];
+    const tasks = await CollectionTask.findAll({ where: { id: { [Op.in]: taskIds } } });
+
+    const taskList = tasks.map(t => {
+      const taskRecs = records.filter(r => r.task_id === t.id);
+      return {
+        id: t.id,
+        title: t.title,
+        status: t.status,
+        start_date: t.start_date,
+        end_date: t.end_date,
+        recordCount: taskRecs.length,
+        totalHours: taskRecs.reduce((s, r) => s + parseFloat(r.hours || 0), 0).toFixed(1)
+      };
+    }).sort((a, b) => new Date(b.start_date) - new Date(a.start_date));
+
+    res.json({ code: 0, data: { staff, tasks: taskList, totalRecords: records.length } });
+  } catch (err) { next(err); }
+});
+
+/* POST /api/staff/:id/transfer — v1.6.1: 将工时数据交接给指定人员 */
+router.post('/:id/transfer', async (req, res, next) => {
+  try {
+    const { to_staff_id } = req.body;
+    if (!to_staff_id) return res.status(400).json({ code: 1, message: 'to_staff_id 为必填项' });
+    if (to_staff_id === req.params.id) return res.status(400).json({ code: 1, message: '不能交接给自己' });
+
+    const fromStaff = await Staff.findByPk(req.params.id);
+    const toStaff = await Staff.findByPk(to_staff_id);
+    if (!fromStaff) return res.status(404).json({ code: 1, message: '被交接人员不存在' });
+    if (!toStaff) return res.status(404).json({ code: 1, message: '目标人员不存在' });
+
+    const [affectedRows] = await WorkRecord.update(
+      { staff_id: to_staff_id },
+      { where: { staff_id: req.params.id } }
+    );
+
+    res.json({ code: 0, data: { affectedRows }, message: `已将 ${affectedRows} 条工时记录交接给「${toStaff.name}」` });
   } catch (err) { next(err); }
 });
 
@@ -83,9 +134,18 @@ router.put('/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-/* DELETE /api/staff/:id */
+/* DELETE /api/staff/:id — v1.6.1: 删除前检查工时记录 */
 router.delete('/:id', async (req, res, next) => {
   try {
+    const recordCount = await WorkRecord.count({ where: { staff_id: req.params.id } });
+    if (recordCount > 0) {
+      return res.status(400).json({
+        code: 1,
+        message: `该人员有 ${recordCount} 条工时记录，请先通过「交接」功能将数据迁移到其他人员后再删除`
+      });
+    }
+    // 同步删除 staff_fill_links
+    await StaffFillLink.destroy({ where: { staff_id: req.params.id } });
     const count = await Staff.destroy({ where: { id: req.params.id } });
     if (count === 0) return res.status(404).json({ code: 1, message: '人员不存在' });
     res.json({ code: 0, message: '已删除' });
