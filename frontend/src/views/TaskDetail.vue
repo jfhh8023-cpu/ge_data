@@ -7,7 +7,7 @@
  * Tab 2: 链接管理 — 复制 + 发送 + 生成链接
  * Tab 3: 汇总报表 — 快捷入口（M3 实现）
  */
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useTaskStore } from '../stores/task'
 import { useRecordStore } from '../stores/record'
@@ -75,6 +75,7 @@ onMounted(async () => {
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer)
   if (cleanupSync) cleanupSync()
+  stopDtPoll()
 })
 
 /* ========== Tab 1: 提交数据 — 内联编辑 ========== */
@@ -229,12 +230,132 @@ async function copyAll(link) {
   }
 }
 
-/** 模拟发送（Demo 阶段） */
-function sendLink(link) {
-  const staffName = link.staff?.name || '未知'
-  ElMessage.success(`已通过钉钉发送给 ${staffName}`)
+/* ========== 钉钉登录状态 + 二维码 Popover ========== */
+const dtLoggedIn = ref(false)
+const dtSessionAge = ref('')
+const dtQrcodeVisible = ref(false)
+const dtQrcodeImg = ref('')
+const dtQrcodeLoading = ref(false)
+const dtQrcodeMsg = ref('')
+let dtPollTimer = null
+
+/** 拉取钉钉登录状态 */
+async function fetchDtStatus() {
+  try {
+    const res = await api.get('/dingtalk/status')
+    dtLoggedIn.value = res.data?.data?.loggedIn ?? false
+    dtSessionAge.value = res.data?.data?.sessionAge ?? ''
+  } catch {
+    dtLoggedIn.value = false
+  }
 }
 
+/** 点击「展开二维码」或点击状态标识 */
+async function toggleDtQrcode() {
+  if (dtQrcodeVisible.value) {
+    dtQrcodeVisible.value = false
+    stopDtPoll()
+    return
+  }
+  dtQrcodeVisible.value = true
+  dtQrcodeImg.value = ''
+  dtQrcodeMsg.value = ''
+  dtQrcodeLoading.value = true
+
+  try {
+    const res = await api.post('/dingtalk/login/qrcode')
+    if (res.data.code === 4) {
+      // 已登录
+      dtQrcodeMsg.value = '当前已登录，无需扫码。如需切换账号，请先手动退出登录再扫码。'
+      dtQrcodeLoading.value = false
+      return
+    }
+    dtQrcodeImg.value = res.data.data.qrcode
+    dtQrcodeLoading.value = false
+    startDtPoll()
+  } catch (err) {
+    dtQrcodeMsg.value = '获取二维码失败：' + (err.response?.data?.message || err.message)
+    dtQrcodeLoading.value = false
+  }
+}
+
+function startDtPoll() {
+  stopDtPoll()
+  dtPollTimer = setInterval(async () => {
+    try {
+      const res = await api.get('/dingtalk/login/poll')
+      if (res.data.code === 1) {
+        // 出错（如超时）
+        dtQrcodeMsg.value = res.data.message || '扫码失败，请重试'
+        dtQrcodeImg.value = ''
+        stopDtPoll()
+        return
+      }
+      if (res.data.data?.done) {
+        stopDtPoll()
+        dtQrcodeVisible.value = false
+        dtQrcodeImg.value = ''
+        dtLoggedIn.value = true
+        dtSessionAge.value = '今天登录'
+        ElMessage.success('钉钉登录成功！')
+      }
+    } catch {
+      // 静默
+    }
+  }, 2000)
+}
+
+function stopDtPoll() {
+  if (dtPollTimer) {
+    clearInterval(dtPollTimer)
+    dtPollTimer = null
+  }
+}
+
+/* ===== 发送钉钉私聊消息 ===== */
+const sendingLinkId = ref('')
+
+async function sendLink(link) {
+  const staffName = link.staff?.name
+  if (!staffName) return ElMessage.warning('该链接无关联人员')
+
+  if (!dtLoggedIn.value) {
+    ElMessage.warning('钉钉未登录，请先点击「未登录」按钮扫码登录')
+    return
+  }
+
+  sendingLinkId.value = link.id
+  const taskTitle = taskDetail.value?.title || '工时统计'
+  const fillUrl = buildFillUrl(link.token)
+  const message = `【工时填写提醒】\n${taskTitle}\n请点击链接填写：${fillUrl}`
+
+  try {
+    const res = await api.post('/dingtalk/send', { staffName, message })
+    if (res.data.code === 0) {
+      ElMessage.success(`已发送给 ${staffName}`)
+    } else {
+      ElMessage.error(res.data.message || '发送失败')
+    }
+  } catch (err) {
+    const msg = err.response?.data?.message || err.message
+    const code = err.response?.data?.code
+    if (code === 2) {
+      dtLoggedIn.value = false
+      ElMessage.warning('钉钉会话已过期，请重新扫码登录')
+    } else if (code === 3) {
+      ElMessage.error(`未在钉钉中找到联系人：${staffName}`)
+    } else {
+      ElMessage.error('发送失败：' + msg)
+    }
+  } finally {
+    sendingLinkId.value = ''
+  }
+}
+
+// 切换到链接管理 tab 时拉取钉钉状态
+watch(activeTab, (tab) => {
+  if (tab === 'links') fetchDtStatus()
+})
 
 </script>
 
@@ -380,11 +501,83 @@ function sendLink(link) {
             />
           </div>
 
-          <!-- 生成链接按钮 -->
-          <div style="margin-bottom:16px;">
+          <!-- 生成链接按钮 + 钉钉登录状态 -->
+          <div style="margin-bottom:16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; position:relative;">
             <el-button type="primary" @click="generateLinks" :loading="generatingLinks">
               🔗 为全员生成链接
             </el-button>
+
+            <!-- 钉钉登录状态指示器 -->
+            <div style="display:flex; align-items:center; gap:6px;">
+              <!-- 状态标签（点击可重新扫码） -->
+              <span
+                :style="{
+                  display: 'inline-flex', alignItems: 'center', gap: '4px',
+                  padding: '3px 10px', borderRadius: '12px', fontSize: '12px',
+                  fontWeight: 500, cursor: 'pointer', userSelect: 'none',
+                  background: dtLoggedIn ? '#f0fdf4' : '#fff1f0',
+                  color: dtLoggedIn ? '#15803d' : '#cf1322',
+                  border: dtLoggedIn ? '1px solid #bbf7d0' : '1px solid #ffa39e',
+                  transition: 'opacity .2s'
+                }"
+                @click="toggleDtQrcode"
+                :title="dtLoggedIn ? `点击重新登录（${dtSessionAge}）` : '点击扫码登录钉钉'"
+              >
+                <span>{{ dtLoggedIn ? '●' : '○' }}</span>
+                <span>{{ dtLoggedIn ? `钉钉已登录` : '钉钉未登录' }}</span>
+                <span v-if="dtLoggedIn && dtSessionAge" style="opacity:.7; font-size:11px;">· {{ dtSessionAge }}</span>
+              </span>
+
+              <!-- 展开/收起二维码按钮 -->
+              <el-button
+                size="small"
+                :type="dtQrcodeVisible ? 'info' : 'default'"
+                @click="toggleDtQrcode"
+                style="padding:3px 8px; font-size:12px; height:26px;"
+              >{{ dtQrcodeVisible ? '▲ 收起' : '▼ 扫码' }}</el-button>
+            </div>
+
+            <!-- 二维码浮显卡片 -->
+            <transition name="dt-qr-fade">
+              <div
+                v-if="dtQrcodeVisible"
+                style="
+                  position:absolute; z-index:999;
+                  top:calc(100% + 6px); left:0;
+                  background:#fff; border:1px solid #e4e7ed;
+                  border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,.12);
+                  padding:16px; min-width:220px; text-align:center;
+                "
+              >
+                <div style="font-size:13px; font-weight:500; color:var(--color-text-1); margin-bottom:10px;">
+                  {{ dtLoggedIn ? '重新登录钉钉' : '扫码登录钉钉' }}
+                </div>
+
+                <!-- 加载中 -->
+                <div v-if="dtQrcodeLoading" style="padding:30px 0; color:var(--color-text-3); font-size:13px;">
+                  <div style="margin-bottom:8px;">正在获取二维码...</div>
+                </div>
+
+                <!-- 提示信息（已登录 / 报错） -->
+                <div v-else-if="dtQrcodeMsg" style="padding:12px; color:var(--color-text-2); font-size:12px; line-height:1.6;">
+                  {{ dtQrcodeMsg }}
+                </div>
+
+                <!-- 二维码图片 -->
+                <div v-else-if="dtQrcodeImg">
+                  <img :src="dtQrcodeImg" style="width:180px; height:180px; display:block; margin:0 auto;" alt="钉钉登录二维码" />
+                  <div style="margin-top:8px; font-size:11px; color:var(--color-text-3);">
+                    用手机钉钉扫码后自动登录
+                  </div>
+                </div>
+
+                <el-button
+                  size="small"
+                  style="margin-top:10px; width:100%;"
+                  @click="dtQrcodeVisible = false; stopDtPoll()"
+                >关闭</el-button>
+              </div>
+            </transition>
           </div>
 
           <!-- 链接列表 -->
@@ -429,7 +622,12 @@ function sendLink(link) {
               <template #default="{ row }">
                 <el-button type="primary" link size="small" @click="copyLinkOnly(row)">复制链接</el-button>
                 <el-button type="primary" link size="small" @click="copyAll(row)">复制全部</el-button>
-                <el-button type="primary" link size="small" @click="sendLink(row)">发送</el-button>
+                <el-button
+                  type="primary" link size="small"
+                  :loading="sendingLinkId === row.id"
+                  :disabled="sendingLinkId !== '' && sendingLinkId !== row.id"
+                  @click="sendLink(row)"
+                >{{ sendingLinkId === row.id ? '发送中...' : '发送' }}</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -440,3 +638,15 @@ function sendLink(link) {
     </template>
   </div>
 </template>
+
+<style scoped>
+.dt-qr-fade-enter-active,
+.dt-qr-fade-leave-active {
+  transition: opacity .2s ease, transform .2s ease;
+}
+.dt-qr-fade-enter-from,
+.dt-qr-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+</style>
