@@ -144,12 +144,34 @@ async function handleTransfer() {
   }
 }
 
+/**
+ * 兼容 HTTP/HTTPS 的复制工具函数
+ * - HTTPS / localhost: 优先使用 Clipboard API
+ * - HTTP（生产 HTTP）: 降级为 execCommand('copy') textarea 方案
+ */
+async function copyToClipboard(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    await navigator.clipboard.writeText(text)
+    return
+  }
+  // HTTP 降级方案
+  const ta = document.createElement('textarea')
+  ta.value = text
+  ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;'
+  document.body.appendChild(ta)
+  ta.focus()
+  ta.select()
+  const ok = document.execCommand('copy')
+  document.body.removeChild(ta)
+  if (!ok) throw new Error('execCommand copy failed')
+}
+
 /** 复制纯链接 */
 async function copyLink(token) {
   const url = getFillUrl(token)
   if (!url) return ElMessage.warning('该人员暂无专属链接')
   try {
-    await navigator.clipboard.writeText(url)
+    await copyToClipboard(url)
     ElMessage.success('链接已复制')
   } catch { ElMessage.error('复制失败，请手动复制') }
 }
@@ -160,7 +182,7 @@ async function copyLinkWithTitle(staff) {
   if (!url) return ElMessage.warning('该人员暂无专属链接')
   const text = `${staff.name}同学${presetText.value}\n${url}`
   try {
-    await navigator.clipboard.writeText(text)
+    await copyToClipboard(text)
     ElMessage.success('带标题链接已复制')
   } catch { ElMessage.error('复制失败，请手动复制') }
 }
