@@ -10,7 +10,7 @@
 const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
-const { CollectionTask, FillLink, WorkRecord, MatchGroup, Staff } = require('../models');
+const { CollectionTask, FillLink, WorkRecord, MatchGroup, Staff, StaffFillLink } = require('../models');
 
 /* GET /api/tasks */
 router.get('/', async (req, res, next) => {
@@ -97,29 +97,49 @@ router.post('/:id/generate-links', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-/* GET /api/tasks/:id/activity — REQ-17: 获取任务实时活动状态 */
+/* PATCH /api/tasks/:id/preferred — v1.6.0: 设置/取消首选收集项 */
+router.patch('/:id/preferred', async (req, res, next) => {
+  try {
+    const { preferred } = req.body;
+    const task = await CollectionTask.findByPk(req.params.id);
+    if (!task) return res.status(404).json({ code: 1, message: '任务不存在' });
+
+    if (preferred) {
+      if (task.status !== 'active') {
+        return res.status(400).json({ code: 1, message: '仅收集中的任务可设为首选' });
+      }
+      // 全局清除后设置当前任务
+      await CollectionTask.update({ is_preferred: false }, { where: {} });
+      task.is_preferred = true;
+    } else {
+      task.is_preferred = false;
+    }
+    task.updated_at = new Date();
+    await task.save();
+    res.json({ code: 0, data: task });
+  } catch (err) { next(err); }
+});
+
+/* GET /api/tasks/:id/activity — REQ-17: 获取任务实时活动状态（兼容新旧链接体系） */
 router.get('/:id/activity', async (req, res, next) => {
   try {
-    const EDITING_TIMEOUT_MS = 30000; // 30 秒内算"正在编辑"
-    const links = await FillLink.findAll({
-      where: { task_id: req.params.id },
-      include: [{ model: Staff, as: 'staff', attributes: ['name', 'role'] }]
-    });
-
+    const EDITING_TIMEOUT_MS = 30000;
     const now = Date.now();
     const editing = [];
     const submitted = [];
 
-    for (const link of links) {
-      const staffName = link.staff?.name || '未知';
-      // 判断是否正在编辑
-      if (link.editing_at && (now - new Date(link.editing_at).getTime()) < EDITING_TIMEOUT_MS) {
+    // 新体系：从 staff_fill_links 中查当前任务的活动
+    const sflLinks = await StaffFillLink.findAll({
+      where: { editing_task_id: req.params.id },
+      include: [{ model: Staff, as: 'staff', attributes: ['name', 'role'] }]
+    });
+    for (const sfl of sflLinks) {
+      const staffName = sfl.staff?.name || '未知';
+      if (sfl.editing_at && (now - new Date(sfl.editing_at).getTime()) < EDITING_TIMEOUT_MS) {
         editing.push(staffName);
       }
-      // 判断是否刚刚提交（3 秒内）
-      if (link.last_action === 'submitted' && link.last_action_at) {
-        const elapsed = now - new Date(link.last_action_at).getTime();
-        if (elapsed < 5000) {
+      if (sfl.last_action === 'submitted' && sfl.last_action_at) {
+        if ((now - new Date(sfl.last_action_at).getTime()) < 5000) {
           submitted.push(staffName);
         }
       }

@@ -1,11 +1,10 @@
 <script setup>
 /**
- * TaskDetail.vue — 任务详情页（三Tab切换）
+ * TaskDetail.vue — 任务详情页
+ * v1.6.0: 移除链接管理Tab（系统级链接迁移至团队人员页）
  * v1.4.3: 页面加载动画 + PM解析过滤数字字符串
  * v1.4.2: 修复产品经理列数据错位，加固列绑定
  * Tab 1: 提交数据 — 内联编辑 + 删除 + API 联动
- * Tab 2: 链接管理 — 复制 + 发送 + 生成链接
- * Tab 3: 汇总报表 — 快捷入口（M3 实现）
  */
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
@@ -27,7 +26,6 @@ const taskId = computed(() => route.params.id)
 
 /* ========== 数据加载 ========== */
 const taskDetail = ref(null)
-const links = ref([])
 const loading = ref(true)
 const pageLoading = ref(true)  // v1.4.3: 页面初始加载状态
 
@@ -36,7 +34,6 @@ async function loadTaskData() {
   try {
     const res = await taskStore.fetchDetail(taskId.value)
     taskDetail.value = res
-    links.value = res.links || []
     await recordStore.fetchByTask(taskId.value)
   } finally {
     loading.value = false
@@ -75,7 +72,6 @@ onMounted(async () => {
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer)
   if (cleanupSync) cleanupSync()
-  stopDtPoll()
 })
 
 /* ========== Tab 1: 提交数据 — 内联编辑 ========== */
@@ -90,14 +86,6 @@ const ROLE_SORT_ORDER = { backend: 0, frontend: 1, test: 2 }
 
 const sortedRecords = computed(() => {
   return [...recordStore.list].sort((a, b) => {
-    const ra = ROLE_SORT_ORDER[a.staff?.role] ?? 99
-    const rb = ROLE_SORT_ORDER[b.staff?.role] ?? 99
-    return ra - rb
-  })
-})
-
-const sortedLinks = computed(() => {
-  return [...links.value].sort((a, b) => {
     const ra = ROLE_SORT_ORDER[a.staff?.role] ?? 99
     const rb = ROLE_SORT_ORDER[b.staff?.role] ?? 99
     return ra - rb
@@ -181,181 +169,6 @@ async function deleteRecord(row) {
   }
 }
 
-/* ========== Tab 2: 链接管理 ========== */
-/* REQ-28a: 预设通知文本改文案 */
-const notifyText = ref('请填写上周工作内容，您的专属链接如下：')
-const generatingLinks = ref(false)
-
-/** 生成填写链接 */
-async function generateLinks() {
-  generatingLinks.value = true
-  try {
-    const res = await taskStore.generateLinks(taskId.value)
-    ElMessage.success(res.message || '链接生成成功')
-    // 重新加载详情以获取最新链接
-    const detail = await taskStore.fetchDetail(taskId.value)
-    links.value = detail.links || []
-  } catch {
-    ElMessage.error('生成链接失败')
-  } finally {
-    generatingLinks.value = false
-  }
-}
-
-/** 构造完整链接 URL（适配生产子路径 /devtracker/） */
-function buildFillUrl(token) {
-  const base = import.meta.env.BASE_URL || '/'
-  const normalizedBase = base.endsWith('/') ? base : base + '/'
-  return `${window.location.origin}${normalizedBase}fill/${token}`
-}
-
-/** REQ-28b: 复制链接（仅URL） */
-async function copyLinkOnly(link) {
-  try {
-    await navigator.clipboard.writeText(buildFillUrl(link.token))
-    ElMessage.success('链接已复制')
-  } catch {
-    ElMessage.error('复制失败，请手动复制')
-  }
-}
-
-/** REQ-28b: 复制全部（通知文本+链接） */
-async function copyAll(link) {
-  const fullText = `${notifyText.value}\n${buildFillUrl(link.token)}`
-  try {
-    await navigator.clipboard.writeText(fullText)
-    ElMessage.success('通知文本+链接已复制')
-  } catch {
-    ElMessage.error('复制失败，请手动复制')
-  }
-}
-
-/* ========== 钉钉登录状态 + 二维码 Popover ========== */
-const dtLoggedIn = ref(false)
-const dtSessionAge = ref('')
-const dtQrcodeVisible = ref(false)
-const dtQrcodeImg = ref('')
-const dtQrcodeLoading = ref(false)
-const dtQrcodeMsg = ref('')
-let dtPollTimer = null
-
-/** 拉取钉钉登录状态 */
-async function fetchDtStatus() {
-  try {
-    const res = await api.get('/dingtalk/status')
-    dtLoggedIn.value = res.data?.data?.loggedIn ?? false
-    dtSessionAge.value = res.data?.data?.sessionAge ?? ''
-  } catch {
-    dtLoggedIn.value = false
-  }
-}
-
-/** 点击「展开二维码」或点击状态标识 */
-async function toggleDtQrcode() {
-  if (dtQrcodeVisible.value) {
-    dtQrcodeVisible.value = false
-    stopDtPoll()
-    return
-  }
-  dtQrcodeVisible.value = true
-  dtQrcodeImg.value = ''
-  dtQrcodeMsg.value = ''
-  dtQrcodeLoading.value = true
-
-  try {
-    const res = await api.post('/dingtalk/login/qrcode')
-    if (res.data.code === 4) {
-      // 已登录
-      dtQrcodeMsg.value = '当前已登录，无需扫码。如需切换账号，请先手动退出登录再扫码。'
-      dtQrcodeLoading.value = false
-      return
-    }
-    dtQrcodeImg.value = res.data.data.qrcode
-    dtQrcodeLoading.value = false
-    startDtPoll()
-  } catch (err) {
-    dtQrcodeMsg.value = '获取二维码失败：' + (err.response?.data?.message || err.message)
-    dtQrcodeLoading.value = false
-  }
-}
-
-function startDtPoll() {
-  stopDtPoll()
-  dtPollTimer = setInterval(async () => {
-    try {
-      const res = await api.get('/dingtalk/login/poll')
-      if (res.data.code === 1) {
-        // 出错（如超时）
-        dtQrcodeMsg.value = res.data.message || '扫码失败，请重试'
-        dtQrcodeImg.value = ''
-        stopDtPoll()
-        return
-      }
-      if (res.data.data?.done) {
-        stopDtPoll()
-        dtQrcodeVisible.value = false
-        dtQrcodeImg.value = ''
-        dtLoggedIn.value = true
-        dtSessionAge.value = '今天登录'
-        ElMessage.success('钉钉登录成功！')
-      }
-    } catch {
-      // 静默
-    }
-  }, 2000)
-}
-
-function stopDtPoll() {
-  if (dtPollTimer) {
-    clearInterval(dtPollTimer)
-    dtPollTimer = null
-  }
-}
-
-/* ===== 发送钉钉私聊消息 ===== */
-const sendingLinkId = ref('')
-
-async function sendLink(link) {
-  const staffName = link.staff?.name
-  if (!staffName) return ElMessage.warning('该链接无关联人员')
-
-  if (!dtLoggedIn.value) {
-    ElMessage.warning('钉钉未登录，请先点击「未登录」按钮扫码登录')
-    return
-  }
-
-  sendingLinkId.value = link.id
-  const taskTitle = taskDetail.value?.title || '工时统计'
-  const fillUrl = buildFillUrl(link.token)
-  const message = `【工时填写提醒】\n${taskTitle}\n请点击链接填写：${fillUrl}`
-
-  try {
-    const res = await api.post('/dingtalk/send', { staffName, message })
-    if (res.data.code === 0) {
-      ElMessage.success(`已发送给 ${staffName}`)
-    } else {
-      ElMessage.error(res.data.message || '发送失败')
-    }
-  } catch (err) {
-    const msg = err.response?.data?.message || err.message
-    const code = err.response?.data?.code
-    if (code === 2) {
-      dtLoggedIn.value = false
-      ElMessage.warning('钉钉会话已过期，请重新扫码登录')
-    } else if (code === 3) {
-      ElMessage.error(`未在钉钉中找到联系人：${staffName}`)
-    } else {
-      ElMessage.error('发送失败：' + msg)
-    }
-  } finally {
-    sendingLinkId.value = ''
-  }
-}
-
-// 切换到链接管理 tab 时拉取钉钉状态
-watch(activeTab, (tab) => {
-  if (tab === 'links') fetchDtStatus()
-})
 
 </script>
 
@@ -391,7 +204,7 @@ watch(activeTab, (tab) => {
 
     <el-skeleton v-if="loading" :rows="8" animated />
 
-    <!-- 三Tab切换 -->
+    <!-- 提交数据 Tab -->
     <el-tabs v-else v-model="activeTab" type="border-card">
       <!-- ===== Tab 1: 提交数据 ===== -->
       <el-tab-pane :label="`提交数据 (${recordStore.list.length})`" name="records">
@@ -485,155 +298,6 @@ watch(activeTab, (tab) => {
         </div>
       </el-tab-pane>
 
-      <!-- ===== Tab 2: 链接管理 ===== -->
-      <el-tab-pane :label="`链接管理 (${links.length})`" name="links">
-        <div class="dt-data-card" style="padding:20px;">
-          <!-- 预设通知文本框 -->
-          <div style="margin-bottom:20px;">
-            <label style="font-size:13px; font-weight:500; color:var(--color-text-2); display:block; margin-bottom:8px;">
-              预设通知文本
-            </label>
-            <el-input
-              v-model="notifyText"
-              type="textarea"
-              :rows="2"
-              placeholder="请填写本周工作内容，链接如下："
-            />
-          </div>
-
-          <!-- 生成链接按钮 + 钉钉登录状态 -->
-          <div style="margin-bottom:16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; position:relative;">
-            <el-button type="primary" @click="generateLinks" :loading="generatingLinks">
-              🔗 为全员生成链接
-            </el-button>
-
-            <!-- 钉钉登录状态指示器 -->
-            <div style="display:flex; align-items:center; gap:6px;">
-              <!-- 状态标签（点击可重新扫码） -->
-              <span
-                :style="{
-                  display: 'inline-flex', alignItems: 'center', gap: '4px',
-                  padding: '3px 10px', borderRadius: '12px', fontSize: '12px',
-                  fontWeight: 500, cursor: 'pointer', userSelect: 'none',
-                  background: dtLoggedIn ? '#f0fdf4' : '#fff1f0',
-                  color: dtLoggedIn ? '#15803d' : '#cf1322',
-                  border: dtLoggedIn ? '1px solid #bbf7d0' : '1px solid #ffa39e',
-                  transition: 'opacity .2s'
-                }"
-                @click="toggleDtQrcode"
-                :title="dtLoggedIn ? `点击重新登录（${dtSessionAge}）` : '点击扫码登录钉钉'"
-              >
-                <span>{{ dtLoggedIn ? '●' : '○' }}</span>
-                <span>{{ dtLoggedIn ? `钉钉已登录` : '钉钉未登录' }}</span>
-                <span v-if="dtLoggedIn && dtSessionAge" style="opacity:.7; font-size:11px;">· {{ dtSessionAge }}</span>
-              </span>
-
-              <!-- 展开/收起二维码按钮 -->
-              <el-button
-                size="small"
-                :type="dtQrcodeVisible ? 'info' : 'default'"
-                @click="toggleDtQrcode"
-                style="padding:3px 8px; font-size:12px; height:26px;"
-              >{{ dtQrcodeVisible ? '▲ 收起' : '▼ 扫码' }}</el-button>
-            </div>
-
-            <!-- 二维码浮显卡片 -->
-            <transition name="dt-qr-fade">
-              <div
-                v-if="dtQrcodeVisible"
-                style="
-                  position:absolute; z-index:999;
-                  top:calc(100% + 6px); left:0;
-                  background:#fff; border:1px solid #e4e7ed;
-                  border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,.12);
-                  padding:16px; min-width:220px; text-align:center;
-                "
-              >
-                <div style="font-size:13px; font-weight:500; color:var(--color-text-1); margin-bottom:10px;">
-                  {{ dtLoggedIn ? '重新登录钉钉' : '扫码登录钉钉' }}
-                </div>
-
-                <!-- 加载中 -->
-                <div v-if="dtQrcodeLoading" style="padding:30px 0; color:var(--color-text-3); font-size:13px;">
-                  <div style="margin-bottom:8px;">正在获取二维码...</div>
-                </div>
-
-                <!-- 提示信息（已登录 / 报错） -->
-                <div v-else-if="dtQrcodeMsg" style="padding:12px; color:var(--color-text-2); font-size:12px; line-height:1.6;">
-                  {{ dtQrcodeMsg }}
-                </div>
-
-                <!-- 二维码图片 -->
-                <div v-else-if="dtQrcodeImg">
-                  <img :src="dtQrcodeImg" style="width:180px; height:180px; display:block; margin:0 auto;" alt="钉钉登录二维码" />
-                  <div style="margin-top:8px; font-size:11px; color:var(--color-text-3);">
-                    用手机钉钉扫码后自动登录
-                  </div>
-                </div>
-
-                <el-button
-                  size="small"
-                  style="margin-top:10px; width:100%;"
-                  @click="dtQrcodeVisible = false; stopDtPoll()"
-                >关闭</el-button>
-              </div>
-            </transition>
-          </div>
-
-          <!-- 链接列表 -->
-          <div v-if="!links.length" class="dt-empty" style="padding:40px;">
-            <div class="dt-empty-icon">🔗</div>
-            <p class="dt-empty-text">暂无填写链接，请点击上方「为全员生成链接」</p>
-          </div>
-
-          <el-table v-else :data="sortedLinks" border>
-            <el-table-column label="人员" width="100">
-              <template #default="{ row }">
-                <span style="font-weight:600;">{{ row.staff?.name || '-' }}</span>
-              </template>
-            </el-table-column>
-
-            <el-table-column label="角色" width="80">
-              <template #default="{ row }">
-                <span class="dt-tag" :class="ROLE_TAG_CLASS[row.staff?.role]">
-                  {{ ROLE_LABEL[row.staff?.role] || '-' }}
-                </span>
-              </template>
-            </el-table-column>
-
-            <el-table-column label="专属链接" min-width="300">
-              <template #default="{ row }">
-                <a :href="buildFillUrl(row.token)" target="_blank"
-                   style="font-family:var(--font-mono); font-size:12px; color:var(--color-primary); word-break:break-all;">
-                  {{ buildFillUrl(row.token) }}
-                </a>
-              </template>
-            </el-table-column>
-
-            <el-table-column label="提交状态" width="100" align="center">
-              <template #default="{ row }">
-                <span class="dt-badge" :class="row.is_submitted ? 'dt-badge-active' : 'dt-badge-draft'">
-                  {{ row.is_submitted ? '已提交' : '未提交' }}
-                </span>
-              </template>
-            </el-table-column>
-
-            <el-table-column label="操作" width="220" align="center">
-              <template #default="{ row }">
-                <el-button type="primary" link size="small" @click="copyLinkOnly(row)">复制链接</el-button>
-                <el-button type="primary" link size="small" @click="copyAll(row)">复制全部</el-button>
-                <el-button
-                  type="primary" link size="small"
-                  :loading="sendingLinkId === row.id"
-                  :disabled="sendingLinkId !== '' && sendingLinkId !== row.id"
-                  @click="sendLink(row)"
-                >{{ sendingLinkId === row.id ? '发送中...' : '发送' }}</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-        </div>
-      </el-tab-pane>
-
     </el-tabs>
     </template>
   </div>
@@ -648,5 +312,9 @@ watch(activeTab, (tab) => {
 .dt-qr-fade-leave-to {
   opacity: 0;
   transform: translateY(-6px);
+}
+@keyframes dtBlink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
 }
 </style>

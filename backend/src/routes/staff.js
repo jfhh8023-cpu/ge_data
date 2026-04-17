@@ -8,18 +8,42 @@
 const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
-const { Staff } = require('../models');
+const { Staff, StaffFillLink } = require('../models');
 
 /* 常量 */
 const MIN_NAME_LENGTH = 2;
 const MAX_NAME_LENGTH = 20;
 const VALID_ROLES = ['frontend', 'backend', 'test'];
 
-/* GET /api/staff */
+/* GET /api/staff — v1.6.0: 携带 fillToken */
 router.get('/', async (req, res, next) => {
   try {
-    const list = await Staff.findAll({ order: [['role', 'ASC'], ['created_at', 'ASC']] });
-    res.json({ code: 0, data: list });
+    const list = await Staff.findAll({
+      order: [['role', 'ASC'], ['created_at', 'ASC']],
+      include: [{ model: StaffFillLink, as: 'fillLink', attributes: ['token'] }]
+    });
+    const data = list.map(s => ({
+      ...s.toJSON(),
+      fillToken: s.fillLink?.token ?? null
+    }));
+    res.json({ code: 0, data });
+  } catch (err) { next(err); }
+});
+
+/* POST /api/staff/ensure-links — v1.6.0: 幂等生成所有 active 人员的系统级链接 */
+router.post('/ensure-links', async (req, res, next) => {
+  try {
+    const activeStaff = await Staff.findAll({ where: { is_active: true } });
+    let created = 0;
+    for (const s of activeStaff) {
+      const exists = await StaffFillLink.findOne({ where: { staff_id: s.id } });
+      if (!exists) {
+        const token = `${s.id.substring(0, 8)}_${uuidv4().replace(/-/g, '').substring(0, 12)}`;
+        await StaffFillLink.create({ id: uuidv4(), staff_id: s.id, token });
+        created++;
+      }
+    }
+    res.json({ code: 0, data: { created }, message: `新生成 ${created} 条链接` });
   } catch (err) { next(err); }
 });
 
@@ -33,8 +57,12 @@ router.post('/', async (req, res, next) => {
     if (!VALID_ROLES.includes(role)) {
       return res.status(400).json({ code: 1, message: '角色无效' });
     }
-    const staff = await Staff.create({ id: uuidv4(), name: name.trim(), role });
-    res.json({ code: 0, data: staff });
+    const staffId = uuidv4();
+    const staff = await Staff.create({ id: staffId, name: name.trim(), role });
+    // v1.6.0: 自动生成系统级专属链接
+    const token = `${staffId.substring(0, 8)}_${uuidv4().replace(/-/g, '').substring(0, 12)}`;
+    await StaffFillLink.create({ id: uuidv4(), staff_id: staffId, token });
+    res.json({ code: 0, data: { ...staff.toJSON(), fillToken: token } });
   } catch (err) { next(err); }
 });
 

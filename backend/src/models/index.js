@@ -10,6 +10,7 @@ const WorkRecord = require('./WorkRecord');
 const MatchGroup = require('./MatchGroup');
 const AccessLink = require('./AccessLink');
 const LinkPermission = require('./LinkPermission');
+const StaffFillLink = require('./StaffFillLink');
 
 /* ========== 关联定义 ========== */
 
@@ -37,6 +38,10 @@ MatchGroup.belongsTo(CollectionTask, { foreignKey: 'task_id', as: 'task' });
 AccessLink.hasMany(LinkPermission, { foreignKey: 'link_id', as: 'permissions' });
 LinkPermission.belongsTo(AccessLink, { foreignKey: 'link_id', as: 'accessLink' });
 
+// Staff 1:1 StaffFillLink（v1.6.0 系统级链接）
+Staff.hasOne(StaffFillLink, { foreignKey: 'staff_id', as: 'fillLink' });
+StaffFillLink.belongsTo(Staff, { foreignKey: 'staff_id', as: 'staff' });
+
 module.exports = {
   sequelize,
   CollectionTask,
@@ -45,5 +50,6 @@ module.exports = {
   WorkRecord,
   MatchGroup,
   AccessLink,
-  LinkPermission
+  LinkPermission,
+  StaffFillLink
 };

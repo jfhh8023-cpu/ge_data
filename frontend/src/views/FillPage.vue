@@ -1,13 +1,13 @@
 <script setup>
 /**
  * FillPage.vue — 填写页（独立布局）
+ * v1.6.0: 系统级专属链接支持（无首选任务空态、历史编辑、返回按钮）
  * v1.4.2: 填写页留白再减半、按钮进一步加大、收集状态标签增强
- * v1.4.1: 填写页UI优化 — 收集状态显示、按钮加大、留白减半
  * v1.4.0: 双栏布局 — 左侧填写表单 + 右侧历史记录面板
  * v1.3.0: 草稿暂存
  * v1.1.0: 编辑状态通知, 任务停止校验
  */
-import { onMounted, onUnmounted, ref, computed, watch } from 'vue'
+import { onMounted, onUnmounted, ref, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import api from '../api'
@@ -29,41 +29,40 @@ const ROLE_LABEL = { frontend: '前端', backend: '后端', test: '测试' }
 /** 表格行数据 */
 const rows = ref([])
 
+/** v1.6.0: 当前正在编辑的历史任务（null 表示编辑首选任务） */
+const editingHistoryTask = ref(null)
+
+/** 当前表单对应的任务 */
+const currentTask = computed(() => editingHistoryTask.value ?? fillData.value?.task ?? null)
+
+/** 是否有首选任务（用于显示"返回首选"按钮） */
+const hasPreferredTask = computed(() => !!fillData.value?.task)
+
+/** 左侧面板是否可填写（有首选任务或正在编辑历史任务） */
+const canFill = computed(() => !!currentTask.value)
+
 /** 创建空行 */
 function createEmptyRow() {
-  return {
-    requirement_title: '',
-    version: '',
-    product_managers: [],
-    hours: null
-  }
+  return { requirement_title: '', version: '', product_managers: [], hours: null }
 }
 
 onMounted(async () => {
   try {
     const res = await api.get(`/fill/${route.params.token}`)
     fillData.value = res.data
-    // 只要存在草稿，优先恢复草稿（提交成功后后端会清空草稿）
-    if (Array.isArray(res.data.draft_records) && res.data.draft_records.length > 0) {
-      rows.value = res.data.draft_records.map(r => ({
-        requirement_title: r.requirement_title || '',
-        version: r.version || '',
-        product_managers: Array.isArray(r.product_managers) ? r.product_managers : [],
-        hours: r.hours === null || r.hours === undefined || r.hours === '' ? null : parseFloat(r.hours)
-      }))
-      ElMessage.success('已恢复上次暂存的草稿')
-    } else if (res.data.records && res.data.records.length > 0) {
-      // 如果有历史记录，加载到表格中
-      rows.value = res.data.records.map(r => ({
-        requirement_title: r.requirement_title,
-        version: r.version || '',
-        product_managers: Array.isArray(r.product_managers) ? r.product_managers : [],
-        hours: parseFloat(r.hours)
-      }))
+    if (fillData.value?.task) {
+      // 有首选任务时，尝试恢复草稿或已提交记录
+      if (Array.isArray(res.data.draft_records) && res.data.draft_records.length > 0) {
+        rows.value = normalizeRows(res.data.draft_records)
+        ElMessage.success('已恢复上次暂存的草稿')
+      } else if (res.data.records?.length > 0) {
+        rows.value = normalizeRows(res.data.records)
+      } else {
+        rows.value = [createEmptyRow()]
+      }
     } else {
       rows.value = [createEmptyRow()]
     }
-    // v1.4.0: 加载历史数据
     loadHistory()
   } catch {
     error.value = '链接无效或已过期'
@@ -72,51 +71,50 @@ onMounted(async () => {
   }
 })
 
-/** 新增行 */
-function addRow() {
-  rows.value.push(createEmptyRow())
+function normalizeRows(list) {
+  return list.map(r => ({
+    requirement_title: r.requirement_title || '',
+    version: r.version || '',
+    product_managers: Array.isArray(r.product_managers) ? r.product_managers : [],
+    hours: (r.hours === null || r.hours === undefined || r.hours === '') ? null : parseFloat(r.hours)
+  }))
 }
+
+/** 新增行 */
+function addRow() { rows.value.push(createEmptyRow()) }
 
 /** 删除行 */
 function removeRow(index) {
-  if (rows.value.length <= 1) {
-    ElMessage.warning('至少保留一行')
-    return
-  }
+  if (rows.value.length <= 1) { ElMessage.warning('至少保留一行'); return }
   rows.value.splice(index, 1)
 }
 
 /** 工时总计 */
-const totalHours = computed(() => {
-  return rows.value.reduce((sum, r) => sum + (parseFloat(r.hours) || 0), 0).toFixed(2)
-})
+const totalHours = computed(() =>
+  rows.value.reduce((sum, r) => sum + (parseFloat(r.hours) || 0), 0).toFixed(2)
+)
 
 /* ========== REQ-17: 编辑状态通知 ========== */
 let editingTimer = null
 
-/** 通知后端正在编辑 */
 async function notifyEditing() {
   try {
-    await api.put(`/fill/${route.params.token}/editing`)
-  } catch {
-    // 静默失败
-  }
+    const taskId = currentTask.value?.id
+    await api.put(`/fill/${route.params.token}/editing`, { task_id: taskId })
+  } catch { /* 静默失败 */ }
 }
 
-/** 输入框获焦时触发（节流 10 秒） */
 function handleInputFocus() {
   if (editingTimer) return
   notifyEditing()
   editingTimer = setTimeout(() => { editingTimer = null }, 10000)
 }
 
-onUnmounted(() => {
-  if (editingTimer) clearTimeout(editingTimer)
-})
+onUnmounted(() => { if (editingTimer) clearTimeout(editingTimer) })
 
 /** 提交工时 */
 async function handleSubmit() {
-  // 校验：至少一行有效数据
+  if (!currentTask.value) return
   const validRows = rows.value.filter(r => r.requirement_title && r.hours > 0)
   if (validRows.length === 0) {
     ElMessage.warning('请至少填写一条完整的工时记录')
@@ -125,14 +123,26 @@ async function handleSubmit() {
 
   submitting.value = true
   try {
-    await api.post(`/fill/${route.params.token}/submit`, { records: validRows })
-    ElMessage.success(`提交成功！共 ${validRows.length} 条记录，总工时 ${totalHours.value} 小时`)
-    // 广播数据变更，通知其他标签页刷新
+    const payload = { records: validRows }
+    // 新体系必须传 task_id
+    if (fillData.value?.linkType === 'system') {
+      payload.task_id = currentTask.value.id
+    }
+    await api.post(`/fill/${route.params.token}/submit`, payload)
+
+    const isEdit = !!editingHistoryTask.value
+    ElMessage.success(isEdit
+      ? `历史数据编辑完成！共 ${validRows.length} 条记录`
+      : `提交成功！共 ${validRows.length} 条记录，总工时 ${totalHours.value} 小时`
+    )
     broadcastDataChange(SYNC_EVENTS.WORK_RECORD_CHANGED, { token: route.params.token })
-    // v1.4.0: 提交后刷新右侧历史
+
+    if (isEdit) {
+      // 编辑完成后退出编辑模式，回到首选任务
+      returnToPreferred()
+    }
     loadHistory()
   } catch (err) {
-    // REQ-16: 任务已停止收集
     const msg = err.response?.data?.message || '提交失败'
     ElMessage.error(msg)
   } finally {
@@ -140,12 +150,16 @@ async function handleSubmit() {
   }
 }
 
-/** 暂存草稿（持久化到后端） */
+/** 暂存草稿 */
 async function handleSaveDraft() {
   if (savingDraft.value) return
   savingDraft.value = true
   try {
-    await api.put(`/fill/${route.params.token}/draft`, { draft_records: rows.value })
+    const payload = { draft_records: rows.value }
+    if (fillData.value?.linkType === 'system' && currentTask.value) {
+      payload.task_id = currentTask.value.id
+    }
+    await api.put(`/fill/${route.params.token}/draft`, payload)
     ElMessage.success('草稿已暂存')
     broadcastDataChange(SYNC_EVENTS.WORK_RECORD_CHANGED, { token: route.params.token })
   } catch (err) {
@@ -156,29 +170,48 @@ async function handleSaveDraft() {
   }
 }
 
+/* ========== v1.6.0: 历史任务编辑 ========== */
+
+/** 点击历史任务"编辑"按钮 — 加载该任务记录到左侧表单 */
+async function loadHistoryForEdit(task) {
+  try {
+    const res = await api.get(`/fill/${route.params.token}/task/${task.id}/records`)
+    const records = res.data?.data?.records || []
+    rows.value = records.length > 0 ? normalizeRows(records) : [createEmptyRow()]
+    editingHistoryTask.value = task
+  } catch {
+    ElMessage.error('加载历史数据失败')
+  }
+}
+
+/** 返回首选任务 */
+function returnToPreferred() {
+  editingHistoryTask.value = null
+  const preferred = fillData.value?.task
+  if (preferred && fillData.value?.records?.length > 0) {
+    rows.value = normalizeRows(fillData.value.records)
+  } else {
+    rows.value = [createEmptyRow()]
+  }
+}
+
 /* ========== 一键识别 ========== */
 const recognizeText = ref('')
-
-/* 工时单位常量 */
 const HOURS_PER_DAY = 8
 const HOURS_MIN = 1
 const HOURS_MAX = 60
 
 function matchPM(text) {
-  let remaining = text
-  const matched = []
+  let remaining = text; const matched = []
   for (const pmName of PM_OPTIONS) {
-    if (remaining.includes(pmName)) {
-      matched.push(pmName)
-      remaining = remaining.replace(pmName, '').trim()
-    }
+    if (remaining.includes(pmName)) { matched.push(pmName); remaining = remaining.replace(pmName, '').trim() }
   }
   if (matched.length === 0) {
     const candidates = []
     for (const pmName of PM_OPTIONS) {
-      let matchCount = 0
-      for (const char of pmName) { if (remaining.includes(char)) matchCount++ }
-      if (matchCount > 0) candidates.push({ name: pmName, matchCount, ratio: matchCount / pmName.length })
+      let mc = 0
+      for (const char of pmName) { if (remaining.includes(char)) mc++ }
+      if (mc > 0) candidates.push({ name: pmName, matchCount: mc, ratio: mc / pmName.length })
     }
     if (candidates.length > 0) {
       candidates.sort((a, b) => b.ratio - a.ratio || b.matchCount - a.matchCount)
@@ -242,60 +275,45 @@ const CURRENT_YEAR = new Date().getFullYear()
 const QUARTER_OPTIONS = ['Q1', 'Q2', 'Q3', 'Q4']
 
 const historyLoading = ref(false)
-const historyTasks = ref([])  // 全部历史任务
+const historyTasks = ref([])
 const historyYear = ref(CURRENT_YEAR)
 const historyQuarter = ref(getCurrentQuarter())
-const historyExpanded = ref({})  // { taskId: true/false }
+const historyExpanded = ref({})
 
 function getCurrentQuarter() {
   const m = new Date().getMonth() + 1
   return m <= 3 ? 'Q1' : m <= 6 ? 'Q2' : m <= 9 ? 'Q3' : 'Q4'
 }
 
-/** 历史年份选项 */
 const historyYearOptions = computed(() => {
   const years = new Set([CURRENT_YEAR])
-  for (const t of historyTasks.value) {
-    if (t.year) years.add(t.year)
-  }
+  for (const t of historyTasks.value) { if (t.year) years.add(t.year) }
   return [...years].sort((a, b) => b - a)
 })
 
-/** 获取任务归属季度（用end_date判定） */
 function getTaskQuarter(task) {
-  const endDate = task.end_date ? new Date(task.end_date) : null
-  const startDate = task.start_date ? new Date(task.start_date) : null
-  const refDate = endDate || startDate
-
+  const refDate = task.end_date ? new Date(task.end_date) : (task.start_date ? new Date(task.start_date) : null)
   if (!refDate) return 'Q1'
   const m = refDate.getMonth() + 1
   return m <= 3 ? 'Q1' : m <= 6 ? 'Q2' : m <= 9 ? 'Q3' : 'Q4'
 }
 
-/** 筛选后的历史任务（按年份+季度） */
-const filteredHistory = computed(() => {
-  return historyTasks.value.filter(t => {
+const filteredHistory = computed(() =>
+  historyTasks.value.filter(t => {
     const y = t.year || CURRENT_YEAR
-    if (y !== historyYear.value) return false
-    return getTaskQuarter(t) === historyQuarter.value
+    return y === historyYear.value && getTaskQuarter(t) === historyQuarter.value
   })
-})
+)
 
-/** 加载历史数据 */
 async function loadHistory() {
   historyLoading.value = true
   try {
     const res = await api.get(`/fill/${route.params.token}/history`)
     const data = res.data?.data || res.data || {}
     historyTasks.value = data.tasks || []
-    // 自动展开最近季度的第一个任务
     const current = filteredHistory.value
-    if (current.length > 0) {
-      historyExpanded.value[current[0].id] = true
-    }
-  } catch {
-    // 静默
-  } finally {
+    if (current.length > 0) historyExpanded.value[current[0].id] = true
+  } catch { /* 静默 */ } finally {
     historyLoading.value = false
   }
 }
@@ -304,7 +322,6 @@ function toggleHistoryTask(taskId) {
   historyExpanded.value[taskId] = !historyExpanded.value[taskId]
 }
 
-/** 各季度任务数 */
 const historyQuarterCounts = computed(() => {
   const counts = { Q1: 0, Q2: 0, Q3: 0, Q4: 0 }
   for (const t of historyTasks.value) {
@@ -330,90 +347,122 @@ const historyQuarterCounts = computed(() => {
       <p style="font-size:14px; color:var(--color-text-3);">{{ error }}</p>
     </div>
 
-    <!-- v1.4.0: 双栏布局 — 左侧表单 + 右侧历史 -->
+    <!-- 双栏布局 — 左侧表单 + 右侧历史 -->
     <div v-else class="fill-dual-layout">
       <!-- ====== 左栏：填写表单 ====== -->
       <div class="fill-left-panel">
         <div style="background:var(--color-bg-white); border-radius:12px; box-shadow:var(--shadow-1); overflow:hidden;">
-          <!-- 标题区 -->
-          <div style="padding:28px 32px 20px; border-bottom:1px solid var(--color-border-light); display:flex; justify-content:space-between; align-items:flex-start;">
-            <div>
-              <h1 style="font-size:20px; font-weight:700; color:var(--color-text-1); margin-bottom:6px;">
-                {{ fillData?.task?.title || '工作统计' }}
-              </h1>
-              <p style="font-size:14px; color:var(--color-text-3);">
-                【{{ ROLE_LABEL[fillData?.staff?.role] }}】{{ fillData?.staff?.name }} 工作内容填写
-              </p>
-            </div>
-            <span
-              class="fill-collect-status"
-              :class="fillData?.task?.status === 'active' ? 'fill-collect-active' : 'fill-collect-closed'"
-            >
-              <span class="fill-collect-dot"></span>
-              {{ fillData?.task?.status === 'active' ? '正在收集中' : '收集已停止' }}
-            </span>
+
+          <!-- v1.6.0: 无首选任务空态 -->
+          <div v-if="!canFill" class="fill-no-task">
+            <div class="fill-no-task-icon">📭</div>
+            <p class="fill-no-task-text">暂无开放中的收集任务</p>
+            <p class="fill-no-task-sub">管理员尚未设置首选收集任务，请稍后再试</p>
           </div>
 
-          <!-- 表格区 -->
-          <div style="padding:20px 32px;">
-            <!-- 一键识别 -->
-            <div style="background:var(--color-bg-2); border-radius:8px; padding:14px; margin-bottom:14px; border:1px solid var(--color-border-light);">
-              <p style="font-size:12px; color:var(--color-text-3); margin-bottom:6px;">
-                粘贴文本，每行一条。格式：<code style="background:var(--color-bg-white); padding:2px 6px; border-radius:4px;">V4.633.0 用户中心改版 杨瑞 5h</code>
-              </p>
-              <el-input v-model="recognizeText" type="textarea" :rows="2" placeholder="在此粘贴文本内容..." />
-              <div style="display:flex; justify-content:flex-end; margin-top:6px;">
-                <el-button type="primary" size="small" @click="parseRecognizeText" :disabled="!recognizeText.trim()">🔍 识别并填入</el-button>
+          <!-- 有任务时的表单 -->
+          <template v-else>
+            <!-- 标题区 -->
+            <div style="padding:28px 32px 20px; border-bottom:1px solid var(--color-border-light);">
+              <!-- v1.6.0: 编辑历史时的返回按钮 -->
+              <div v-if="editingHistoryTask && hasPreferredTask" class="fill-back-bar">
+                <el-button type="primary" link size="small" @click="returnToPreferred">
+                  ← 返回最新工时收集
+                </el-button>
+              </div>
+
+              <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                <div>
+                  <h1 style="font-size:20px; font-weight:700; color:var(--color-text-1); margin-bottom:6px;">
+                    <span v-if="editingHistoryTask" style="color:#FF7D00; font-size:14px; font-weight:600; display:block; margin-bottom:4px;">【编辑历史数据】</span>
+                    {{ currentTask?.title || '工作统计' }}
+                  </h1>
+                  <p style="font-size:14px; color:var(--color-text-3);">
+                    【{{ ROLE_LABEL[fillData?.staff?.role] }}】{{ fillData?.staff?.name }} 工作内容填写
+                  </p>
+                </div>
+                <span
+                  class="fill-collect-status"
+                  :class="currentTask?.status === 'active' ? 'fill-collect-active' : 'fill-collect-closed'"
+                >
+                  <span class="fill-collect-dot"></span>
+                  {{ currentTask?.status === 'active' ? '正在收集中' : '收集已停止' }}
+                </span>
               </div>
             </div>
 
-            <el-table :data="rows" border size="small" style="width:100%;">
-              <el-table-column type="index" label="#" width="45" align="center" />
-              <el-table-column label="需求标题" min-width="260">
-                <template #default="{ row }">
-                  <el-input v-model="row.requirement_title" placeholder="输入需求名称" size="small" @focus="handleInputFocus" />
-                </template>
-              </el-table-column>
-              <el-table-column label="版本号" width="120">
-                <template #default="{ row }">
-                  <el-input v-model="row.version" placeholder="V4.633.0" size="small" @focus="handleInputFocus" />
-                </template>
-              </el-table-column>
-              <el-table-column label="产品经理" width="160">
-                <template #default="{ row }">
-                  <el-select v-model="row.product_managers" multiple collapse-tags collapse-tags-tooltip placeholder="选PM" size="small" style="width:100%;">
-                    <el-option v-for="pm in PM_OPTIONS" :key="pm" :label="pm" :value="pm" />
-                  </el-select>
-                </template>
-              </el-table-column>
-              <el-table-column label="工时/h" width="100">
-                <template #default="{ row }">
-                  <el-input-number v-model="row.hours" :min="0.01" :max="200" :precision="2" :step="0.5" controls-position="right" size="small" style="width:100%;" />
-                </template>
-              </el-table-column>
-              <el-table-column label="" width="45" align="center">
-                <template #default="{ $index }">
-                  <el-button type="danger" link size="small" @click="removeRow($index)">✕</el-button>
-                </template>
-              </el-table-column>
-            </el-table>
+            <!-- 表格区 -->
+            <div style="padding:20px 32px;">
+              <!-- 一键识别 -->
+              <div style="background:var(--color-bg-2); border-radius:8px; padding:14px; margin-bottom:14px; border:1px solid var(--color-border-light);">
+                <p style="font-size:12px; color:var(--color-text-3); margin-bottom:6px;">
+                  粘贴文本，每行一条。格式：<code style="background:var(--color-bg-white); padding:2px 6px; border-radius:4px;">V4.633.0 用户中心改版 杨瑞 5h</code>
+                </p>
+                <el-input v-model="recognizeText" type="textarea" :rows="2" placeholder="在此粘贴文本内容..." />
+                <div style="display:flex; justify-content:flex-end; margin-top:6px;">
+                  <el-button type="primary" size="small" @click="parseRecognizeText" :disabled="!recognizeText.trim()">🔍 识别并填入</el-button>
+                </div>
+              </div>
 
-            <div style="margin-top:10px;">
-              <el-button type="primary" link size="small" @click="addRow">+ 新增需求行</el-button>
-            </div>
-          </div>
+              <el-table :data="rows" border size="small" style="width:100%;">
+                <el-table-column type="index" label="#" width="45" align="center" />
+                <el-table-column label="需求标题" min-width="260">
+                  <template #default="{ row }">
+                    <el-input v-model="row.requirement_title" placeholder="输入需求名称" size="small" @focus="handleInputFocus" />
+                  </template>
+                </el-table-column>
+                <el-table-column label="版本号" width="120">
+                  <template #default="{ row }">
+                    <el-input v-model="row.version" placeholder="V4.633.0" size="small" @focus="handleInputFocus" />
+                  </template>
+                </el-table-column>
+                <el-table-column label="产品经理" width="160">
+                  <template #default="{ row }">
+                    <el-select v-model="row.product_managers" multiple collapse-tags collapse-tags-tooltip placeholder="选PM" size="small" style="width:100%;">
+                      <el-option v-for="pm in PM_OPTIONS" :key="pm" :label="pm" :value="pm" />
+                    </el-select>
+                  </template>
+                </el-table-column>
+                <el-table-column label="工时/h" width="100">
+                  <template #default="{ row }">
+                    <el-input-number v-model="row.hours" :min="0.01" :max="200" :precision="2" :step="0.5" controls-position="right" size="small" style="width:100%;" />
+                  </template>
+                </el-table-column>
+                <el-table-column label="" width="45" align="center">
+                  <template #default="{ $index }">
+                    <el-button type="danger" link size="small" @click="removeRow($index)">✕</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
 
-          <!-- 底部操作栏 -->
-          <div style="padding:14px 32px; border-top:1px solid var(--color-border-light); display:flex; align-items:center; justify-content:space-between; background:var(--color-bg-2);">
-            <span style="font-size:13px; color:var(--color-text-2);">
-              共 <strong>{{ rows.length }}</strong> 条，总工时
-              <strong style="color:var(--color-primary);">{{ totalHours }}</strong> 小时
-            </span>
-            <div style="display:flex; gap:12px;">
-              <el-button size="default" @click="handleSaveDraft" :loading="savingDraft" style="min-width:140px; font-size:16px; height:44px; font-weight:600;">📝 暂存草稿</el-button>
-              <el-button type="primary" size="default" @click="handleSubmit" :loading="submitting" style="min-width:140px; font-size:16px; height:44px; font-weight:600;">🚀 提交</el-button>
+              <div style="margin-top:10px;">
+                <el-button type="primary" link size="small" @click="addRow">+ 新增需求行</el-button>
+              </div>
             </div>
-          </div>
+
+            <!-- 底部操作栏 -->
+            <div style="padding:14px 32px; border-top:1px solid var(--color-border-light); display:flex; align-items:center; justify-content:space-between; background:var(--color-bg-2);">
+              <span style="font-size:13px; color:var(--color-text-2);">
+                共 <strong>{{ rows.length }}</strong> 条，总工时
+                <strong style="color:var(--color-primary);">{{ totalHours }}</strong> 小时
+              </span>
+              <div style="display:flex; gap:12px;">
+                <el-button
+                  v-if="!editingHistoryTask"
+                  size="default"
+                  @click="handleSaveDraft"
+                  :loading="savingDraft"
+                  style="min-width:140px; font-size:16px; height:44px; font-weight:600;"
+                >📝 暂存草稿</el-button>
+                <el-button
+                  type="primary" size="default"
+                  @click="handleSubmit"
+                  :loading="submitting"
+                  style="min-width:140px; font-size:16px; height:44px; font-weight:600;"
+                >{{ editingHistoryTask ? '✏️ 编辑完成' : '🚀 提交' }}</el-button>
+              </div>
+            </div>
+          </template>
         </div>
       </div>
 
@@ -435,8 +484,7 @@ const historyQuarterCounts = computed(() => {
               :class="{ 'fill-q-btn-active': historyQuarter === q }"
               @click="historyQuarter = q"
             >
-              {{ q }}
-              <span class="fill-q-count">{{ historyQuarterCounts[q] }}</span>
+              {{ q }}<span class="fill-q-count">{{ historyQuarterCounts[q] }}</span>
             </button>
           </div>
 
@@ -468,6 +516,12 @@ const historyQuarterCounts = computed(() => {
                         {{ task.status === 'active' ? '收集中' : '已停止' }}
                       </span>
                     </div>
+                    <!-- v1.6.0: 编辑历史按钮 -->
+                    <el-button
+                      type="warning" link size="small"
+                      style="font-size:11px; padding:0; margin-top:4px; height:auto;"
+                      @click.stop="loadHistoryForEdit(task)"
+                    >编辑</el-button>
                   </div>
                 </div>
 
@@ -493,243 +547,81 @@ const historyQuarterCounts = computed(() => {
 </template>
 
 <style scoped>
-.fill-page-root {
-  padding: 30px 10px;
-}
+.fill-page-root { padding: 30px 10px; }
 
-/* v1.4.0: 双栏布局 */
+/* 双栏布局 */
 .fill-dual-layout {
   display: grid;
   grid-template-columns: 1fr 340px;
   gap: 24px;
   align-items: start;
 }
+.fill-left-panel { min-width: 0; }
+.fill-right-panel { position: sticky; top: 30px; }
 
-.fill-left-panel {
-  min-width: 0;
+/* v1.6.0: 无首选任务空态 */
+.fill-no-task {
+  padding: 80px 40px;
+  text-align: center;
 }
+.fill-no-task-icon { font-size: 40px; margin-bottom: 16px; opacity: 0.5; }
+.fill-no-task-text { font-size: 16px; font-weight: 600; color: var(--color-text-2); margin-bottom: 8px; }
+.fill-no-task-sub { font-size: 13px; color: var(--color-text-4); }
 
-.fill-right-panel {
-  position: sticky;
-  top: 30px;
+/* v1.6.0: 编辑历史返回栏 */
+.fill-back-bar {
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: rgba(22, 93, 255, 0.04);
+  border-radius: 8px;
+  border: 1px solid var(--color-primary-light, #BEDAFF);
 }
 
 /* 历史记录卡片 */
-.fill-history-card {
-  background: var(--color-bg-white);
-  border-radius: 12px;
-  box-shadow: var(--shadow-1);
-  overflow: hidden;
-}
+.fill-history-card { background: var(--color-bg-white); border-radius: 12px; box-shadow: var(--shadow-1); overflow: hidden; }
+.fill-history-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px 12px; border-bottom: 1px solid var(--color-border-light); }
 
-.fill-history-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 18px 12px;
-  border-bottom: 1px solid var(--color-border-light);
-}
-
-/* 季度切换按钮 */
-.fill-history-quarters {
-  display: flex;
-  padding: 10px 18px;
-  gap: 6px;
-  border-bottom: 1px solid var(--color-border-light);
-}
-
-.fill-q-btn {
-  flex: 1;
-  padding: 6px 0;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--color-text-3);
-  background: var(--color-bg-2);
-  border: 1px solid transparent;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-family: var(--font-base);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-}
-
-.fill-q-btn:hover {
-  color: var(--color-primary);
-  background: var(--color-primary-light);
-}
-
-.fill-q-btn-active {
-  color: #fff;
-  background: var(--color-primary);
-  border-color: var(--color-primary);
-  box-shadow: 0 2px 6px rgba(22,93,255,0.2);
-}
-
-.fill-q-count {
-  font-size: 10px;
-  opacity: 0.7;
-}
-
-.fill-history-body {
-  padding: 12px 18px;
-  max-height: 65vh;
-  overflow-y: auto;
-}
-
-.fill-history-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.fill-history-item {
-  border: 1px solid var(--color-border-light);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.fill-history-task-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.fill-history-task-header:hover {
-  background: var(--color-primary-light);
-}
-
-.fill-history-arrow {
-  font-size: 9px;
-  color: var(--color-text-4);
-  transition: transform 0.2s;
-  flex-shrink: 0;
-}
-
-.fill-history-arrow-open {
-  transform: rotate(90deg);
-  color: var(--color-primary);
-}
-
-.fill-history-records {
-  padding: 4px 12px 10px 28px;
-  border-top: 1px solid var(--color-border-light);
-  background: var(--color-bg-2);
-}
-
-.fill-history-rec {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 4px 0;
-  font-size: 12px;
-}
-
-.fill-rec-title {
-  color: var(--color-text-2);
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  margin-right: 8px;
-}
-
-.fill-rec-hours {
-  font-weight: 600;
-  color: var(--color-primary);
-  flex-shrink: 0;
-}
+/* 季度切换 */
+.fill-history-quarters { display: flex; padding: 10px 18px; gap: 6px; border-bottom: 1px solid var(--color-border-light); }
+.fill-q-btn { flex: 1; padding: 6px 0; font-size: 12px; font-weight: 500; color: var(--color-text-3); background: var(--color-bg-2); border: 1px solid transparent; border-radius: 6px; cursor: pointer; transition: all 0.2s; font-family: var(--font-base); display: flex; align-items: center; justify-content: center; gap: 4px; }
+.fill-q-btn:hover { color: var(--color-primary); background: var(--color-primary-light); }
+.fill-q-btn-active { color: #fff; background: var(--color-primary); border-color: var(--color-primary); box-shadow: 0 2px 6px rgba(22,93,255,0.2); }
+.fill-q-count { font-size: 10px; opacity: 0.7; }
+.fill-history-body { padding: 12px 18px; max-height: 65vh; overflow-y: auto; }
+.fill-history-list { display: flex; flex-direction: column; gap: 6px; }
+.fill-history-item { border: 1px solid var(--color-border-light); border-radius: 8px; overflow: hidden; }
+.fill-history-task-header { display: flex; align-items: center; gap: 8px; padding: 10px 12px; cursor: pointer; transition: background 0.2s; }
+.fill-history-task-header:hover { background: var(--color-primary-light); }
+.fill-history-arrow { font-size: 9px; color: var(--color-text-4); transition: transform 0.2s; flex-shrink: 0; }
+.fill-history-arrow-open { transform: rotate(90deg); color: var(--color-primary); }
+.fill-history-records { padding: 4px 12px 10px 28px; border-top: 1px solid var(--color-border-light); background: var(--color-bg-2); }
+.fill-history-rec { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; font-size: 12px; }
+.fill-rec-title { color: var(--color-text-2); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 8px; }
+.fill-rec-hours { font-weight: 600; color: var(--color-primary); flex-shrink: 0; }
 
 /* 状态标签 */
-.fill-status-tag {
-  display: inline-block;
-  padding: 1px 6px;
-  border-radius: 9999px;
-  font-size: 10px;
-  font-weight: 500;
-}
+.fill-status-tag { display: inline-block; padding: 1px 6px; border-radius: 9999px; font-size: 10px; font-weight: 500; }
+.fill-status-active { background: #E8FFEA; color: #00B42A; }
+.fill-status-closed { background: var(--color-bg-1); color: var(--color-text-4); }
 
-.fill-status-active {
-  background: #E8FFEA;
-  color: #00B42A;
-}
+/* 收集状态标签 */
+.fill-collect-status { display: inline-flex; align-items: center; gap: 6px; padding: 5px 16px; border-radius: 9999px; font-size: 14px; font-weight: 600; white-space: nowrap; flex-shrink: 0; margin-top: 2px; }
+.fill-collect-dot { width: 8px; height: 8px; border-radius: 50%; }
+.fill-collect-active { background: #D4FFDA; color: #006B1A; }
+.fill-collect-active .fill-collect-dot { background: #00B42A; animation: collectPulse 1.5s ease-in-out infinite; }
+.fill-collect-closed { background: #FFE8E8; color: #CB2634; }
+.fill-collect-closed .fill-collect-dot { background: #CB2634; }
 
-.fill-status-closed {
-  background: var(--color-bg-1);
-  color: var(--color-text-4);
-}
-
-/* v1.4.1: 收集状态标签 */
-.fill-collect-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 16px;
-  border-radius: 9999px;
-  font-size: 14px;
-  font-weight: 600;
-  white-space: nowrap;
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-.fill-collect-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-
-.fill-collect-active {
-  background: #D4FFDA;
-  color: #006B1A;
-}
-
-.fill-collect-active .fill-collect-dot {
-  background: #00B42A;
-  animation: collectPulse 1.5s ease-in-out infinite;
-}
-
-.fill-collect-closed {
-  background: #FFE8E8;
-  color: #CB2634;
-}
-
-.fill-collect-closed .fill-collect-dot {
-  background: #CB2634;
-}
-
-@keyframes collectPulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
-}
+@keyframes collectPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
 /* 手风琴过渡 */
-.accordion-enter-active, .accordion-leave-active {
-  transition: all 0.2s ease;
-  overflow: hidden;
-}
-.accordion-enter-from, .accordion-leave-to {
-  opacity: 0;
-  max-height: 0;
-}
-.accordion-enter-to, .accordion-leave-from {
-  opacity: 1;
-  max-height: 500px;
-}
+.accordion-enter-active, .accordion-leave-active { transition: all 0.2s ease; overflow: hidden; }
+.accordion-enter-from, .accordion-leave-to { opacity: 0; max-height: 0; }
+.accordion-enter-to, .accordion-leave-from { opacity: 1; max-height: 500px; }
 
-/* 响应式：小屏时堆叠 */
+/* 响应式 */
 @media (max-width: 1024px) {
-  .fill-dual-layout {
-    grid-template-columns: 1fr;
-  }
-  .fill-right-panel {
-    position: static;
-  }
+  .fill-dual-layout { grid-template-columns: 1fr; }
+  .fill-right-panel { position: static; }
 }
 </style>

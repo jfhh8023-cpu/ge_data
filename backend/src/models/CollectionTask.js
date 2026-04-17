@@ -10,6 +10,7 @@ const CollectionTask = sequelize.define('collection_tasks', {
   week_number:    { type: DataTypes.INTEGER },
   year:           { type: DataTypes.INTEGER, allowNull: false },
   status:         { type: DataTypes.ENUM('draft','active','closed'), defaultValue: 'active' },
+  is_preferred:   { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   created_at:     { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
   updated_at:     { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
 });

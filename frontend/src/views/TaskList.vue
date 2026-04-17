@@ -177,6 +177,34 @@ async function toggleCollection(task) {
   }
 }
 
+/* ========== v1.6.0: 首选收集项 ========== */
+const preferredTask = computed(() => taskStore.list.find(t => t.is_preferred) ?? null)
+
+async function handlePreferred(task) {
+  if (task.is_preferred) {
+    // 取消首选，无需确认
+    await api.patch(`/tasks/${task.id}/preferred`, { preferred: false })
+    await taskStore.fetchAll()
+    ElMessage.success('已取消收集首选')
+    return
+  }
+  if (preferredTask.value) {
+    // 已有其他首选，弹确认框
+    try {
+      await ElMessageBox.confirm(
+        `《${preferredTask.value.title}》已开启收集首选，是否切换为当前任务《${task.title}》作为首选收集项？`,
+        '切换首选收集项',
+        { type: 'warning', confirmButtonText: '确认切换', cancelButtonText: '取消' }
+      )
+    } catch {
+      return // 用户取消
+    }
+  }
+  await api.patch(`/tasks/${task.id}/preferred`, { preferred: true })
+  await taskStore.fetchAll()
+  ElMessage.success(`已将「${task.title}」设为首选收集项`)
+}
+
 /** 获取任务的活动标签 */
 function getActivityTags(taskId) {
   const activity = activityMap.value[taskId]
@@ -274,10 +302,17 @@ function getActivityTags(taskId) {
                 </span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="240" align="center">
+            <el-table-column label="操作" width="340" align="center">
               <template #default="{ row }">
                 <el-button type="primary" link size="small" @click.stop="viewTask(row.id)">查看</el-button>
                 <el-button type="warning" link size="small" @click.stop="openEdit(row)">编辑</el-button>
+                <!-- v1.6.0: 首选收集项（仅 active 任务可见） -->
+                <el-button
+                  v-if="row.status === 'active'"
+                  :type="row.is_preferred ? 'success' : 'default'"
+                  link size="small"
+                  @click.stop="handlePreferred(row)"
+                >{{ row.is_preferred ? '✦ 取消收集首选' : '设为首选' }}</el-button>
                 <el-button :type="row.status === 'active' ? 'info' : 'success'" link size="small" @click.stop="toggleCollection(row)">
                   {{ row.status === 'active' ? '停止收集' : '开始收集' }}
                 </el-button>

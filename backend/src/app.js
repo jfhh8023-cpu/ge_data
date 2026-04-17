@@ -24,7 +24,6 @@ app.use('/api/report',      require('./routes/report'));
 app.use('/api/fill',        require('./routes/fill'));
 app.use('/api/stats',       require('./routes/stats'));
 app.use('/api/permissions', require('./routes/permissions'));
-app.use('/api/dingtalk',    require('./routes/dingtalk'));
 
 /* 健康检查 */
 app.get('/api/health', (req, res) => {
@@ -41,7 +40,7 @@ async function start() {
     console.log('[DB] MySQL 连接成功');
     app.listen(PORT, () => {
       console.log(`[API] DevTracker v1.1.0 运行在 http://localhost:${PORT}`);
-      console.log('[API] 路由: /api/staff | /api/tasks | /api/records | /api/report | /api/fill | /api/stats | /api/permissions | /api/dingtalk');
+      console.log('[API] 路由: /api/staff | /api/tasks | /api/records | /api/report | /api/fill | /api/stats | /api/permissions');
     });
   } catch (err) {
     console.error('[DB] 连接失败:', err.message);
