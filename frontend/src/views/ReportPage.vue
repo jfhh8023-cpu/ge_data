@@ -488,7 +488,10 @@ function handleDownloadTemplate() {
         </el-table-column>
         <el-table-column label="产品经理" width="120">
           <template #default="{ row }">
-            {{ Array.isArray(row.product_managers) ? row.product_managers.join(', ') : '-' }}
+            <div v-if="Array.isArray(row.product_managers) && row.product_managers.length">
+              <div v-for="(pm, i) in row.product_managers" :key="i" style="line-height:1.6;">{{ pm }}</div>
+            </div>
+            <span v-else style="color:var(--color-text-4);">-</span>
           </template>
         </el-table-column>
         <el-table-column label="前端" align="center">
