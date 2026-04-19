@@ -10,9 +10,13 @@ import { useReportStore } from '../stores/report'
 import { useTaskStore } from '../stores/task'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { onDataChange, SYNC_EVENTS } from '../utils/sync'
+import api from '../api'
+import { parseExcelFile, validateHeaders, generateAndDownloadExcel, uploadExcelToServer, downloadTemplate } from '../utils/excel'
+import { useAuthStore } from '../stores/auth'
 
 const reportStore = useReportStore()
 const taskStore = useTaskStore()
+const authStore = useAuthStore()
 
 /* ========== 常量 ========== */
 const PAGE_SIZE = 20
@@ -274,6 +278,125 @@ async function saveRowEdit(row) {
 function toggleEditMode() {
   editMode.value = !editMode.value
 }
+
+/* ========== v2.0.0: 导出功能 ========== */
+function exportReportData() {
+  const groups = sortedGroups.value
+  if (groups.length === 0) {
+    ElMessage.warning('暂无数据可导出')
+    return
+  }
+
+  const headers = ['序号', '版本号', '需求名称', '产品经理', '前端姓名', '前端工时', '后端姓名', '后端工时', '测试姓名', '测试工时', '总计/小时', '备注']
+  const rows = groups.map((g, idx) => [
+    idx + 1,
+    g.version || '',
+    g.merged_title || '',
+    Array.isArray(g.product_managers) ? g.product_managers.join(', ') : '',
+    formatNames(g.frontend).join(', '),
+    g._frontendTotal ? g._frontendTotal.toFixed(1) : '0',
+    formatNames(g.backend).join(', '),
+    g._backendTotal ? g._backendTotal.toFixed(1) : '0',
+    formatNames(g.test_role).join(', '),
+    g._testTotal ? g._testTotal.toFixed(1) : '0',
+    g._rowTotal ? g._rowTotal.toFixed(1) : '0',
+    g.remark || ''
+  ])
+
+  // 合计行
+  const totals = reportStore.columnTotals
+  rows.push(['', '', '', '', '合计', totals.frontend.toFixed(1), '', totals.backend.toFixed(1), '', totals.test.toFixed(1), totals.total.toFixed(1), ''])
+
+  const taskTitle = selectedTask.value?.title || '需求工时统计'
+  const filename = `${taskTitle}_需求工时统计.xlsx`
+
+  const blob = generateAndDownloadExcel({
+    filename,
+    sheets: [{
+      name: '需求工时统计',
+      data: [headers, ...rows],
+      colWidths: [6, 12, 30, 12, 12, 10, 12, 10, 12, 10, 10, 18]
+    }]
+  })
+
+  // 存档到服务端
+  uploadExcelToServer(blob, {
+    source_page: 'report',
+    upload_type: 'export',
+    task_id: selectedTaskId.value,
+    filename
+  }).catch(() => {})
+
+  ElMessage.success('导出成功')
+}
+
+/* ========== v2.0.0: 导入功能 ========== */
+const importFileInput = ref(null)
+
+function triggerImport() {
+  importFileInput.value?.click()
+}
+
+async function handleImportFile(event) {
+  const file = event.target.files?.[0]
+  if (!file) return
+  // 重置 input，允许重复选同一文件
+  event.target.value = ''
+
+  try {
+    const { headers, rows } = await parseExcelFile(file)
+    const expectedHeaders = ['版本号', '需求名称', '产品经理', '前端姓名', '前端工时', '后端姓名', '后端工时', '测试姓名', '测试工时', '备注']
+    if (!validateHeaders(headers, expectedHeaders)) {
+      ElMessage.error('页面数据格式不匹配，请重新导入')
+      return
+    }
+
+    if (rows.length === 0) {
+      ElMessage.warning('Excel 中无有效数据行')
+      return
+    }
+
+    if (!selectedTaskId.value) {
+      ElMessage.error('请先选择一个任务周期')
+      return
+    }
+
+    // 发送到后端导入
+    const res = await api.post('/report/import', {
+      task_id: selectedTaskId.value,
+      rows: rows.map(r => ({
+        version: String(r['版本号'] || '').trim(),
+        merged_title: String(r['需求名称'] || '').trim(),
+        product_managers: String(r['产品经理'] || '').trim(),
+        frontend_name: String(r['前端姓名'] || '').trim(),
+        frontend_hours: parseFloat(r['前端工时']) || 0,
+        backend_name: String(r['后端姓名'] || '').trim(),
+        backend_hours: parseFloat(r['后端工时']) || 0,
+        test_name: String(r['测试姓名'] || '').trim(),
+        test_hours: parseFloat(r['测试工时']) || 0,
+        remark: String(r['备注'] || '').trim()
+      }))
+    })
+
+    // 上传原始文件存档
+    uploadExcelToServer(file, {
+      source_page: 'report',
+      upload_type: 'import',
+      task_id: selectedTaskId.value,
+      filename: file.name
+    }).catch(() => {})
+
+    // 刷新页面数据
+    await reportStore.fetchByTask(selectedTaskId.value)
+    ElMessage.success(res.message || `导入成功，共 ${rows.length} 条`)
+  } catch (err) {
+    ElMessage.error(err.response?.data?.message || err.message || '导入失败')
+  }
+}
+
+function handleDownloadTemplate() {
+  downloadTemplate('report')
+}
 </script>
 
 <template>
@@ -312,7 +435,7 @@ function toggleEditMode() {
           <el-option v-for="t in taskStore.list" :key="t.id" :label="t.title" :value="t.id" />
         </el-select>
         <el-button size="small" @click="nextTask" :disabled="currentTaskIndex <= 0">下一周期 ▶</el-button>
-        <el-button @click="addManualRow">+ 新增行</el-button>
+        <el-button v-if="authStore.hasPermission('btn:report:add_row', 'view')" @click="addManualRow">+ 新增行</el-button>
       </div>
 
       <!-- 排序 + 编辑 -->
@@ -326,7 +449,12 @@ function toggleEditMode() {
           {{ opt.label }}
         </button>
         <span style="width:1px; height:20px; background:var(--color-border-light); margin:0 8px;"></span>
+        <button v-if="authStore.hasPermission('btn:report:import', 'view')" class="dt-btn dt-btn-sm dt-btn-outline" @click="triggerImport" title="导入Excel">📥 导入</button>
+        <button v-if="authStore.hasPermission('btn:report:template', 'view')" class="dt-btn dt-btn-sm dt-btn-outline" @click="handleDownloadTemplate" title="下载导入模板">📋 模板</button>
+        <button v-if="authStore.hasPermission('btn:report:export', 'view')" class="dt-btn dt-btn-sm dt-btn-outline" @click="exportReportData" title="导出当前周期数据">📤 导出</button>
+        <span style="width:1px; height:20px; background:var(--color-border-light); margin:0 8px;"></span>
         <button
+          v-if="authStore.hasPermission('btn:report:edit_mode', 'view')"
           @click="toggleEditMode"
           :class="['dt-btn', 'dt-btn-sm', editMode ? 'dt-btn-primary' : 'dt-btn-outline']"
         >
@@ -430,7 +558,7 @@ function toggleEditMode() {
         <!-- 编辑模式操作列 -->
         <el-table-column v-if="editMode" label="操作" width="100" align="center" fixed="right">
           <template #default="{ row }">
-            <el-button v-if="row.status === 'manual_merged'" type="danger" link size="small" @click="deleteRow(row)">删除</el-button>
+            <el-button v-if="row.status === 'manual_merged' && authStore.hasPermission('btn:report:delete_row', 'view')" type="danger" link size="small" @click="deleteRow(row)">删除</el-button>
             <span v-else class="dt-tag dt-tag-gray" style="font-size:11px;">不可编辑</span>
           </template>
         </el-table-column>
@@ -446,6 +574,8 @@ function toggleEditMode() {
         />
       </div>
       </div>
+    <!-- v2.0.0: 隐藏文件输入框 -->
+    <input ref="importFileInput" type="file" accept=".xlsx,.xls" style="display:none;" @change="handleImportFile" />
     </template>
   </div>
 </template>

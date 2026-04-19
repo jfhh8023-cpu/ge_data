@@ -18,9 +18,13 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useStatsStore } from '../stores/stats'
 import { useTaskStore } from '../stores/task'
 import api from '../api'
+import { ElMessage } from 'element-plus'
 import { onDataChange, SYNC_EVENTS } from '../utils/sync'
+import { generateAndDownloadExcel, uploadExcelToServer } from '../utils/excel'
+import { useAuthStore } from '../stores/auth'
 
 const statsStore = useStatsStore()
+const authStore = useAuthStore()
 const taskStore = useTaskStore()
 
 /* ========== 常量 ========== */
@@ -560,6 +564,72 @@ function formatPM(val) {
   const arr = parseJsonField(val)
   return arr.length > 0 ? arr.join(', ') : '-'
 }
+
+/* ========== v2.0.0: 全量导出 ========== */
+function exportStatsData() {
+  const pmDist = statsStore.pmDistribution || []
+  if (pmDist.length === 0) {
+    ElMessage.warning('暂无数据可导出')
+    return
+  }
+
+  const sheets = []
+
+  // Sheet 1: 角色工时汇总
+  const summaryHeader = ['角色', '总工时(小时)']
+  const summaryData = [summaryHeader]
+  const rt = roleTotals.value
+  summaryData.push(['前端', rt.frontend || 0])
+  summaryData.push(['后端', rt.backend || 0])
+  summaryData.push(['测试', rt.test || 0])
+  summaryData.push(['合计', (rt.frontend || 0) + (rt.backend || 0) + (rt.test || 0)])
+  sheets.push({ name: '角色工时汇总', data: summaryData, colWidths: [12, 14] })
+
+  // Sheet 2: PM明细表（与页面表格一致）
+  const detailHeader = ['序号', '产品经理', '版本号', '需求名称', '人员', '角色', '工时(小时)', '合计']
+  const detailData = [detailHeader]
+  let idx = 1
+  for (const pm of pmDist) {
+    const recs = pm.records || []
+    if (recs.length === 0) {
+      detailData.push([idx++, pm.name, '-', '（汇总）', '-', '-', pm.total.toFixed(1), pm.total.toFixed(1)])
+    } else {
+      for (const rec of recs) {
+        detailData.push([
+          idx++,
+          pm.name,
+          rec.version || '-',
+          rec.requirement_title || '-',
+          rec.staffName || '-',
+          ROLE_LABEL[rec.role] || rec.role || '-',
+          parseFloat(rec.hours || 0).toFixed(1),
+          ''
+        ])
+      }
+      detailData.push(['', pm.name + ' 合计', '', '', '', '', '', pm.total.toFixed(1)])
+    }
+  }
+  sheets.push({ name: 'PM工时明细', data: detailData, colWidths: [8, 14, 14, 30, 10, 8, 12, 10] })
+
+  // Sheet 3: PM柱状图数据
+  const chartHeader = ['产品经理', '前端(小时)', '后端(小时)', '测试(小时)', '总计(小时)']
+  const chartDataExport = [chartHeader]
+  for (const d of pmDist) {
+    chartDataExport.push([d.name, d.frontend || 0, d.backend || 0, d.test || 0, d.total || 0])
+  }
+  sheets.push({ name: 'PM柱状图数据', data: chartDataExport, colWidths: [14, 12, 12, 12, 12] })
+
+  const filename = `周期统计_${selectedYear.value}年${selectedQuarter.value}.xlsx`
+  const blob = generateAndDownloadExcel({ filename, sheets })
+
+  uploadExcelToServer(blob, {
+    source_page: 'stats',
+    upload_type: 'export',
+    filename
+  }).catch(() => {})
+
+  ElMessage.success('导出成功')
+}
 </script>
 
 <template>
@@ -575,7 +645,10 @@ function formatPM(val) {
         <h1 class="dt-page-title">周期统计（季度）</h1>
         <p class="dt-page-description">部门工时趋势与个人贡献分析</p>
       </div>
-      <el-button circle @click="loadDeptStats" title="刷新数据" style="font-size:16px;">🔄</el-button>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <el-button v-if="authStore.hasPermission('btn:stats:export', 'view')" size="small" @click="exportStatsData">📤 导出Excel</el-button>
+        <el-button circle @click="loadDeptStats" title="刷新数据" style="font-size:16px;">🔄</el-button>
+      </div>
     </div>
 
     <!-- 年度 / 季度 / 任务周期 三联筛选器（两个 Tab 共享，REQ-12） -->

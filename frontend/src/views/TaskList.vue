@@ -12,9 +12,11 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import CreateTaskModal from '../components/CreateTaskModal.vue'
 import api from '../api'
 import { onDataChange, SYNC_EVENTS } from '../utils/sync'
+import { useAuthStore } from '../stores/auth'
 
 const router = useRouter()
 const taskStore = useTaskStore()
+const authStore = useAuthStore()
 const pageLoading = ref(true)  // v1.4.3: 页面初始加载状态
 
 /* ========== 常量 ========== */
@@ -304,19 +306,19 @@ function getActivityTags(taskId) {
             </el-table-column>
             <el-table-column label="操作" width="340" align="center">
               <template #default="{ row }">
-                <el-button type="primary" link size="small" @click.stop="viewTask(row.id)">查看</el-button>
-                <el-button type="warning" link size="small" @click.stop="openEdit(row)">编辑</el-button>
+                <el-button v-if="authStore.hasPermission('btn:tasks:view', 'view')" type="primary" link size="small" @click.stop="viewTask(row.id)">查看</el-button>
+                <el-button v-if="authStore.hasPermission('btn:tasks:edit', 'view')" type="warning" link size="small" @click.stop="openEdit(row)">编辑</el-button>
                 <!-- v1.6.0: 首选收集项（仅 active 任务可见） -->
                 <el-button
-                  v-if="row.status === 'active'"
+                  v-if="row.status === 'active' && authStore.hasPermission('btn:tasks:preferred', 'view')"
                   :type="row.is_preferred ? 'success' : 'default'"
                   link size="small"
                   @click.stop="handlePreferred(row)"
                 >{{ row.is_preferred ? '✦ 取消收集首选' : '设为首选' }}</el-button>
-                <el-button :type="row.status === 'active' ? 'info' : 'success'" link size="small" @click.stop="toggleCollection(row)">
+                <el-button v-if="authStore.hasPermission('btn:tasks:toggle', 'view')" :type="row.status === 'active' ? 'info' : 'success'" link size="small" @click.stop="toggleCollection(row)">
                   {{ row.status === 'active' ? '停止收集' : '开始收集' }}
                 </el-button>
-                <el-button type="danger" link size="small" @click.stop="deleteTask(row)">删除</el-button>
+                <el-button v-if="authStore.hasPermission('btn:tasks:delete', 'view')" type="danger" link size="small" @click.stop="deleteTask(row)">删除</el-button>
               </template>
             </el-table-column>
           </el-table>

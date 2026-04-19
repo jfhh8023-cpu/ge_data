@@ -15,10 +15,13 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import BackButton from '../components/BackButton.vue'
 import api from '../api'
 import { onDataChange, SYNC_EVENTS } from '../utils/sync'
+import { parseExcelFile, validateHeaders, uploadExcelToServer, downloadTemplate } from '../utils/excel'
+import { useAuthStore } from '../stores/auth'
 
 const route = useRoute()
 const taskStore = useTaskStore()
 const recordStore = useRecordStore()
+const authStore = useAuthStore()
 
 
 const activeTab = ref('records')
@@ -169,6 +172,59 @@ async function deleteRecord(row) {
   }
 }
 
+/* ========== v2.0.0: 导入功能 ========== */
+const importFileInput = ref(null)
+
+function triggerImport() {
+  importFileInput.value?.click()
+}
+
+async function handleImportFile(event) {
+  const file = event.target.files?.[0]
+  if (!file) return
+  event.target.value = ''
+
+  try {
+    const { headers, rows } = await parseExcelFile(file)
+    const expectedHeaders = ['人员姓名', '需求标题', '版本号', '产品经理', '工时(小时)']
+    if (!validateHeaders(headers, expectedHeaders)) {
+      ElMessage.error('页面数据格式不匹配，请重新导入')
+      return
+    }
+
+    if (rows.length === 0) {
+      ElMessage.warning('Excel 中无有效数据行')
+      return
+    }
+
+    const res = await api.post('/records/import', {
+      task_id: taskId.value,
+      rows: rows.map(r => ({
+        staff_name: String(r['人员姓名'] || '').trim(),
+        requirement_title: String(r['需求标题'] || '').trim(),
+        version: String(r['版本号'] || '').trim(),
+        product_managers: String(r['产品经理'] || '').trim(),
+        hours: parseFloat(r['工时(小时)']) || 0
+      }))
+    })
+
+    uploadExcelToServer(file, {
+      source_page: 'task-detail',
+      upload_type: 'import',
+      task_id: taskId.value,
+      filename: file.name
+    }).catch(() => {})
+
+    await recordStore.fetchByTask(taskId.value)
+    ElMessage.success(res.message || `导入成功，共 ${rows.length} 条`)
+  } catch (err) {
+    ElMessage.error(err.response?.data?.message || err.message || '导入失败')
+  }
+}
+
+function handleDownloadTemplate() {
+  downloadTemplate('task-detail')
+}
 
 </script>
 
@@ -199,7 +255,11 @@ async function deleteRecord(row) {
           </span>
         </p>
       </div>
-      <el-button circle @click="loadTaskData" title="刷新数据" style="font-size:16px;">🔄</el-button>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <el-button v-if="authStore.hasPermission('btn:task_detail:import', 'view')" size="small" @click="triggerImport">📥 导入</el-button>
+        <el-button v-if="authStore.hasPermission('btn:task_detail:template', 'view')" size="small" @click="handleDownloadTemplate">📋 模板</el-button>
+        <el-button circle @click="loadTaskData" title="刷新数据" style="font-size:16px;">🔄</el-button>
+      </div>
     </div>
 
     <el-skeleton v-if="loading" :rows="8" animated />
@@ -289,8 +349,8 @@ async function deleteRecord(row) {
                   <el-button type="info" link size="small" @click="cancelEdit">取消</el-button>
                 </template>
                 <template v-else>
-                  <el-button type="primary" link size="small" @click="startEdit(row)">编辑</el-button>
-                  <el-button type="danger" link size="small" @click="deleteRecord(row)">删除</el-button>
+                  <el-button v-if="authStore.hasPermission('btn:task_detail:edit_record', 'view')" type="primary" link size="small" @click="startEdit(row)">编辑</el-button>
+                  <el-button v-if="authStore.hasPermission('btn:task_detail:delete_record', 'view')" type="danger" link size="small" @click="deleteRecord(row)">删除</el-button>
                 </template>
               </template>
             </el-table-column>
@@ -299,6 +359,8 @@ async function deleteRecord(row) {
       </el-tab-pane>
 
     </el-tabs>
+    <!-- v2.0.0: 隐藏文件输入框 -->
+    <input ref="importFileInput" type="file" accept=".xlsx,.xls" style="display:none;" @change="handleImportFile" />
     </template>
   </div>
 </template>

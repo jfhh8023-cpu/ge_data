@@ -12,6 +12,7 @@ import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import api from '../api'
 import { broadcastDataChange, SYNC_EVENTS } from '../utils/sync'
+import { parseExcelFile, validateHeaders, generateAndDownloadExcel, uploadExcelToServer, downloadTemplate } from '../utils/excel'
 
 const route = useRoute()
 const loading = ref(true)
@@ -372,6 +373,121 @@ const historyQuarterCounts = computed(() => {
   }
   return counts
 })
+
+/* ========== v2.0.0: 左栏导入功能 ========== */
+const fillImportInput = ref(null)
+
+function triggerFillImport() {
+  fillImportInput.value?.click()
+}
+
+async function handleFillImport(event) {
+  const file = event.target.files?.[0]
+  if (!file) return
+  event.target.value = ''
+
+  try {
+    const { headers, rows: excelRows } = await parseExcelFile(file)
+    const expectedHeaders = ['需求标题', '版本号', '产品经理', '工时(小时)']
+    if (!validateHeaders(headers, expectedHeaders)) {
+      ElMessage.error('页面数据格式不匹配，请重新导入')
+      return
+    }
+    if (excelRows.length === 0) {
+      ElMessage.warning('Excel 中无有效数据行')
+      return
+    }
+
+    const parsed = excelRows.map(r => ({
+      requirement_title: String(r['需求标题'] || '').trim(),
+      version: String(r['版本号'] || '').trim(),
+      product_managers: String(r['产品经理'] || '').trim()
+        ? String(r['产品经理']).split(/[,，、\s]+/).filter(Boolean)
+        : [],
+      hours: parseFloat(r['工时(小时)']) || 0
+    }))
+
+    // 追加到当前行（若当前仅一空行则替换）
+    if (rows.value.length === 1 && !rows.value[0].requirement_title && !rows.value[0].hours) {
+      rows.value = parsed
+    } else {
+      rows.value.push(...parsed)
+    }
+
+    // 存档
+    uploadExcelToServer(file, {
+      source_page: 'fill',
+      upload_type: 'import',
+      task_id: currentTask.value?.id,
+      staff_id: fillData.value?.staff?.id,
+      filename: file.name
+    }).catch(() => {})
+
+    ElMessage.success(`成功导入 ${parsed.length} 条记录`)
+  } catch (err) {
+    ElMessage.error(err.message || '导入失败')
+  }
+}
+
+function handleFillDownloadTemplate() {
+  downloadTemplate('fill')
+}
+
+/* ========== v2.0.0: 右栏历史导出 ========== */
+function exportHistory() {
+  if (historyTasks.value.length === 0) {
+    ElMessage.warning('暂无历史数据可导出')
+    return
+  }
+
+  const sheets = []
+  const quarterGroups = {}
+
+  for (const task of historyTasks.value) {
+    const y = task.year || CURRENT_YEAR
+    const q = getTaskQuarter(task)
+    const key = `${y}年${q}`
+    if (!quarterGroups[key]) quarterGroups[key] = []
+    quarterGroups[key].push(task)
+  }
+
+  for (const [sheetName, tasks] of Object.entries(quarterGroups)) {
+    const header = ['任务周期', '需求标题', '版本号', '产品经理', '工时(小时)', '日期范围']
+    const data = [header]
+    for (const task of tasks) {
+      const dateRange = `${task.start_date || ''} ~ ${task.end_date || ''}`
+      if (task.records && task.records.length > 0) {
+        for (const rec of task.records) {
+          data.push([
+            task.title,
+            rec.requirement_title || '',
+            rec.version || '',
+            Array.isArray(rec.product_managers) ? rec.product_managers.join(', ') : (rec.product_managers || ''),
+            parseFloat(rec.hours || 0),
+            dateRange
+          ])
+        }
+      } else {
+        data.push([task.title, '', '', '', 0, dateRange])
+      }
+    }
+    sheets.push({ name: sheetName.slice(0, 31), data, colWidths: [30, 30, 14, 14, 10, 22] })
+  }
+
+  const staffName = fillData.value?.staff?.name || '用户'
+  const filename = `${staffName}_${historyYear.value}年历史工时.xlsx`
+
+  const blob = generateAndDownloadExcel({ filename, sheets })
+
+  uploadExcelToServer(blob, {
+    source_page: 'fill-history',
+    upload_type: 'export',
+    staff_id: fillData.value?.staff?.id,
+    filename
+  }).catch(() => {})
+
+  ElMessage.success('导出成功')
+}
 </script>
 
 <template>
@@ -441,6 +557,11 @@ const historyQuarterCounts = computed(() => {
 
             <!-- 表格区 -->
             <div style="padding:20px 32px;">
+              <!-- v2.0.0: Excel导入（仅可编辑时显示） -->
+              <div v-if="isEditable" style="display:flex; gap:8px; margin-bottom:10px;">
+                <el-button size="small" @click="triggerFillImport">📥 导入Excel</el-button>
+                <el-button size="small" @click="handleFillDownloadTemplate">📋 下载模板</el-button>
+              </div>
               <!-- 一键识别（仅可编辑时显示） -->
               <div v-if="isEditable" style="background:var(--color-bg-2); border-radius:8px; padding:14px; margin-bottom:14px; border:1px solid var(--color-border-light);">
                 <p style="font-size:12px; color:var(--color-text-3); margin-bottom:6px;">
@@ -532,9 +653,12 @@ const historyQuarterCounts = computed(() => {
         <div class="fill-history-card">
           <div class="fill-history-header">
             <h3 style="font-size:15px; font-weight:600; color:var(--color-text-1); margin:0;">📋 我的历史</h3>
-            <el-select v-model="historyYear" size="small" style="width:90px;">
-              <el-option v-for="y in historyYearOptions" :key="y" :label="`${y}年`" :value="y" />
-            </el-select>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <el-button size="small" @click="exportHistory" title="导出全年历史">📤 导出</el-button>
+              <el-select v-model="historyYear" size="small" style="width:90px;">
+                <el-option v-for="y in historyYearOptions" :key="y" :label="`${y}年`" :value="y" />
+              </el-select>
+            </div>
           </div>
 
           <!-- 季度切换 -->
@@ -603,6 +727,8 @@ const historyQuarterCounts = computed(() => {
         </div>
       </div>
     </div>
+    <!-- v2.0.0: 隐藏文件输入框 -->
+    <input ref="fillImportInput" type="file" accept=".xlsx,.xls" style="display:none;" @change="handleFillImport" />
   </div>
 </template>
 

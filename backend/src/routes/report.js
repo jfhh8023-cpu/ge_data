@@ -93,6 +93,67 @@ router.post('/manual-row', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/* POST /api/report/import — v2.0.0 批量导入 MatchGroup（覆盖逻辑） */
+router.post('/import', async (req, res, next) => {
+  try {
+    const { task_id, rows } = req.body;
+    if (!task_id) return res.status(400).json({ code: 1, message: 'task_id 必填' });
+    if (!Array.isArray(rows) || rows.length === 0) return res.status(400).json({ code: 1, message: 'rows 须为非空数组' });
+
+    const { Op } = require('sequelize');
+    let created = 0, updated = 0;
+
+    for (const row of rows) {
+      // 覆盖规则：已存在相同需求名称或相同版本号的 MatchGroup 则覆盖
+      let existing = null;
+      const conditions = [];
+      if (row.merged_title) conditions.push({ merged_title: row.merged_title, task_id });
+      if (row.version) conditions.push({ version: row.version, task_id });
+
+      if (conditions.length > 0) {
+        existing = await MatchGroup.findOne({ where: { [Op.or]: conditions } });
+      }
+
+      // 构建角色 JSON 数组
+      const buildRoleArray = (name, hours) => {
+        if (!name && !hours) return '[]';
+        const names = name ? name.split(/[,，、\s]+/).filter(Boolean) : [''];
+        const avgHours = hours ? (hours / names.length) : 0;
+        return JSON.stringify(names.map(n => ({ staffName: n, hours: avgHours })));
+      };
+
+      const data = {
+        merged_title: row.merged_title || '',
+        version: row.version || '',
+        product_managers: row.product_managers ? JSON.stringify(row.product_managers.split(/[,，、\s]+/).filter(Boolean)) : '[]',
+        frontend: buildRoleArray(row.frontend_name, row.frontend_hours),
+        backend: buildRoleArray(row.backend_name, row.backend_hours),
+        test_role: buildRoleArray(row.test_name, row.test_hours),
+        remark: row.remark || ''
+      };
+
+      if (existing) {
+        // 覆盖保存
+        Object.assign(existing, data);
+        await existing.save();
+        updated++;
+      } else {
+        // 新增行（manual_merged，可编辑/删除）
+        await MatchGroup.create({
+          id: uuidv4(),
+          task_id,
+          ...data,
+          confidence: 1,
+          status: 'manual_merged'
+        });
+        created++;
+      }
+    }
+
+    res.json({ code: 0, message: `导入成功：新增 ${created} 条，覆盖 ${updated} 条` });
+  } catch (err) { next(err); }
+});
+
 /* DELETE /api/report/:id — 删除手动添加行 */
 router.delete('/:id', async (req, res, next) => {
   try {

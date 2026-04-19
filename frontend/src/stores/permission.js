@@ -18,9 +18,9 @@ export const usePermissionStore = defineStore('permission', {
         this.resources = data.resources || []
       } finally { this.loading = false }
     },
-    /** 创建访问链接 */
-    async create(name) {
-      const res = await api.post('/permissions', { name })
+    /** 创建访问链接（v3.0.0: 支持 preset 预设） */
+    async create(name, preset = 'custom') {
+      const res = await api.post('/permissions', { name, preset })
       await this.fetchAll()
       return res.data.data
     },

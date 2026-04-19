@@ -9,8 +9,10 @@ import { useStaffStore } from '../stores/staff'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import BackButton from '../components/BackButton.vue'
 import api from '../api'
+import { useAuthStore } from '../stores/auth'
 
 const staffStore = useStaffStore()
+const authStore = useAuthStore()
 const pageLoading = ref(true)
 
 /** 弹窗状态 */
@@ -212,7 +214,7 @@ function openLink(token) {
         </div>
         <div style="display:flex; gap:8px;">
           <el-button circle @click="staffStore.fetchAll()" title="刷新数据" style="font-size:16px;">🔄</el-button>
-          <el-button type="primary" @click="openCreate">+ 新增人员</el-button>
+          <el-button v-if="authStore.hasPermission('btn:personnel:create', 'view')" type="primary" @click="openCreate">+ 新增人员</el-button>
         </div>
       </div>
 
@@ -266,18 +268,18 @@ function openLink(token) {
           <el-table-column label="链接操作" width="240" align="center">
             <template #default="{ row }">
               <div class="dt-link-ops">
-                <el-button class="dt-link-op-btn" type="primary" link :disabled="!row.fillToken" @click="openLink(row.fillToken)">打开</el-button>
-                <el-button class="dt-link-op-btn" type="primary" link :disabled="!row.fillToken" @click="copyLink(row.fillToken)">复制</el-button>
-                <el-button class="dt-link-op-btn" type="primary" link :disabled="!row.fillToken" @click="copyLinkWithTitle(row)">复制带标题</el-button>
+                <el-button v-if="authStore.hasPermission('btn:personnel:open_link', 'view')" class="dt-link-op-btn" type="primary" link :disabled="!row.fillToken" @click="openLink(row.fillToken)">打开</el-button>
+                <el-button v-if="authStore.hasPermission('btn:personnel:copy_link', 'view')" class="dt-link-op-btn" type="primary" link :disabled="!row.fillToken" @click="copyLink(row.fillToken)">复制</el-button>
+                <el-button v-if="authStore.hasPermission('btn:personnel:copy_link', 'view')" class="dt-link-op-btn" type="primary" link :disabled="!row.fillToken" @click="copyLinkWithTitle(row)">复制带标题</el-button>
               </div>
             </template>
           </el-table-column>
           <!-- 管理列：编辑 + 交接 + 删除 -->
           <el-table-column label="管理" width="160" align="center">
             <template #default="{ row }">
-              <el-button type="warning" link size="small" @click="openEdit(row)">编辑</el-button>
-              <el-button type="info" link size="small" @click="openTransfer(row)">交接</el-button>
-              <el-button type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
+              <el-button v-if="authStore.hasPermission('btn:personnel:edit', 'view')" type="warning" link size="small" @click="openEdit(row)">编辑</el-button>
+              <el-button v-if="authStore.hasPermission('btn:personnel:transfer', 'view')" type="info" link size="small" @click="openTransfer(row)">交接</el-button>
+              <el-button v-if="authStore.hasPermission('btn:personnel:delete', 'view')" type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
             </template>
           </el-table-column>
         </el-table>

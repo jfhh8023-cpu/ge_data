@@ -1,9 +1,9 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
-/** 路由 → 资源标识映射 */
+/** 路由 → 资源标识映射（v3.0.0: TaskDetail 独立资源） */
 const ROUTE_RESOURCE_MAP = {
   TaskList: 'page:tasks',
-  TaskDetail: 'page:tasks',
+  TaskDetail: 'page:task_detail',
   Report: 'page:report',
   Stats: 'page:stats',
   Personnel: 'page:personnel',

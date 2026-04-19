@@ -1,5 +1,5 @@
 /**
- * DevTracker v1.0.0 — Express 入口
+ * DevTracker v3.0.0 — Express 入口
  * 端口: 3001 | 路由前缀: /api
  */
 require('dotenv').config();
@@ -24,10 +24,11 @@ app.use('/api/report',      require('./routes/report'));
 app.use('/api/fill',        require('./routes/fill'));
 app.use('/api/stats',       require('./routes/stats'));
 app.use('/api/permissions', require('./routes/permissions'));
+app.use('/api/excel',       require('./routes/excel'));
 
 /* 健康检查 */
 app.get('/api/health', (req, res) => {
-  res.json({ code: 0, message: 'DevTracker API is running', version: '1.0.0' });
+  res.json({ code: 0, message: 'DevTracker API is running', version: '3.0.0' });
 });
 
 /* ========== 错误处理 ========== */
@@ -39,8 +40,8 @@ async function start() {
     await sequelize.authenticate();
     console.log('[DB] MySQL 连接成功');
     app.listen(PORT, () => {
-      console.log(`[API] DevTracker v1.1.0 运行在 http://localhost:${PORT}`);
-      console.log('[API] 路由: /api/staff | /api/tasks | /api/records | /api/report | /api/fill | /api/stats | /api/permissions');
+      console.log(`[API] DevTracker v3.0.0 运行在 http://localhost:${PORT}`);
+      console.log('[API] 路由: /api/staff | /api/tasks | /api/records | /api/report | /api/fill | /api/stats | /api/permissions | /api/excel');
     });
   } catch (err) {
     console.error('[DB] 连接失败:', err.message);

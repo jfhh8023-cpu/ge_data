@@ -86,6 +86,7 @@ function handleTaskCreated() {
           </svg>
         </span>
         <span class="dt-logo-text">DevTracker</span>
+        <span style="font-size:10px; color:var(--color-text-4); margin-left:4px; font-weight:400;">v3.0.0</span>
       </a>
 
       <!-- 主导航 -->
@@ -103,7 +104,7 @@ function handleTaskCreated() {
 
       <!-- 右侧操作区 -->
       <div class="dt-user-actions">
-        <button v-if="authStore.hasPermission('btn:create_task', 'create')" class="dt-btn dt-btn-primary dt-btn-sm" @click="showCreateModal = true">
+        <button v-if="authStore.hasPermission('btn:tasks:create', 'create')" class="dt-btn dt-btn-primary dt-btn-sm" @click="showCreateModal = true">
           + 新建收集
         </button>
         <span class="dt-avatar">{{ authStore.isAdmin ? '管理员' : authStore.linkName || '访客' }}</span>

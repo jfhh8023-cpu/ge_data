@@ -11,6 +11,7 @@ const MatchGroup = require('./MatchGroup');
 const AccessLink = require('./AccessLink');
 const LinkPermission = require('./LinkPermission');
 const StaffFillLink = require('./StaffFillLink');
+const ExcelFile = require('./ExcelFile');
 
 /* ========== 关联定义 ========== */
 
@@ -51,5 +52,6 @@ module.exports = {
   MatchGroup,
   AccessLink,
   LinkPermission,
-  StaffFillLink
+  StaffFillLink,
+  ExcelFile
 };
