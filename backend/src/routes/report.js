@@ -43,15 +43,32 @@ router.post('/match', async (req, res, next) => {
       include: [{ model: Staff, as: 'staff', attributes: ['name', 'role'] }]
     });
 
+    // 保存旧匹配组的备注和状态，以便重建后回填
+    const oldGroups = await MatchGroup.findAll({ where: { task_id: taskId } });
+    const oldRemarkMap = new Map();
+    for (const og of oldGroups) {
+      // 按版本号（优先）或标题建立索引
+      const key = (og.version || '').trim().toLowerCase() || (og.merged_title || '').trim();
+      if (key && (og.remark || og.status === 'manual_merged')) {
+        oldRemarkMap.set(key, { remark: og.remark || '', status: og.status });
+      }
+    }
+
     // 执行匹配
     const groups = matchRecords(records.map(r => r.toJSON()));
 
     // 清除旧匹配组
     await MatchGroup.destroy({ where: { task_id: taskId } });
 
-    // 保存新匹配组
+    // 保存新匹配组（回填备注）
     const created = [];
     for (const g of groups) {
+      const key = (g.version || '').trim().toLowerCase() || (g.merged_title || '').trim();
+      const old = oldRemarkMap.get(key);
+      if (old) {
+        if (old.remark) g.remark = old.remark;
+        if (old.status === 'manual_merged') g.status = old.status;
+      }
       const mg = await MatchGroup.create({ ...g, task_id: taskId });
       created.push(mg);
     }

@@ -217,8 +217,16 @@ router.post('/:token/submit', async (req, res, next) => {
       }
       await sfl.save();
 
-      // 提交后自动触发智能匹配
+      // 提交后自动触发智能匹配（保留旧备注）
       try {
+        const oldGroups = await MatchGroup.findAll({ where: { task_id } });
+        const oldRemarkMap = new Map();
+        for (const og of oldGroups) {
+          const key = (og.version || '').trim().toLowerCase() || (og.merged_title || '').trim();
+          if (key && (og.remark || og.status === 'manual_merged')) {
+            oldRemarkMap.set(key, { remark: og.remark || '', status: og.status });
+          }
+        }
         const allRecords = await WorkRecord.findAll({
           where: { task_id },
           include: [{ model: Staff, as: 'staff', attributes: ['name', 'role'] }]
@@ -226,6 +234,12 @@ router.post('/:token/submit', async (req, res, next) => {
         const groups = matchRecords(allRecords.map(r => r.toJSON()));
         await MatchGroup.destroy({ where: { task_id } });
         for (const g of groups) {
+          const key = (g.version || '').trim().toLowerCase() || (g.merged_title || '').trim();
+          const old = oldRemarkMap.get(key);
+          if (old) {
+            if (old.remark) g.remark = old.remark;
+            if (old.status === 'manual_merged') g.status = old.status;
+          }
           await MatchGroup.create({ ...g, task_id });
         }
       } catch (matchErr) {
@@ -258,6 +272,14 @@ router.post('/:token/submit', async (req, res, next) => {
     link.draft_saved_at = null;
     await link.save();
     try {
+      const oldGroups2 = await MatchGroup.findAll({ where: { task_id: link.task_id } });
+      const oldRemarkMap2 = new Map();
+      for (const og of oldGroups2) {
+        const key = (og.version || '').trim().toLowerCase() || (og.merged_title || '').trim();
+        if (key && (og.remark || og.status === 'manual_merged')) {
+          oldRemarkMap2.set(key, { remark: og.remark || '', status: og.status });
+        }
+      }
       const allRecords = await WorkRecord.findAll({
         where: { task_id: link.task_id },
         include: [{ model: Staff, as: 'staff', attributes: ['name', 'role'] }]
@@ -265,6 +287,12 @@ router.post('/:token/submit', async (req, res, next) => {
       const groups = matchRecords(allRecords.map(r => r.toJSON()));
       await MatchGroup.destroy({ where: { task_id: link.task_id } });
       for (const g of groups) {
+        const key = (g.version || '').trim().toLowerCase() || (g.merged_title || '').trim();
+        const old = oldRemarkMap2.get(key);
+        if (old) {
+          if (old.remark) g.remark = old.remark;
+          if (old.status === 'manual_merged') g.status = old.status;
+        }
         await MatchGroup.create({ ...g, task_id: link.task_id });
       }
     } catch (matchErr) {
