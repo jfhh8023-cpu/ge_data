@@ -95,6 +95,11 @@ function matchRecords(records) {
 
     for (let j = i + 1; j < records.length; j++) {
       if (used.has(j)) continue;
+      // 同一员工提交的不同需求不应合并（即使标题相似）
+      const anchorStaff = anchor.staff_id || anchor.staff?.id;
+      const candidateStaff = records[j].staff_id || records[j].staff?.id;
+      if (anchorStaff && candidateStaff && anchorStaff === candidateStaff) continue;
+
       const conf = computeConfidence(anchor, records[j]);
       if (conf >= THRESHOLD_PENDING) {
         cluster.push(j);
