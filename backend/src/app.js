@@ -28,7 +28,7 @@ app.use('/api/excel',       require('./routes/excel'));
 
 /* 健康检查 */
 app.get('/api/health', (req, res) => {
-  res.json({ code: 0, message: 'DevTracker API is running', version: '3.0.0' });
+  res.json({ code: 0, message: 'DevTracker API is running', version: '3.0.2' });
 });
 
 /* ========== 错误处理 ========== */

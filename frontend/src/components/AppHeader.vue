@@ -7,6 +7,7 @@ import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import CreateTaskModal from './CreateTaskModal.vue'
+import { APP_VERSION } from '../version'
 
 const route = useRoute()
 const router = useRouter()
@@ -86,7 +87,7 @@ function handleTaskCreated() {
           </svg>
         </span>
         <span class="dt-logo-text">DevTracker</span>
-        <span style="font-size:10px; color:var(--color-text-4); margin-left:4px; font-weight:400;">v3.0.0</span>
+        <span style="font-size:10px; color:var(--color-text-4); margin-left:4px; font-weight:400;">{{ APP_VERSION }}</span>
       </a>
 
       <!-- 主导航 -->

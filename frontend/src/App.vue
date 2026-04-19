@@ -7,21 +7,28 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import AppHeader from './components/AppHeader.vue'
+import { APP_VERSION, AUTHOR } from './version'
 
 const route = useRoute()
 
 /** 填写页使用独立布局，不显示管理端导航 */
 const isFillLayout = computed(() => route.meta.layout === 'fill')
 
-/** 版本信息常量 */
-const APP_VERSION = 'v1.6.2'
 const CURRENT_YEAR = new Date().getFullYear()
-const AUTHOR = '2698-jfzhu8023'
 </script>
 
 <template>
   <div v-if="isFillLayout" class="dt-fill-layout">
     <router-view />
+    <footer class="dt-footer">
+      <div class="dt-footer-inner">
+        <span class="dt-footer-version">DevTracker {{ APP_VERSION }}</span>
+        <span class="dt-footer-divider">·</span>
+        <span class="dt-footer-copyright">© {{ CURRENT_YEAR }}</span>
+        <span class="dt-footer-divider">·</span>
+        <span class="dt-footer-author">{{ AUTHOR }}</span>
+      </div>
+    </footer>
   </div>
   <div v-else class="dt-app-layout">
     <AppHeader />
