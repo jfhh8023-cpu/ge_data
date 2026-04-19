@@ -1,16 +1,17 @@
 /**
  * MatchService — 智能匹配引擎
  * 将各角色提交的原始工时记录，按需求维度归并为 MatchGroup
- * 匹配规则：版本号(0.3) + 标题相似度(0.5) + 产品经理(0.2)
+ *
+ * v3.0.1 匹配规则：
+ *   1. 版本号优先：双方都有版本号时，版本号不同则直接不合并
+ *   2. 版本号相同 → 再看标题相似度(0.6) + 产品经理(0.4)
+ *   3. 一方无版本号 → 纯标题相似度(0.7) + 产品经理(0.3)
+ *   4. 同一员工的不同记录不合并
  */
 const { v4: uuidv4 } = require('uuid');
 const { safeParseJsonArray } = require('../utils/parseJson');
 
 /* ========== 常量 ========== */
-const WEIGHT_VERSION = 0.3;
-const WEIGHT_TITLE = 0.5;
-const WEIGHT_PM = 0.2;
-
 const THRESHOLD_AUTO = 0.7;
 const THRESHOLD_PENDING = 0.5;
 
@@ -66,12 +67,25 @@ function pmMatch(pmA, pmB) {
   return intersection.length > 0 ? 1 : 0;
 }
 
-/** 计算两条记录的综合置信度 */
+/** 计算两条记录的综合置信度（版本号优先） */
 function computeConfidence(recA, recB) {
-  const vScore = versionMatch(recA.version, recB.version) * WEIGHT_VERSION;
-  const tScore = titleSimilarity(recA.requirement_title, recB.requirement_title) * WEIGHT_TITLE;
-  const pScore = pmMatch(recA.product_managers, recB.product_managers) * WEIGHT_PM;
-  return vScore + tScore + pScore;
+  const verA = (recA.version || '').trim().toLowerCase();
+  const verB = (recB.version || '').trim().toLowerCase();
+  const bothHaveVersion = verA.length > 0 && verB.length > 0;
+
+  // 规则 1: 双方都有版本号且不同 → 直接判定不匹配
+  if (bothHaveVersion && verA !== verB) return 0;
+
+  const tScore = titleSimilarity(recA.requirement_title, recB.requirement_title);
+  const pScore = pmMatch(recA.product_managers, recB.product_managers);
+
+  if (bothHaveVersion) {
+    // 规则 2: 版本号相同 → 基础分 0.3 + 标题(0.4) + PM(0.3)
+    return 0.3 + tScore * 0.4 + pScore * 0.3;
+  }
+
+  // 规则 3: 一方无版本号 → 纯标题(0.7) + PM(0.3)
+  return tScore * 0.7 + pScore * 0.3;
 }
 
 /**
