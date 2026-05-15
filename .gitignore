@@ -29,6 +29,8 @@ deploy/export_db.py
 deploy/fix_week_dates.py
 deploy/check_nginx.py
 deploy/verify_pm.py
+deploy/backup_from_server.py
+deploy/backups/
 deploy/.env.production
 deploy/devtracker_full.sql
 deploy/__pycache__/
