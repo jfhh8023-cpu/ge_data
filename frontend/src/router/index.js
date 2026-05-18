@@ -7,7 +7,8 @@ const ROUTE_RESOURCE_MAP = {
   Report: 'page:report',
   Stats: 'page:stats',
   Personnel: 'page:personnel',
-  Permissions: 'page:permissions'
+  Permissions: 'page:permissions',
+  Settings: 'page:settings'
 }
 
 const RESOURCE_FALLBACK_ROUTES = [
@@ -15,7 +16,8 @@ const RESOURCE_FALLBACK_ROUTES = [
   { resource: 'page:report', routeName: 'Report' },
   { resource: 'page:stats', routeName: 'Stats' },
   { resource: 'page:personnel', routeName: 'Personnel' },
-  { resource: 'page:permissions', routeName: 'Permissions' }
+  { resource: 'page:permissions', routeName: 'Permissions' },
+  { resource: 'page:settings', routeName: 'Settings' }
 ]
 
 const routes = [
@@ -62,6 +64,12 @@ const routes = [
     name: 'Permissions',
     component: () => import('../views/PermissionPage.vue'),
     meta: { title: '权限控制', showBack: true }
+  },
+  {
+    path: '/settings',
+    name: 'Settings',
+    component: () => import('../views/SettingsPage.vue'),
+    meta: { title: '设置', showBack: true }
   },
   {
     path: '/fill/:token',

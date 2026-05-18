@@ -215,6 +215,11 @@ html, body {
   box-shadow: 0 4px 12px rgba(22, 93, 255, 0.4);
 }
 
+.dt-settings-badge {
+  background: linear-gradient(135deg, #4E5969, #1D2129);
+  font-size: 15px;
+}
+
 /* === 核心容器 === */
 .dt-main-container {
   width: 100%;
@@ -513,8 +518,14 @@ html, body {
 /* === 填写页独立布局 === */
 .dt-fill-layout {
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
   background: var(--color-bg-body);
-  padding: 16px 25px 40px;
+  padding: 16px 25px 0;
+}
+
+.dt-fill-layout > :first-child {
+  flex: 1;
 }
 
 /* === 页面切换过渡 === */
@@ -592,10 +603,9 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
   font-size: 12px;
   color: var(--color-text-4);
-  letter-spacing: 0.3px;
+  letter-spacing: 0;
 }
 
 .dt-footer-version {

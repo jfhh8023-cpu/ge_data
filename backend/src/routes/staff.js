@@ -13,6 +13,18 @@ const { Op } = require('sequelize');
 const MIN_NAME_LENGTH = 2;
 const MAX_NAME_LENGTH = 20;
 const VALID_ROLES = ['frontend', 'backend', 'test'];
+const PHONE_PATTERN = /^\d{5,20}$/;
+
+function normalizePhone(phone) {
+  const value = String(phone || '').trim();
+  if (!value) return '';
+  if (!PHONE_PATTERN.test(value)) {
+    const err = new Error('手机号码只允许数字，长度 5-20 位');
+    err.status = 400;
+    throw err;
+  }
+  return value;
+}
 
 /* GET /api/staff — v1.6.0: 携带 fillToken */
 router.get('/', async (req, res, next) => {
@@ -102,6 +114,7 @@ router.post('/:id/transfer', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
   try {
     const { name, role } = req.body;
+    const phone = normalizePhone(req.body.phone);
     if (!name || name.trim().length < MIN_NAME_LENGTH || name.trim().length > MAX_NAME_LENGTH) {
       return res.status(400).json({ code: 1, message: `姓名长度须为${MIN_NAME_LENGTH}-${MAX_NAME_LENGTH}个字符` });
     }
@@ -109,7 +122,7 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ code: 1, message: '角色无效' });
     }
     const staffId = uuidv4();
-    const staff = await Staff.create({ id: staffId, name: name.trim(), role });
+    const staff = await Staff.create({ id: staffId, name: name.trim(), role, phone });
     // v1.6.0: 自动生成系统级专属链接
     const token = `${staffId.substring(0, 8)}_${uuidv4().replace(/-/g, '').substring(0, 12)}`;
     await StaffFillLink.create({ id: uuidv4(), staff_id: staffId, token });
@@ -128,6 +141,7 @@ router.put('/:id', async (req, res, next) => {
       staff.name = name.trim();
     }
     if (role !== undefined && VALID_ROLES.includes(role)) staff.role = role;
+    if (req.body.phone !== undefined) staff.phone = normalizePhone(req.body.phone);
     if (is_active !== undefined) staff.is_active = is_active;
     await staff.save();
     res.json({ code: 0, data: staff });

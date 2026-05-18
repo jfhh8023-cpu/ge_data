@@ -19,7 +19,7 @@ const pageLoading = ref(true)
 const dialogVisible = ref(false)
 const isEditing = ref(false)
 const editingId = ref('')
-const form = ref({ name: '', role: 'frontend' })
+const form = ref({ name: '', phone: '', role: 'frontend' })
 
 /** 预设文本（带标题链接用） */
 const presetText = ref('请填写上周工作内容，您的专属链接如下：')
@@ -64,20 +64,24 @@ function getFillUrl(token) {
 function openCreate() {
   isEditing.value = false
   editingId.value = ''
-  form.value = { name: '', role: 'frontend' }
+  form.value = { name: '', phone: '', role: 'frontend' }
   dialogVisible.value = true
 }
 
 function openEdit(staff) {
   isEditing.value = true
   editingId.value = staff.id
-  form.value = { name: staff.name, role: staff.role }
+  form.value = { name: staff.name, phone: staff.phone || '', role: staff.role }
   dialogVisible.value = true
 }
 
 async function handleSubmit() {
   if (!form.value.name || form.value.name.trim().length < 2) {
     ElMessage.warning('姓名长度须为 2-20 个字符')
+    return
+  }
+  if (form.value.phone && !/^\d{5,20}$/.test(form.value.phone.trim())) {
+    ElMessage.warning('手机号码只允许数字，长度 5-20 位')
     return
   }
   try {
@@ -239,6 +243,11 @@ function openLink(token) {
               <span style="font-weight:600; color:var(--color-text-1);">{{ row.name }}</span>
             </template>
           </el-table-column>
+          <el-table-column label="手机号码" width="130">
+            <template #default="{ row }">
+              <span>{{ row.phone || '' }}</span>
+            </template>
+          </el-table-column>
           <el-table-column label="角色" width="80">
             <template #default="{ row }">
               <span class="dt-tag" :class="ROLE_TAG_CLASS[row.role]">{{ ROLE_LABEL[row.role] || '-' }}</span>
@@ -290,6 +299,9 @@ function openLink(token) {
         <el-form :model="form" label-width="70px">
           <el-form-item label="姓名">
             <el-input v-model="form.name" placeholder="请输入姓名（2-20字）" maxlength="20" />
+          </el-form-item>
+          <el-form-item label="手机号码">
+            <el-input v-model="form.phone" placeholder="用于钉钉群 webhook @，可为空" maxlength="30" />
           </el-form-item>
           <el-form-item label="角色">
             <el-radio-group v-model="form.role">

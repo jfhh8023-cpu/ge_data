@@ -4,6 +4,7 @@ const sequelize = require('../config/database');
 const Staff = sequelize.define('staff', {
   id:        { type: DataTypes.CHAR(36), primaryKey: true },
   name:      { type: DataTypes.STRING(50), allowNull: false },
+  phone:     { type: DataTypes.STRING(30), allowNull: true },
   role:      { type: DataTypes.ENUM('frontend', 'backend', 'test'), allowNull: false },
   is_active: { type: DataTypes.BOOLEAN, defaultValue: true },
   created_at:{ type: DataTypes.DATE, defaultValue: DataTypes.NOW }

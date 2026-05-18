@@ -7,6 +7,7 @@ const express = require('express');
 const cors = require('cors');
 const { sequelize } = require('./models');
 const errorHandler = require('./middleware/errorHandler');
+const { ensureAutoTaskTables, startAutoTaskScheduler } = require('./services/AutoTaskService');
 
 const app = express();
 const PORT = parseInt(process.env.PORT, 10) || 3001;
@@ -25,6 +26,7 @@ app.use('/api/fill',        require('./routes/fill'));
 app.use('/api/stats',       require('./routes/stats'));
 app.use('/api/permissions', require('./routes/permissions'));
 app.use('/api/excel',       require('./routes/excel'));
+app.use('/api/settings',    require('./routes/settings'));
 
 /* 健康检查 */
 app.get('/api/health', (req, res) => {
@@ -39,9 +41,11 @@ async function start() {
   try {
     await sequelize.authenticate();
     console.log('[DB] MySQL 连接成功');
+    await ensureAutoTaskTables();
     app.listen(PORT, () => {
       console.log(`[API] DevTracker v3.0.0 运行在 http://localhost:${PORT}`);
-      console.log('[API] 路由: /api/staff | /api/tasks | /api/records | /api/report | /api/fill | /api/stats | /api/permissions | /api/excel');
+      console.log('[API] 路由: /api/staff | /api/tasks | /api/records | /api/report | /api/fill | /api/stats | /api/permissions | /api/excel | /api/settings');
+      startAutoTaskScheduler();
     });
   } catch (err) {
     console.error('[DB] 连接失败:', err.message);

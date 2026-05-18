@@ -12,6 +12,9 @@ const AccessLink = require('./AccessLink');
 const LinkPermission = require('./LinkPermission');
 const StaffFillLink = require('./StaffFillLink');
 const ExcelFile = require('./ExcelFile');
+const AutoTaskRule = require('./AutoTaskRule');
+const AutoTaskRunLog = require('./AutoTaskRunLog');
+const AutoTaskMessage = require('./AutoTaskMessage');
 
 /* ========== 关联定义 ========== */
 
@@ -43,6 +46,14 @@ LinkPermission.belongsTo(AccessLink, { foreignKey: 'link_id', as: 'accessLink' }
 Staff.hasOne(StaffFillLink, { foreignKey: 'staff_id', as: 'fillLink' });
 StaffFillLink.belongsTo(Staff, { foreignKey: 'staff_id', as: 'staff' });
 
+// AutoTaskRule 1:N AutoTaskRunLog（v3.1.0 自动任务）
+AutoTaskRule.hasMany(AutoTaskRunLog, { foreignKey: 'rule_id', as: 'logs' });
+AutoTaskRunLog.belongsTo(AutoTaskRule, { foreignKey: 'rule_id', as: 'rule' });
+
+// AutoTaskRule 1:N AutoTaskMessage（规则提示历史）
+AutoTaskRule.hasMany(AutoTaskMessage, { foreignKey: 'rule_id', as: 'messages' });
+AutoTaskMessage.belongsTo(AutoTaskRule, { foreignKey: 'rule_id', as: 'rule' });
+
 module.exports = {
   sequelize,
   CollectionTask,
@@ -53,5 +64,8 @@ module.exports = {
   AccessLink,
   LinkPermission,
   StaffFillLink,
-  ExcelFile
+  ExcelFile,
+  AutoTaskRule,
+  AutoTaskRunLog,
+  AutoTaskMessage
 };

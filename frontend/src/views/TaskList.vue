@@ -39,9 +39,9 @@ function getCurrentQuarter() {
   return m <= 3 ? 'Q1' : m <= 6 ? 'Q2' : m <= 9 ? 'Q3' : 'Q4'
 }
 
-/** 年份下拉选项：从任务数据中提取+当前年，倒序排列 */
+/** 年份下拉选项：从任务数据中提取 + 当前年 + 下一年，倒序排列 */
 const yearOptions = computed(() => {
-  const years = new Set([CURRENT_YEAR])
+  const years = new Set([CURRENT_YEAR, CURRENT_YEAR + 1])
   for (const t of taskStore.list) {
     const y = t.year || new Date(t.start_date).getFullYear()
     if (y) years.add(y)

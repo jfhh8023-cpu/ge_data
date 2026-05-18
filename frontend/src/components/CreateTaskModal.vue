@@ -31,7 +31,7 @@ const DIMENSION_OPTIONS = [
   { value: 'year', label: '年' }
 ]
 
-const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六']
+const WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日']
 const MONTH_NAMES = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月']
 
 /* ========== 表单状态 ========== */
@@ -59,11 +59,18 @@ function formatDateCN(d) {
 
 /** 获取 ISO 周数 */
 function getWeekNumber(d) {
+  return getISOWeekInfo(d).week
+}
+
+function getISOWeekInfo(d) {
   const tempDate = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
   const dayNum = tempDate.getUTCDay() || 7
   tempDate.setUTCDate(tempDate.getUTCDate() + 4 - dayNum)
   const yearStart = new Date(Date.UTC(tempDate.getUTCFullYear(), 0, 1))
-  return Math.ceil((((tempDate - yearStart) / 86400000) + 1) / 7)
+  return {
+    year: tempDate.getUTCFullYear(),
+    week: Math.ceil((((tempDate - yearStart) / 86400000) + 1) / 7)
+  }
 }
 
 /** 根据维度和参考日期计算起止日期 */
@@ -131,8 +138,8 @@ function generateTitle(s, e, dim) {
   const ed = new Date(e)
 
   if (dim === 'week') {
-    const wn = getWeekNumber(sd)
-    return `语音业务线-${sd.getFullYear()}年第${wn}周工时统计`
+    const info = getISOWeekInfo(sd)
+    return `语音业务线-${info.year}年第${info.week}周工时统计`
   }
   const startStr = formatDateCN(sd)
   const endStr = formatDateCN(ed)
@@ -171,7 +178,7 @@ watch(() => props.editTask, (task) => {
 /* ========== 日历渲染 ========== */
 const calendarDays = computed(() => {
   const firstDay = new Date(calendarYear.value, calendarMonth.value, 1)
-  const startWeekday = firstDay.getDay()
+  const startWeekday = (firstDay.getDay() + 6) % 7
   const daysInMonth = new Date(calendarYear.value, calendarMonth.value + 1, 0).getDate()
   const prevMonthDays = new Date(calendarYear.value, calendarMonth.value, 0).getDate()
 
@@ -282,14 +289,15 @@ async function handleSubmit() {
   submitting.value = true
   try {
     const sd = new Date(startDate.value)
-    const weekNum = timeDimension.value === 'week' ? getWeekNumber(sd) : undefined
+    const weekInfo = timeDimension.value === 'week' ? getISOWeekInfo(sd) : null
+    const weekNum = weekInfo ? weekInfo.week : undefined
     const payload = {
       title: taskTitle.value,
       time_dimension: timeDimension.value,
       start_date: startDate.value,
       end_date: endDate.value,
       week_number: weekNum,
-      year: sd.getFullYear()
+      year: weekInfo ? weekInfo.year : sd.getFullYear()
     }
     if (isEditMode.value) {
       await taskStore.update(props.editTask.id, payload)

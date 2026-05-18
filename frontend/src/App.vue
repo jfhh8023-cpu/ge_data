@@ -22,11 +22,7 @@ const CURRENT_YEAR = new Date().getFullYear()
     <router-view />
     <footer class="dt-footer">
       <div class="dt-footer-inner">
-        <span class="dt-footer-version">DevTracker {{ APP_VERSION }}</span>
-        <span class="dt-footer-divider">·</span>
-        <span class="dt-footer-copyright">© {{ CURRENT_YEAR }}</span>
-        <span class="dt-footer-divider">·</span>
-        <span class="dt-footer-author">{{ AUTHOR }}</span>
+        <span class="dt-footer-version">DevTracker {{ APP_VERSION }}© {{ CURRENT_YEAR }}&nbsp;&nbsp;&nbsp;{{ AUTHOR }}</span>
       </div>
     </footer>
   </div>
@@ -42,11 +38,7 @@ const CURRENT_YEAR = new Date().getFullYear()
     <!-- T3: 底部版本信息 -->
     <footer class="dt-footer">
       <div class="dt-footer-inner">
-        <span class="dt-footer-version">DevTracker {{ APP_VERSION }}</span>
-        <span class="dt-footer-divider">·</span>
-        <span class="dt-footer-copyright">© {{ CURRENT_YEAR }}</span>
-        <span class="dt-footer-divider">·</span>
-        <span class="dt-footer-author">{{ AUTHOR }}</span>
+        <span class="dt-footer-version">DevTracker {{ APP_VERSION }}© {{ CURRENT_YEAR }}&nbsp;&nbsp;&nbsp;{{ AUTHOR }}</span>
       </div>
     </footer>
   </div>

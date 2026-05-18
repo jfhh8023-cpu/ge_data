@@ -327,7 +327,7 @@ function getCurrentQuarter() {
 }
 
 const historyYearOptions = computed(() => {
-  const years = new Set([CURRENT_YEAR])
+  const years = new Set([CURRENT_YEAR, CURRENT_YEAR + 1])
   for (const t of historyTasks.value) { if (t.year) years.add(t.year) }
   return [...years].sort((a, b) => b - a)
 })

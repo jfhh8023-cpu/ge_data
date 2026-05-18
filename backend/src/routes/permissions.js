@@ -61,7 +61,12 @@ const RESOURCES = [
   { resource: 'btn:permissions:delete_link',label: '🗑️ 删除链接',    module: 'permissions', module_label: '权限管理',     group: 'btn',  parent_page: 'page:permissions', valid_actions: ['view', 'delete'] },
   { resource: 'btn:permissions:copy_link',  label: '📋 复制链接',     module: 'permissions', module_label: '权限管理',     group: 'btn',  parent_page: 'page:permissions', valid_actions: ['view'] },
 
-  // ── 模块 F：填写工时 ──
+  // ── 模块 F：系统设置 ──
+  { resource: 'page:settings',              label: '⚙️ 设置页面',       module: 'settings',    module_label: '系统设置',     group: 'page', valid_actions: ['view'] },
+  { resource: 'btn:settings:auto_task_save',label: '✅ 保存自动任务',    module: 'settings',    module_label: '系统设置',     group: 'btn',  parent_page: 'page:settings', valid_actions: ['view', 'create', 'update', 'delete'] },
+  { resource: 'btn:settings:backup_download', label: '📥 下载数据备份',  module: 'settings',    module_label: '系统设置',     group: 'btn',  parent_page: 'page:settings', valid_actions: ['view'] },
+
+  // ── 模块 G：填写工时 ──
   { resource: 'page:fill',              label: '✍️ 填写工时页',     module: 'fill',        module_label: '填写工时',     group: 'page', valid_actions: ['view'] },
   { resource: 'btn:fill:import',        label: '📥 导入Excel',       module: 'fill',        module_label: '填写工时',     group: 'btn',  parent_page: 'page:fill', valid_actions: ['view', 'create'] },
   { resource: 'btn:fill:template',      label: '📋 下载模板',        module: 'fill',        module_label: '填写工时',     group: 'btn',  parent_page: 'page:fill', valid_actions: ['view'] },

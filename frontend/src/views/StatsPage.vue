@@ -59,7 +59,7 @@ function getCurrentQuarter() {
 
 const yearOptions = computed(() => {
   const years = []
-  for (let y = CURRENT_YEAR; y >= CURRENT_YEAR - 2; y--) years.push(y)
+  for (let y = CURRENT_YEAR + 1; y >= CURRENT_YEAR - 2; y--) years.push(y)
   return years
 })
 

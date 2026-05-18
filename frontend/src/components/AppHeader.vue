@@ -8,6 +8,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import CreateTaskModal from './CreateTaskModal.vue'
 import { APP_VERSION } from '../version'
+import { Setting } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -42,6 +43,10 @@ function goPersonnel() {
 
 function goPermissions() {
   router.push('/permissions')
+}
+
+function goSettings() {
+  router.push('/settings')
 }
 
 function handleTaskCreated() {
@@ -109,6 +114,9 @@ function handleTaskCreated() {
           + 新建收集
         </button>
         <span class="dt-avatar">{{ authStore.isAdmin ? '管理员' : authStore.linkName || '访客' }}</span>
+        <a v-if="authStore.hasPermission('page:settings', 'view')" class="dt-team-badge dt-settings-badge" title="设置" @click.prevent="goSettings">
+          <el-icon><Setting /></el-icon>
+        </a>
         <a v-if="authStore.hasPermission('page:permissions', 'view')" class="dt-team-badge" title="权限控制" @click.prevent="goPermissions" style="background:#722ED1;">🔐</a>
         <a v-if="authStore.hasPermission('page:personnel', 'view')" class="dt-team-badge" title="团队人员" @click.prevent="goPersonnel">团</a>
       </div>

@@ -12,6 +12,7 @@ const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
 const { CollectionTask, FillLink, WorkRecord, MatchGroup, Staff, StaffFillLink } = require('../models');
 const { Op } = require('sequelize');
+const { createPreferredTask } = require('../services/TaskService');
 
 /* GET /api/tasks */
 router.get('/', async (req, res, next) => {
@@ -38,18 +39,7 @@ router.post('/', async (req, res, next) => {
     if (!title || !start_date || !end_date || !year) {
       return res.status(400).json({ code: 1, message: '必填字段缺失' });
     }
-    // 关闭旧首选任务（停止收集 + 取消首选）
-    await CollectionTask.update(
-      { is_preferred: false, status: 'closed', updated_at: new Date() },
-      { where: { is_preferred: true } }
-    );
-    // 新建任务默认成为首选收集项
-    const task = await CollectionTask.create({
-      id: uuidv4(), title, time_dimension: time_dimension || 'week',
-      start_date, end_date, week_number, year,
-      status: 'active',
-      is_preferred: true
-    });
+    const task = await createPreferredTask({ title, time_dimension, start_date, end_date, week_number, year, status });
     res.json({ code: 0, data: task });
   } catch (err) { next(err); }
 });
