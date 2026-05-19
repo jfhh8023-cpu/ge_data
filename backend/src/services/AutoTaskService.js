@@ -17,7 +17,12 @@ const {
 
 const SKIP_MESSAGE = '该任务已存在或无法新增超过下一周的新收集任务，若仍需新增，请手动处理';
 const DINGTALK_CARD_TITLE = '语音产研进度维护通知：';
+const DINGTALK_DUTY_CARD_TITLE = '今日语音业务线值班通知：';
+const TASK_TYPE_CREATE_NOTIFY = 'task_create_notify';
+const TASK_TYPE_DUTY_NOTIFY = 'duty_notify';
 const ACTION_MODES = new Set(['run_and_notify', 'run_only', 'notify_only']);
+const TASK_TYPES = new Set([TASK_TYPE_CREATE_NOTIFY, TASK_TYPE_DUTY_NOTIFY]);
+const DUTY_SEND_MODES = new Set(['start_only', 'start_and_end']);
 let schedulerTimer = null;
 let ticking = false;
 
@@ -28,17 +33,61 @@ async function ensureColumn(tableName, columnName, definition) {
   }
 }
 
+async function tableExists(tableName) {
+  const tables = await sequelize.getQueryInterface().showAllTables();
+  return tables
+    .map(item => (typeof item === 'string' ? item : (item.tableName || item.table_name)))
+    .includes(tableName);
+}
+
+async function ensureRunLogEventIndex() {
+  const queryInterface = sequelize.getQueryInterface();
+  try {
+    const indexes = await queryInterface.showIndex('auto_task_run_logs');
+    const indexNames = new Set(indexes.map(index => index.name));
+    for (const name of ['uniq_rule_scheduled', 'auto_task_run_logs_rule_id_scheduled_at']) {
+      if (indexNames.has(name)) {
+        await queryInterface.removeIndex('auto_task_run_logs', name);
+      }
+    }
+    const refreshedIndexes = await queryInterface.showIndex('auto_task_run_logs');
+    const hasEventIndex = refreshedIndexes.some(index => index.name === 'uniq_rule_scheduled_event');
+    if (!hasEventIndex) {
+      await queryInterface.addIndex('auto_task_run_logs', ['rule_id', 'scheduled_at', 'event_type'], {
+        name: 'uniq_rule_scheduled_event',
+        unique: true
+      });
+    }
+  } catch (err) {
+    console.warn('[auto-task] 校验执行日志事件索引失败', err.message);
+  }
+}
+
 async function ensureAutoTaskTables() {
   await AutoTaskRule.sync();
-  await AutoTaskRunLog.sync();
   await AutoTaskMessage.sync();
+  if (await tableExists('auto_task_run_logs')) {
+    await ensureColumn('auto_task_run_logs', 'event_type', {
+      type: DataTypes.STRING(30),
+      allowNull: false,
+      defaultValue: 'auto_task'
+    });
+  }
+  await AutoTaskRunLog.sync();
   await ensureColumn('staff', 'phone', { type: DataTypes.STRING(30), allowNull: true });
   await ensureColumn('auto_task_rules', 'action_mode', {
     type: DataTypes.STRING(30),
     allowNull: false,
     defaultValue: 'run_and_notify'
   });
+  await ensureColumn('auto_task_rules', 'task_type', {
+    type: DataTypes.STRING(40),
+    allowNull: false,
+    defaultValue: TASK_TYPE_CREATE_NOTIFY
+  });
   await ensureColumn('auto_task_rules', 'dingtalk_recipients', { type: DataTypes.TEXT, allowNull: true });
+  await ensureColumn('auto_task_rules', 'duty_config', { type: DataTypes.TEXT, allowNull: true });
+  await ensureRunLogEventIndex();
 }
 
 function toIntList(value, min, max) {
@@ -120,10 +169,84 @@ function normalizeActionMode(value) {
   return ACTION_MODES.has(mode) ? mode : 'run_and_notify';
 }
 
+function normalizeTaskType(value) {
+  const type = String(value || '').trim();
+  return TASK_TYPES.has(type) ? type : TASK_TYPE_CREATE_NOTIFY;
+}
+
 function normalizeNotifyEnabled(actionMode, value) {
   if (actionMode === 'run_only') return false;
   if (actionMode === 'notify_only') return true;
   return value !== false;
+}
+
+function normalizeTime(value, fallback = '09:00:00') {
+  const text = String(value || '').trim();
+  if (/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(text)) return text;
+  if (/^([01]\d|2[0-3]):[0-5]\d$/.test(text)) return `${text}:00`;
+  return fallback;
+}
+
+function normalizeDutyItem(value = {}) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const staffIds = Array.isArray(source.staff_ids) ? source.staff_ids : [];
+  const sendMode = DUTY_SEND_MODES.has(source.send_mode) ? source.send_mode : 'start_only';
+  return {
+    enabled: source.enabled === true,
+    staff_ids: [...new Set(staffIds.map(id => String(id || '').trim()).filter(Boolean))],
+    start_time: normalizeTime(source.start_time, '09:00:00'),
+    end_time: normalizeTime(source.end_time, '18:30:00'),
+    send_mode: sendMode,
+    start_message: String(source.start_message || '').trim(),
+    end_message: String(source.end_message || '').trim()
+  };
+}
+
+function normalizeDutyDayMap(value, min, max) {
+  const result = {};
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  for (const [key, item] of Object.entries(source)) {
+    const day = Number(key);
+    if (!Number.isInteger(day) || day < min || day > max) continue;
+    result[String(day)] = normalizeDutyItem(item);
+  }
+  return result;
+}
+
+function normalizeDutyConfig(value) {
+  let raw = value;
+  if (typeof raw === 'string') {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      raw = null;
+    }
+  }
+  const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  return {
+    weekly: normalizeDutyDayMap(source.weekly, 1, 7),
+    monthly: normalizeDutyDayMap(source.monthly, 1, 31)
+  };
+}
+
+function dutyItemHasStart(item) {
+  return Boolean(item?.enabled && item.staff_ids?.length && String(item.start_message || '').trim());
+}
+
+function dutyItemHasEnd(item) {
+  return Boolean(
+    item?.enabled &&
+    item.send_mode === 'start_and_end' &&
+    item.staff_ids?.length &&
+    String(item.end_message || '').trim()
+  );
+}
+
+function configuredDutyKeys(dayMap, includeEnd = false) {
+  return Object.entries(dayMap)
+    .filter(([, item]) => dutyItemHasStart(item) || (includeEnd && dutyItemHasEnd(item)))
+    .map(([key]) => Number(key))
+    .sort((a, b) => a - b);
 }
 
 function normalizeRecipientConfig(value) {
@@ -172,6 +295,26 @@ async function resolveAtConfig(value) {
   return { enabled: true, atAll: false, mobiles: [...new Set(phones)] };
 }
 
+async function resolveStaffAtConfig(staffIds = []) {
+  const ids = [...new Set((Array.isArray(staffIds) ? staffIds : [])
+    .map(id => String(id || '').trim())
+    .filter(Boolean))];
+  if (ids.length === 0) return { enabled: false, atAll: false, mobiles: [] };
+  const staffRows = await Staff.findAll({
+    where: {
+      [Op.or]: [
+        { id: { [Op.in]: ids } },
+        { phone: { [Op.in]: ids } }
+      ]
+    },
+    attributes: ['phone']
+  });
+  const mobiles = staffRows
+    .map(staff => String(staff.phone || '').trim())
+    .filter(isValidPhone);
+  return { enabled: mobiles.length > 0, atAll: false, mobiles: [...new Set(mobiles)] };
+}
+
 async function recordAutoTaskMessage(ruleId, level, action, message) {
   if (!ruleId || !message) return null;
   try {
@@ -190,13 +333,19 @@ async function recordAutoTaskMessage(ruleId, level, action, message) {
 }
 
 function normalizeRulePayload(payload, existing = null) {
+  const taskType = normalizeTaskType(payload.task_type ?? existing?.task_type);
   const scheduleType = payload.schedule_type || existing?.schedule_type || 'weekly';
   const executeTime = payload.execute_time || existing?.execute_time || '09:00:00';
-  const actionMode = normalizeActionMode(payload.action_mode ?? existing?.action_mode);
-  const notifyEnabled = normalizeNotifyEnabled(
-    actionMode,
-    payload.notify_enabled ?? existing?.notify_enabled ?? true
-  );
+  const dutyConfig = normalizeDutyConfig(payload.duty_config ?? existing?.duty_config);
+  const actionMode = taskType === TASK_TYPE_DUTY_NOTIFY
+    ? 'notify_only'
+    : normalizeActionMode(payload.action_mode ?? existing?.action_mode);
+  const notifyEnabled = taskType === TASK_TYPE_DUTY_NOTIFY
+    ? true
+    : normalizeNotifyEnabled(
+      actionMode,
+      payload.notify_enabled ?? existing?.notify_enabled ?? true
+    );
   if (!/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(executeTime)) {
     const err = new Error('执行时间格式必须为 HH:mm:ss');
     err.status = 400;
@@ -208,27 +357,32 @@ function normalizeRulePayload(payload, existing = null) {
     throw err;
   }
 
-  const monthDays = toIntList(payload.month_days ?? existing?.month_days, 1, 31);
-  const weekDays = toIntList(payload.week_days ?? existing?.week_days, 1, 7);
+  const monthDays = taskType === TASK_TYPE_DUTY_NOTIFY
+    ? (configuredDutyKeys(dutyConfig.monthly, true).length ? configuredDutyKeys(dutyConfig.monthly, true) : Array.from({ length: 31 }, (_, i) => i + 1))
+    : toIntList(payload.month_days ?? existing?.month_days, 1, 31);
+  const weekDays = taskType === TASK_TYPE_DUTY_NOTIFY
+    ? (configuredDutyKeys(dutyConfig.weekly, true).length ? configuredDutyKeys(dutyConfig.weekly, true) : Array.from({ length: 7 }, (_, i) => i + 1))
+    : toIntList(payload.week_days ?? existing?.week_days, 1, 7);
   const scheduleYear = payload.schedule_year ?? existing?.schedule_year ?? new Date().getFullYear();
   const webhooks = normalizeWebhookConfigs(
     payload.dingtalk_webhooks ?? payload.dingtalk_webhook ?? existing?.dingtalk_webhook
   );
 
-  if (scheduleType === 'monthly' && monthDays.length === 0) {
+  if (taskType !== TASK_TYPE_DUTY_NOTIFY && scheduleType === 'monthly' && monthDays.length === 0) {
     const err = new Error('按月日期执行时至少选择一个日期');
     err.status = 400;
     throw err;
   }
-  if (scheduleType === 'weekly' && weekDays.length === 0) {
+  if (taskType !== TASK_TYPE_DUTY_NOTIFY && scheduleType === 'weekly' && weekDays.length === 0) {
     const err = new Error('按星期执行时至少选择一个星期');
     err.status = 400;
     throw err;
   }
 
   return {
-    name: payload.name ?? existing?.name ?? '自动生成任务规则',
+    name: payload.name ?? existing?.name ?? (taskType === TASK_TYPE_DUTY_NOTIFY ? '自动值班通知' : '自动生成任务规则'),
     enabled: payload.enabled ?? existing?.enabled ?? true,
+    task_type: taskType,
     action_mode: actionMode,
     schedule_type: scheduleType,
     schedule_year: scheduleType === 'monthly' ? Number(scheduleYear) : null,
@@ -240,7 +394,8 @@ function normalizeRulePayload(payload, existing = null) {
     dingtalk_message: payload.dingtalk_message ?? existing?.dingtalk_message ?? '',
     dingtalk_recipients: JSON.stringify(normalizeRecipientConfig(
       payload.dingtalk_recipients ?? existing?.dingtalk_recipients
-    ))
+    )),
+    duty_config: JSON.stringify(dutyConfig)
   };
 }
 
@@ -250,6 +405,13 @@ function partsFromYmd(ymd) {
 }
 
 function isRuleDateMatched(rule, parts) {
+  if (normalizeTaskType(rule.task_type) === TASK_TYPE_DUTY_NOTIFY) {
+    const dutyConfig = normalizeDutyConfig(rule.duty_config);
+    if (rule.schedule_type === 'monthly') {
+      return Boolean(dutyConfig.monthly[String(parts.day)]?.enabled);
+    }
+    return Boolean(dutyConfig.weekly[String(getWeekdayNumber(parts.date))]?.enabled);
+  }
   if (rule.schedule_type === 'monthly') {
     const monthDays = toIntList(rule.month_days, 1, 31);
     return Number(rule.schedule_year) === parts.year && monthDays.includes(parts.day);
@@ -266,8 +428,60 @@ function isRuleDue(rule, now = new Date()) {
   return now >= scheduledAt ? scheduledAt : null;
 }
 
+function getDutyItemForParts(rule, parts) {
+  const dutyConfig = normalizeDutyConfig(rule.duty_config);
+  if (rule.schedule_type === 'monthly') {
+    if (rule.schedule_year && Number(rule.schedule_year) !== parts.year) return null;
+    return dutyConfig.monthly[String(parts.day)] || null;
+  }
+  return dutyConfig.weekly[String(getWeekdayNumber(parts.date))] || null;
+}
+
+function buildDutyEventsForParts(rule, parts) {
+  const item = getDutyItemForParts(rule, parts);
+  if (!item?.enabled) return [];
+  const events = [];
+  if (dutyItemHasStart(item)) {
+    events.push({
+      kind: 'start',
+      scheduledAt: getBeijingScheduledAt(parts, item.start_time),
+      message: item.start_message,
+      staff_ids: item.staff_ids
+    });
+  }
+  if (dutyItemHasEnd(item)) {
+    events.push({
+      kind: 'end',
+      scheduledAt: getBeijingScheduledAt(parts, item.end_time),
+      message: item.end_message,
+      staff_ids: item.staff_ids
+    });
+  }
+  return events;
+}
+
+function getDueDutyEvents(rule, now = new Date()) {
+  if (!rule.enabled) return [];
+  const parts = getBeijingParts(now);
+  return buildDutyEventsForParts(rule, parts).filter(event => now >= event.scheduledAt);
+}
+
 function getNextRunAt(rule, now = new Date()) {
   if (!rule.enabled) return null;
+  if (normalizeTaskType(rule.task_type) === TASK_TYPE_DUTY_NOTIFY) {
+    const today = getBeijingDate(now);
+    for (let offset = 0; offset <= 400; offset++) {
+      const candidate = addDays(today, offset);
+      const ymd = dateToYmd(candidate);
+      const parts = partsFromYmd(ymd);
+      const nextEvent = buildDutyEventsForParts(rule, parts)
+        .map(event => event.scheduledAt)
+        .filter(runAt => runAt > now)
+        .sort((a, b) => a - b)[0];
+      if (nextEvent) return nextEvent;
+    }
+    return null;
+  }
   const today = getBeijingDate(now);
   for (let offset = 0; offset <= 400; offset++) {
     const candidate = addDays(today, offset);
@@ -396,15 +610,12 @@ function postJson(url, body, timeoutMs = 8000) {
   });
 }
 
-async function sendDingTalkWebhook(rule) {
-  const webhooks = normalizeWebhookConfigs(rule.dingtalk_webhooks ?? rule.dingtalk_webhook);
-  const content = String(rule.dingtalk_message || '').trim();
+async function sendDingTalkCard(webhooks, content, atConfig, title = DINGTALK_CARD_TITLE) {
   if (!webhooks.length) throw new Error('webhook 地址为空');
   if (!content) throw new Error('消息内容为空');
-  const atConfig = await resolveAtConfig(rule.dingtalk_recipients);
   const atText = atConfig.atAll ? '@所有人' : atConfig.mobiles.map(phone => `@${phone}`).join(' ');
   const cardText = [
-    `### ${DINGTALK_CARD_TITLE}`,
+    `### ${title}`,
     '',
     normalizeNoticeContent(content),
     atText ? '' : null,
@@ -417,7 +628,7 @@ async function sendDingTalkWebhook(rule) {
       const payload = {
         msgtype: 'markdown',
         markdown: {
-          title: DINGTALK_CARD_TITLE,
+          title,
           text: cardText
         }
       };
@@ -440,7 +651,33 @@ async function sendDingTalkWebhook(rule) {
   return { total: webhooks.length, success: webhooks.length };
 }
 
+async function sendDingTalkWebhook(rule) {
+  const webhooks = normalizeWebhookConfigs(rule.dingtalk_webhooks ?? rule.dingtalk_webhook);
+  const content = String(rule.dingtalk_message || '').trim();
+  const atConfig = await resolveAtConfig(rule.dingtalk_recipients);
+  const title = normalizeTaskType(rule.task_type) === TASK_TYPE_DUTY_NOTIFY
+    ? DINGTALK_DUTY_CARD_TITLE
+    : DINGTALK_CARD_TITLE;
+  return sendDingTalkCard(webhooks, content, atConfig, title);
+}
+
+async function sendDutyWebhook(rule, event) {
+  const webhooks = normalizeWebhookConfigs(rule.dingtalk_webhooks ?? rule.dingtalk_webhook);
+  const content = String(event?.message || '').trim();
+  const atConfig = await resolveStaffAtConfig(event?.staff_ids);
+  return sendDingTalkCard(webhooks, content, atConfig, DINGTALK_DUTY_CARD_TITLE);
+}
+
 async function runRuleOnce(rule) {
+  if (normalizeTaskType(rule.task_type) === TASK_TYPE_DUTY_NOTIFY) {
+    return {
+      ok: false,
+      task_created: false,
+      task: null,
+      notify_status: 'not_required',
+      message: '自动值班通知仅支持测试发送 webhook，不生成任务'
+    };
+  }
   const actionMode = normalizeActionMode(rule.action_mode);
   if (actionMode === 'notify_only') {
     return {
@@ -495,14 +732,52 @@ async function runRuleOnce(rule) {
   }
 }
 
+async function executeDutyEvent(rule, event) {
+  const actionLabel = event.kind === 'end' ? '值班结束提醒' : '值班开始提醒';
+  const eventType = event.kind === 'end' ? 'duty_end' : 'duty_start';
+  const [log, created] = await AutoTaskRunLog.findOrCreate({
+    where: { rule_id: rule.id, scheduled_at: event.scheduledAt, event_type: eventType },
+    defaults: {
+      id: uuidv4(),
+      rule_id: rule.id,
+      scheduled_at: event.scheduledAt,
+      event_type: eventType,
+      status: 'running',
+      message: `${actionLabel}发送中`,
+      notify_status: 'not_required'
+    }
+  });
+  if (!created) return null;
+
+  try {
+    await sendDutyWebhook(rule, event);
+    await log.update({
+      status: 'success',
+      message: `${actionLabel}发送成功`,
+      notify_status: 'success'
+    });
+    await recordAutoTaskMessage(rule.id, 'success', 'duty_notify', `${actionLabel}发送成功`);
+  } catch (err) {
+    await log.update({
+      status: 'notify_failed',
+      message: `${actionLabel}发送失败`,
+      notify_status: 'failed',
+      notify_error: err.message
+    });
+    await recordAutoTaskMessage(rule.id, 'error', 'duty_notify', `${actionLabel}发送失败：${err.message}`);
+  }
+  return log;
+}
+
 async function executeRule(rule, scheduledAt) {
   const actionMode = normalizeActionMode(rule.action_mode);
   const [log, created] = await AutoTaskRunLog.findOrCreate({
-    where: { rule_id: rule.id, scheduled_at: scheduledAt },
+    where: { rule_id: rule.id, scheduled_at: scheduledAt, event_type: 'auto_task' },
     defaults: {
       id: uuidv4(),
       rule_id: rule.id,
       scheduled_at: scheduledAt,
+      event_type: 'auto_task',
       status: 'running',
       message: '执行中',
       notify_status: 'not_required'
@@ -597,9 +872,26 @@ async function schedulerTick() {
     const now = new Date();
     const rules = await AutoTaskRule.findAll({ where: { enabled: true } });
     for (const rule of rules) {
-      const scheduledAt = isRuleDue(rule, now);
-      if (scheduledAt) {
-        await executeRule(rule, scheduledAt);
+      try {
+        if (normalizeTaskType(rule.task_type) === TASK_TYPE_DUTY_NOTIFY) {
+          const events = getDueDutyEvents(rule, now);
+          for (const event of events) {
+            try {
+              await executeDutyEvent(rule, event);
+            } catch (eventErr) {
+              console.error('[auto-task] 自动值班通知事件执行失败:', rule.id, event.kind, eventErr.message);
+              await recordAutoTaskMessage(rule.id, 'error', 'duty_notify', `值班通知事件执行失败：${eventErr.message}`);
+            }
+          }
+          continue;
+        }
+        const scheduledAt = isRuleDue(rule, now);
+        if (scheduledAt) {
+          await executeRule(rule, scheduledAt);
+        }
+      } catch (ruleErr) {
+        console.error('[auto-task] 自动任务规则执行失败:', rule.id, ruleErr.message);
+        await recordAutoTaskMessage(rule.id, 'error', 'auto_run', `自动任务规则执行失败：${ruleErr.message}`);
       }
     }
   } catch (err) {
@@ -621,6 +913,7 @@ module.exports = {
   createNextWeeklyTask,
   ensureAutoTaskTables,
   getNextRunAt,
+  normalizeDutyConfig,
   normalizeRulePayload,
   normalizeRecipientConfig,
   normalizeWebhookConfigs,

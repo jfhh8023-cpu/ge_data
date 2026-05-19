@@ -1,0 +1,1433 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DevTracker v3.1.3 自动值班通知布局 Demo</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --panel: #fff;
+      --line: #e5e8ef;
+      --line-dark: #c9d2e3;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --blue: #2f7df6;
+      --blue-soft: #eaf2ff;
+      --green: #18a058;
+      --orange: #f59e0b;
+      --red: #ef4444;
+      --shadow: 0 10px 30px rgba(23, 43, 77, .08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+    }
+
+    .page {
+      max-width: 1360px;
+      margin: 0 auto;
+      padding: 28px 32px 80px;
+    }
+
+    .head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      font-size: 24px;
+      letter-spacing: 0;
+    }
+
+    .desc {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .btn {
+      height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 0 14px;
+      background: #fff;
+      color: var(--text);
+      cursor: pointer;
+      font-size: 14px;
+      white-space: nowrap;
+    }
+
+    .btn.primary {
+      background: var(--blue);
+      border-color: var(--blue);
+      color: #fff;
+      font-weight: 600;
+    }
+
+    .btn.danger {
+      border-color: #fecaca;
+      color: var(--red);
+      background: #fff5f5;
+    }
+
+    .section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      box-shadow: var(--shadow);
+    }
+
+    .section-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 14px;
+    }
+
+    .section-title h2 {
+      margin: 0;
+      font-size: 18px;
+    }
+
+    .rules {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .rule {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcff;
+      padding: 12px;
+    }
+
+    .rule-line {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 38px;
+      white-space: nowrap;
+    }
+
+    .index {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: var(--blue-soft);
+      color: var(--blue);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      flex: 0 0 auto;
+    }
+
+    .type-title {
+      min-width: 150px;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .type-title.create { color: var(--blue); }
+    .type-title.duty { color: var(--orange); }
+
+    select,
+    input,
+    textarea {
+      border: 1px solid var(--line-dark);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      font-size: 14px;
+      outline: none;
+    }
+
+    select,
+    input {
+      height: 36px;
+      padding: 0 10px;
+    }
+
+    textarea {
+      min-height: 66px;
+      padding: 8px 10px;
+      resize: vertical;
+      line-height: 1.5;
+    }
+
+    .grow { flex: 1 1 auto; min-width: 160px; }
+    .w120 { width: 120px; }
+    .w150 { width: 150px; }
+    .w170 { width: 170px; }
+    .w220 { width: 220px; }
+
+    .switch {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .toggle {
+      width: 48px;
+      height: 26px;
+      border-radius: 999px;
+      background: var(--blue);
+      position: relative;
+      display: inline-block;
+      vertical-align: middle;
+    }
+
+    .toggle::after {
+      content: '';
+      position: absolute;
+      right: 3px;
+      top: 3px;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 1px 3px rgba(0,0,0,.2);
+    }
+
+    .submodule {
+      display: flex;
+      gap: 8px;
+      margin-left: 36px;
+      margin-top: 10px;
+    }
+
+    .connector {
+      width: 24px;
+      min-height: 40px;
+      position: relative;
+      flex: 0 0 24px;
+    }
+
+    .connector::before {
+      content: '';
+      position: absolute;
+      left: 10px;
+      top: 0;
+      bottom: 14px;
+      width: 1px;
+      background: var(--line-dark);
+    }
+
+    .connector::after {
+      content: '';
+      position: absolute;
+      left: 10px;
+      top: 22px;
+      width: 18px;
+      height: 1px;
+      background: var(--line-dark);
+    }
+
+    .sub-content {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .notify-row,
+    .notify-fields,
+    .duty-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .notify-fields {
+      margin-top: 10px;
+      display: grid;
+      grid-template-columns: minmax(260px, .8fr) minmax(340px, 1.2fr) auto;
+      align-items: start;
+    }
+
+    .webhook-pair {
+      display: grid;
+      grid-template-columns: 150px minmax(180px, 1fr);
+      gap: 6px;
+    }
+
+    .preview-pill,
+    .tag {
+      border-radius: 999px;
+      padding: 4px 9px;
+      font-size: 12px;
+      background: var(--blue-soft);
+      color: var(--blue);
+    }
+
+    .tag.green {
+      background: #eaf8f0;
+      color: var(--green);
+    }
+
+    .tag.orange {
+      background: #fff7ed;
+      color: var(--orange);
+    }
+
+    .compact-duty {
+      margin-top: 8px;
+      margin-left: 36px;
+      border-left: 2px solid #f4c37d;
+      padding-left: 12px;
+    }
+
+    .compact-duty-card {
+      border: 1px solid #fde7c4;
+      border-radius: 8px;
+      background: #fffaf2;
+      padding: 8px;
+    }
+
+    .compact-duty-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 6px;
+      min-height: 28px;
+    }
+
+    .compact-duty-head strong {
+      color: #9a5b00;
+      font-size: 13px;
+    }
+
+    .compact-duty-head .muted {
+      font-size: 12px;
+    }
+
+    .week-strip {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .mini-day {
+      min-width: 0;
+      height: 74px;
+      border: 1px solid #f4d2a0;
+      border-radius: 6px;
+      background: #fff;
+      padding: 6px;
+      text-align: left;
+      color: var(--text);
+      cursor: pointer;
+      overflow: hidden;
+    }
+
+    .mini-day.active {
+      border-color: var(--orange);
+      box-shadow: inset 0 0 0 1px #f9c16b;
+    }
+
+    .mini-day b,
+    .mini-day span,
+    .mini-day em {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .mini-day b {
+      font-size: 13px;
+      margin-bottom: 3px;
+    }
+
+    .mini-day span {
+      color: #4b5563;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .mini-day em {
+      margin-top: 2px;
+      color: var(--orange);
+      font-size: 12px;
+      font-style: normal;
+    }
+
+    .month-strip {
+      display: grid;
+      grid-template-columns: repeat(16, minmax(0, 1fr));
+      gap: 4px;
+    }
+
+    .date-cell {
+      height: 32px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      padding: 3px 5px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 3px;
+      font-size: 12px;
+      color: #374151;
+    }
+
+    .date-cell.configured {
+      border-color: #f4d2a0;
+      background: #fff7ed;
+      color: #9a5b00;
+      font-weight: 700;
+    }
+
+    .date-cell.muted-day {
+      color: #9ca3af;
+      background: #f8fafc;
+    }
+
+    .date-cell .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #cbd5e1;
+      flex: 0 0 auto;
+    }
+
+    .date-cell.configured .dot {
+      background: var(--orange);
+    }
+
+    .compact-preview {
+      margin-top: 6px;
+      min-height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      padding: 6px 8px;
+      display: grid;
+      grid-template-columns: 180px minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      font-size: 12px;
+    }
+
+    .compact-preview strong {
+      color: #9a5b00;
+    }
+
+    .compact-preview span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #4b5563;
+    }
+
+    .duty-box {
+      display: none;
+    }
+
+    .duty-box {
+      margin-top: 12px;
+      margin-left: 36px;
+      border-left: 2px solid #f4c37d;
+      padding-left: 18px;
+    }
+
+    .duty-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .duty-head strong {
+      color: #9a5b00;
+    }
+
+    .duty-grid {
+      display: grid;
+      grid-template-columns: 76px minmax(190px, .9fr) minmax(210px, .9fr) minmax(360px, 1.4fr) 96px;
+      gap: 8px;
+      align-items: stretch;
+    }
+
+    .grid-title {
+      color: var(--muted);
+      font-size: 12px;
+      padding: 0 4px 4px;
+    }
+
+    .day-cell {
+      display: flex;
+      align-items: center;
+      min-height: 36px;
+      font-weight: 700;
+    }
+
+    .person-chips,
+    .time-chips {
+      min-height: 36px;
+      border: 1px solid var(--line-dark);
+      border-radius: 6px;
+      padding: 5px 6px;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      flex-wrap: wrap;
+    }
+
+    .chip {
+      border-radius: 999px;
+      background: #f1f5f9;
+      color: #334155;
+      padding: 3px 8px;
+      font-size: 12px;
+    }
+
+    .chip.add {
+      color: var(--blue);
+      background: var(--blue-soft);
+      border: 1px dashed #9cc3ff;
+    }
+
+    .text-preview {
+      min-height: 36px;
+      border: 1px solid var(--line-dark);
+      border-radius: 6px;
+      background: #fff;
+      padding: 7px 9px;
+      font-size: 13px;
+      line-height: 1.45;
+      color: #374151;
+      white-space: pre-line;
+    }
+
+    .row-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+    }
+
+    .mini {
+      height: 30px;
+      padding: 0 9px;
+      font-size: 12px;
+    }
+
+    .duty-preview {
+      margin-top: 12px;
+      background: #fff;
+      border: 1px solid #fde7c4;
+      border-radius: 8px;
+      padding: 10px 12px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .preview-title {
+      color: #9a5b00;
+      font-weight: 700;
+      margin-bottom: 5px;
+    }
+
+    .muted {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .modal-mask {
+      position: fixed;
+      inset: 0;
+      background: rgba(17, 24, 39, .35);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      z-index: 10;
+    }
+
+    .modal-mask.show { display: flex; }
+
+    .modal {
+      width: min(680px, 100%);
+      background: #fff;
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 24px 80px rgba(15, 23, 42, .2);
+    }
+
+    .modal.wide {
+      width: min(920px, 100%);
+    }
+
+    .modal h3 {
+      margin: 0 0 16px;
+      font-size: 20px;
+    }
+
+    .modal-subtitle {
+      margin: -8px 0 14px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: minmax(240px, .8fr) minmax(360px, 1.2fr);
+      gap: 12px;
+      align-items: start;
+    }
+
+    .form-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcff;
+      padding: 12px;
+    }
+
+    .form-card h4 {
+      margin: 0 0 10px;
+      font-size: 15px;
+    }
+
+    .field {
+      margin-bottom: 10px;
+    }
+
+    .field label {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .field input,
+    .field select,
+    .field textarea {
+      width: 100%;
+    }
+
+    .field textarea {
+      min-height: 120px;
+    }
+
+    .check-list {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .check-item {
+      min-height: 28px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      padding: 4px 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+    }
+
+    .check-item input {
+      width: 14px;
+      height: 14px;
+      margin: 0;
+      flex: 0 0 auto;
+    }
+
+    .time-list {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .mode-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .mode-pill {
+      min-height: 30px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      padding: 5px 9px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: #374151;
+      font-size: 12px;
+    }
+
+    .mode-pill input {
+      width: 13px;
+      height: 13px;
+      margin: 0;
+    }
+
+    .message-stack {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+
+    .message-stack textarea {
+      min-height: 82px;
+    }
+
+    .modal-preview {
+      border: 1px solid #fde7c4;
+      border-radius: 8px;
+      background: #fffaf2;
+      padding: 12px;
+      font-size: 13px;
+      line-height: 1.65;
+      white-space: pre-line;
+    }
+
+    .modal-preview strong {
+      color: #9a5b00;
+    }
+
+    .toast {
+      position: fixed;
+      right: 28px;
+      bottom: 28px;
+      z-index: 20;
+      min-width: 240px;
+      border-radius: 8px;
+      background: #111827;
+      color: #fff;
+      padding: 12px 14px;
+      box-shadow: 0 16px 48px rgba(15, 23, 42, .22);
+      display: none;
+      font-size: 14px;
+    }
+
+    .toast.show { display: block; }
+
+    .type-options {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .type-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      background: #fbfcff;
+      cursor: pointer;
+      min-height: 138px;
+    }
+
+    .type-card:hover {
+      border-color: var(--blue);
+      box-shadow: 0 8px 22px rgba(47, 125, 246, .12);
+    }
+
+    .type-card h4 {
+      margin: 0 0 8px;
+      font-size: 17px;
+    }
+
+    .type-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .modal-actions {
+      margin-top: 16px;
+      text-align: right;
+    }
+
+    .hidden { display: none; }
+
+    @media (max-width: 1120px) {
+      .rule-line,
+      .notify-row {
+        flex-wrap: wrap;
+        white-space: normal;
+      }
+
+      .notify-fields,
+      .duty-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .type-options {
+        grid-template-columns: 1fr;
+      }
+
+      .week-strip {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .month-strip {
+        grid-template-columns: repeat(8, minmax(0, 1fr));
+      }
+
+      .compact-preview {
+        grid-template-columns: 1fr;
+      }
+
+      .detail-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .check-list {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="head">
+      <div>
+        <h1>自动执行任务并通知</h1>
+        <p class="desc">v3.1.3 Demo：新增任务类型选择与自动值班通知布局，仅用于设计确认。</p>
+      </div>
+      <button class="btn primary" id="addRuleBtn">+ 新增规则</button>
+    </div>
+
+    <section class="section">
+      <div class="section-title">
+        <div>
+          <h2>规则列表</h2>
+          <p class="desc">自动任务创建并通知保持原布局；自动值班通知采用排班表布局。</p>
+        </div>
+        <span class="tag green">静态 Demo</span>
+      </div>
+
+      <div class="rules" id="rules">
+        <div class="rule create-rule">
+          <div class="rule-line">
+            <span class="index">1</span>
+            <span class="type-title create">自动任务创建并通知</span>
+            <select class="w150"><option>每周星期</option><option>年内每月日期</option></select>
+            <select class="grow"><option>周一</option><option>周二</option></select>
+            <input class="w150" value="09:15:00" />
+            <select class="w170"><option>执行规则并通知</option><option>仅执行规则</option><option>仅通知</option></select>
+            <button class="btn primary">保存规则</button>
+            <button class="btn">测试执行</button>
+            <button class="btn danger delete-btn" data-name="自动任务创建并通知">删除</button>
+            <span class="switch">启用 <span class="toggle"></span></span>
+          </div>
+
+          <div class="submodule">
+            <div class="connector"></div>
+            <div class="sub-content">
+              <div class="notify-row">
+                <span>钉钉 webhook 通知</span>
+                <span class="toggle"></span>
+                <span class="preview-pill">下次通知：5天23时</span>
+                <span class="muted">内容：请完成上一周工时填写...</span>
+              </div>
+              <div class="notify-fields">
+                <div class="webhook-pair">
+                  <input value="钉钉群webhook机器人01" />
+                  <input value="https://oapi.dingtalk.com/robot/send?..." />
+                </div>
+                <textarea>1，测试数据，请忽略；【通知】请完成上一周工时填写；
+2，测试数据，请忽略；【通知】请完成上一周工时填写；</textarea>
+                <div class="notify-row">
+                  <button class="btn primary">保存通知</button>
+                  <button class="btn">配置接收人</button>
+                  <button class="btn">测试发送webhook</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="rule duty-rule" id="weeklyDutyRule">
+          <div class="rule-line">
+            <span class="index">2</span>
+            <span class="type-title duty">自动值班通知</span>
+            <select class="w150 duty-mode">
+              <option value="weekly">每周星期</option>
+              <option value="monthly">年内每月日期</option>
+            </select>
+            <span class="tag orange">值班计划表</span>
+            <button class="btn primary">保存通知</button>
+            <button class="btn">测试发送webhook</button>
+            <button class="btn danger delete-btn" data-name="自动值班通知">删除</button>
+            <span class="switch">启用 <span class="toggle"></span></span>
+          </div>
+
+          <div class="compact-duty compact-weekly">
+            <div class="compact-duty-card">
+              <div class="compact-duty-head">
+                <div>
+                  <strong>每周值班概览</strong>
+                  <span class="muted">7 天全部展示，人员/时间/内容在格内摘要，点击编辑进入详细配置。</span>
+                </div>
+                <button class="btn mini">批量复制</button>
+              </div>
+              <div class="week-strip">
+                <button class="mini-day active"><b>周一</b><span>朱俊锋、赵鲁鹏</span><span>09:00 / 18:30</span><em>已配置</em></button>
+                <button class="mini-day"><b>周二</b><span>唐兵</span><span>10:00</span><em>已配置</em></button>
+                <button class="mini-day"><b>周三</b><span>未配置</span><span>--</span><em>跳过</em></button>
+                <button class="mini-day"><b>周四</b><span>王敏慧、郑家成</span><span>09:30</span><em>已配置</em></button>
+                <button class="mini-day"><b>周五</b><span>刘洁铭</span><span>16:00</span><em>已配置</em></button>
+                <button class="mini-day"><b>周六</b><span>未配置</span><span>--</span><em>跳过</em></button>
+                <button class="mini-day"><b>周日</b><span>温嘉敏</span><span>20:30</span><em>已配置</em></button>
+              </div>
+              <div class="compact-preview">
+                <strong>预览：周一 09:00</strong>
+                <span>@朱俊锋 @赵鲁鹏 今日值班提醒：请关注线上告警和待处理反馈。</span>
+                <button class="btn mini">编辑详情</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="compact-duty compact-monthly hidden">
+            <div class="compact-duty-card">
+              <div class="compact-duty-head">
+                <div>
+                  <strong>每月值班概览</strong>
+                  <span class="muted">1-31 日两行展示；自然月没有的日期执行时自动跳过。</span>
+                </div>
+                <div class="notify-row">
+                  <button class="btn mini" id="bulkContentBtn">批量编辑内容</button>
+                  <button class="btn mini" id="addDateConfigBtn">+ 日期配置</button>
+                </div>
+              </div>
+              <div class="month-strip">
+                <button class="date-cell configured"><span>1日</span><span class="dot"></span></button>
+                <button class="date-cell muted-day"><span>2日</span><span class="dot"></span></button>
+                <button class="date-cell muted-day"><span>3日</span><span class="dot"></span></button>
+                <button class="date-cell configured"><span>4日</span><span class="dot"></span></button>
+                <button class="date-cell muted-day"><span>5日</span><span class="dot"></span></button>
+                <button class="date-cell muted-day"><span>6日</span><span class="dot"></span></button>
+                <button class="date-cell configured"><span>7日</span><span class="dot"></span></button>
+                <button class="date-cell muted-day"><span>8日</span><span class="dot"></span></button>
+                <button class="date-cell muted-day"><span>9日</span><span class="dot"></span></button>
+                <button class="date-cell muted-day"><span>10日</span><span class="dot"></span></button>
+                <button class="date-cell muted-day"><span>11日</span><span class="dot"></span></button>
+                <button class="date-cell muted-day"><span>12日</span><span class="dot"></span></button>
+                <button class="date-cell muted-day"><span>13日</span><span class="dot"></span></button>
+                <button class="date-cell muted-day"><span>14日</span><span class="dot"></span></button>
+                <button class="date-cell configured"><span>15日</span><span class="dot"></span></button>
+                <button class="date-cell muted-day"><span>16日</span><span class="dot"></span></button>
+                <button class="date-cell muted-day"><span>17日</span><span class="dot"></span></button>
+                <button class="date-cell muted-day"><span>18日</span><span class="dot"></span></button>
+                <button class="date-cell muted-day"><span>19日</span><span class="dot"></span></button>
+                <button class="date-cell muted-day"><span>20日</span><span class="dot"></span></button>
+                <button class="date-cell muted-day"><span>21日</span><span class="dot"></span></button>
+                <button class="date-cell muted-day"><span>22日</span><span class="dot"></span></button>
+                <button class="date-cell configured"><span>23日</span><span class="dot"></span></button>
+                <button class="date-cell muted-day"><span>24日</span><span class="dot"></span></button>
+                <button class="date-cell muted-day"><span>25日</span><span class="dot"></span></button>
+                <button class="date-cell muted-day"><span>26日</span><span class="dot"></span></button>
+                <button class="date-cell muted-day"><span>27日</span><span class="dot"></span></button>
+                <button class="date-cell muted-day"><span>28日</span><span class="dot"></span></button>
+                <button class="date-cell muted-day"><span>29日</span><span class="dot"></span></button>
+                <button class="date-cell muted-day"><span>30日</span><span class="dot"></span></button>
+                <button class="date-cell muted-day"><span>31日</span><span class="dot"></span></button>
+              </div>
+              <div class="compact-preview">
+                <strong>预览：每月 1日 09:30</strong>
+                <span>@温嘉敏 @郑家成 月初值班提醒：请检查上月遗留问题。</span>
+                <button class="btn mini">编辑详情</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="duty-box duty-weekly">
+            <div class="duty-head">
+              <div>
+                <strong>每周值班配置</strong>
+                <span class="muted">按周一至周日配置人员、触发时间和通知内容。</span>
+              </div>
+              <button class="btn mini">批量复制到工作日</button>
+            </div>
+
+            <div class="duty-grid">
+              <div class="grid-title">星期</div>
+              <div class="grid-title">值班人员</div>
+              <div class="grid-title">通知时间</div>
+              <div class="grid-title">通知内容预览</div>
+              <div class="grid-title">操作</div>
+
+              <div class="day-cell">周一</div>
+              <div class="person-chips"><span class="chip">朱俊锋</span><span class="chip">赵鲁鹏</span><span class="chip add">+ 人员</span></div>
+              <div class="time-chips"><span class="chip">09:00:00</span><span class="chip">18:30:00</span><span class="chip add">+ 时间</span></div>
+              <div class="text-preview">今日值班提醒：
+请关注线上告警和待处理反馈。</div>
+              <div class="row-actions"><button class="btn mini">编辑</button></div>
+
+              <div class="day-cell">周二</div>
+              <div class="person-chips"><span class="chip">唐兵</span><span class="chip add">+ 人员</span></div>
+              <div class="time-chips"><span class="chip">10:00:00</span><span class="chip add">+ 时间</span></div>
+              <div class="text-preview">今日值班提醒：
+请按时同步处理进展。</div>
+              <div class="row-actions"><button class="btn mini">编辑</button></div>
+
+              <div class="day-cell">周三</div>
+              <div class="person-chips"><span class="chip add">+ 人员</span></div>
+              <div class="time-chips"><span class="chip add">+ 时间</span></div>
+              <div class="text-preview muted">未配置，自动跳过。</div>
+              <div class="row-actions"><button class="btn mini">编辑</button></div>
+            </div>
+
+            <div class="duty-preview">
+              <div>
+                <div class="preview-title">预览：周一 09:00:00</div>
+                <div class="muted">发送给钉钉 webhook：@朱俊锋 @赵鲁鹏 今日值班提醒...</div>
+              </div>
+              <button class="btn">预览完整内容</button>
+            </div>
+          </div>
+
+          <div class="duty-box duty-monthly hidden">
+            <div class="duty-head">
+              <div>
+                <strong>每月日期值班配置</strong>
+                <span class="muted">只展示已配置日期，按 1-31 日升序排列；不存在日期自动跳过。</span>
+              </div>
+              <button class="btn mini">+ 添加日期配置</button>
+            </div>
+
+            <div class="duty-grid">
+              <div class="grid-title">日期</div>
+              <div class="grid-title">值班人员</div>
+              <div class="grid-title">通知时间</div>
+              <div class="grid-title">通知内容预览</div>
+              <div class="grid-title">操作</div>
+
+              <div class="day-cell">1日</div>
+              <div class="person-chips"><span class="chip">温嘉敦</span><span class="chip">郑家成</span><span class="chip add">+ 人员</span></div>
+              <div class="time-chips"><span class="chip">09:30:00</span><span class="chip add">+ 时间</span></div>
+              <div class="text-preview">月初值班提醒：
+请检查上月遗留问题。</div>
+              <div class="row-actions"><button class="btn mini">编辑</button></div>
+
+              <div class="day-cell">15日</div>
+              <div class="person-chips"><span class="chip">刘君</span><span class="chip add">+ 人员</span></div>
+              <div class="time-chips"><span class="chip">17:30:00</span><span class="chip add">+ 时间</span></div>
+              <div class="text-preview">月中巡检提醒：
+请同步值班处理结果。</div>
+              <div class="row-actions"><button class="btn mini">编辑</button></div>
+            </div>
+
+            <div class="duty-preview">
+              <div>
+                <div class="preview-title">预览：每月 1日 09:30:00</div>
+                <div class="muted">发送给钉钉 webhook：@温嘉敦 @郑家成 月初值班提醒...</div>
+              </div>
+              <button class="btn">预览完整内容</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="modal-mask" id="typeModal">
+    <div class="modal">
+      <h3>请选择一个自动执行任务类型</h3>
+      <div class="type-options">
+        <div class="type-card" data-type="create">
+          <h4>1，自动任务创建并通知</h4>
+          <p>沿用当前自动生成下一周任务收集任务的能力，可选择执行规则并通知、仅执行规则、仅通知。</p>
+        </div>
+        <div class="type-card" data-type="duty">
+          <h4>2，自动值班通知</h4>
+          <p>按星期或每月日期配置值班人员、通知时间和通知内容，只发送 webhook，不生成任务。</p>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="closeTypeModal">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-mask" id="confirmModal">
+    <div class="modal">
+      <h3>删除规则</h3>
+      <p class="desc" id="confirmText">确认删除该规则？删除后不可恢复。</p>
+      <div class="modal-actions">
+        <button class="btn" id="cancelDelete">取消</button>
+        <button class="btn danger" id="confirmDelete">删除</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-mask" id="dutyDetailModal">
+    <div class="modal wide">
+      <h3 id="dutyDetailTitle">值班配置详情</h3>
+      <p class="modal-subtitle" id="dutyDetailSubtitle">配置值班人员、触发时间和可换行通知内容。</p>
+      <div class="detail-grid">
+        <div class="form-card">
+          <h4>值班对象</h4>
+          <div class="field">
+            <label>配置周期</label>
+            <input id="detailPeriod" value="每周星期 / 周一" readonly />
+          </div>
+          <div class="field">
+            <label>团队人员</label>
+            <div class="check-list">
+              <label class="check-item"><input type="checkbox" checked /> 朱俊锋</label>
+              <label class="check-item"><input type="checkbox" checked /> 赵鲁鹏</label>
+              <label class="check-item"><input type="checkbox" /> 唐兵</label>
+              <label class="check-item"><input type="checkbox" /> 王敏慧</label>
+              <label class="check-item"><input type="checkbox" /> 郑家成</label>
+              <label class="check-item"><input type="checkbox" /> 温嘉敏</label>
+            </div>
+          </div>
+          <div class="field">
+            <label>额外接收人</label>
+            <input value="姓名 / 手机号，可手动补充" />
+          </div>
+        </div>
+
+        <div class="form-card">
+          <h4>通知配置</h4>
+          <div class="field">
+            <label>发送策略</label>
+            <div class="mode-row">
+              <label class="mode-pill"><input type="radio" name="sendMode" value="start" checked /> 只发送开始提醒</label>
+              <label class="mode-pill"><input type="radio" name="sendMode" value="both" /> 开始和结束都发送</label>
+            </div>
+          </div>
+          <div class="field">
+            <label>触发时间</label>
+            <div class="time-list">
+              <input id="startTimeInput" value="09:00:00" title="值班开始提醒时间" />
+              <input id="endTimeInput" value="18:30:00" title="值班结束提醒时间" />
+            </div>
+          </div>
+          <div class="field">
+            <label>今日值班开始提醒：</label>
+            <div class="message-stack">
+              <textarea id="detailStartMessage">请关注线上告警和待处理反馈。
+如有异常请及时同步处理进展。</textarea>
+              <label>今日值班结束提醒：</label>
+              <textarea id="detailEndMessage">请同步今日值班处理结果。
+如仍有未闭环事项请备注说明。</textarea>
+            </div>
+          </div>
+          <div class="field">
+            <label>发送预览</label>
+            <div class="modal-preview" id="detailPreview"><strong>开始 09:00:00</strong>
+@朱俊锋 @赵鲁鹏 请关注线上告警和待处理反馈。
+如有异常请及时同步处理进展。</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="closeDutyDetail">退出</button>
+        <button class="btn" id="testDutyWebhook">测试发送webhook</button>
+        <button class="btn primary" id="saveDutyDetail">保存通知</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-mask" id="bulkCopyModal">
+    <div class="modal">
+      <h3>批量复制值班配置</h3>
+      <p class="modal-subtitle">Demo 中仅展示交互形态，正式开发时会把源日期的人员、时间和内容复制到目标日期。</p>
+      <div class="form-card">
+        <div class="field">
+          <label>复制来源</label>
+          <select><option>周一配置</option><option>周二配置</option><option>每月 1 日配置</option></select>
+        </div>
+        <div class="field">
+          <label>复制到</label>
+          <div class="check-list">
+            <label class="check-item"><input type="checkbox" checked /> 周二</label>
+            <label class="check-item"><input type="checkbox" checked /> 周三</label>
+            <label class="check-item"><input type="checkbox" checked /> 周四</label>
+            <label class="check-item"><input type="checkbox" checked /> 周五</label>
+            <label class="check-item"><input type="checkbox" /> 周六</label>
+            <label class="check-item"><input type="checkbox" /> 周日</label>
+          </div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="closeBulkCopy">退出</button>
+        <button class="btn primary" id="saveBulkCopy">确认复制</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-mask" id="bulkContentModal">
+    <div class="modal wide">
+      <h3>批量编辑所有日期通知内容</h3>
+      <p class="modal-subtitle">用于月模式快速统一 1-31 日的开始提醒和结束提醒文案，不改变每个日期原有人员与时间配置。</p>
+      <div class="detail-grid">
+        <div class="form-card">
+          <h4>应用范围</h4>
+          <div class="field">
+            <label>覆盖范围</label>
+            <div class="mode-row">
+              <label class="mode-pill"><input type="radio" name="bulkScope" checked /> 所有日期</label>
+              <label class="mode-pill"><input type="radio" name="bulkScope" /> 仅已配置日期</label>
+              <label class="mode-pill"><input type="radio" name="bulkScope" /> 自定义日期</label>
+            </div>
+          </div>
+          <div class="field">
+            <label>发送策略</label>
+            <div class="mode-row">
+              <label class="mode-pill"><input type="radio" name="bulkSendMode" value="start" checked /> 只发送开始提醒</label>
+              <label class="mode-pill"><input type="radio" name="bulkSendMode" value="both" /> 开始和结束都发送</label>
+            </div>
+          </div>
+          <div class="field">
+            <label>日期预览</label>
+            <div class="modal-preview">1日、2日、3日、...、31日
+点击保存后批量覆盖通知内容，人员和时间保持不变。</div>
+          </div>
+        </div>
+
+        <div class="form-card">
+          <h4>批量通知内容</h4>
+          <div class="field">
+            <label>今日值班开始提醒：</label>
+            <textarea id="bulkStartMessage">请关注线上告警和待处理反馈。</textarea>
+          </div>
+          <div class="field">
+            <label>今日值班结束提醒：</label>
+            <textarea id="bulkEndMessage">请同步今日值班处理结果。</textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="closeBulkContent">退出</button>
+        <button class="btn primary" id="saveBulkContent">保存批量内容</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">Demo 操作成功</div>
+
+  <script>
+    const typeModal = document.getElementById('typeModal');
+    const confirmModal = document.getElementById('confirmModal');
+    const confirmText = document.getElementById('confirmText');
+    const dutyDetailModal = document.getElementById('dutyDetailModal');
+    const bulkCopyModal = document.getElementById('bulkCopyModal');
+    const bulkContentModal = document.getElementById('bulkContentModal');
+    const dutyDetailTitle = document.getElementById('dutyDetailTitle');
+    const dutyDetailSubtitle = document.getElementById('dutyDetailSubtitle');
+    const detailPeriod = document.getElementById('detailPeriod');
+    const detailStartMessage = document.getElementById('detailStartMessage');
+    const detailEndMessage = document.getElementById('detailEndMessage');
+    const detailPreview = document.getElementById('detailPreview');
+    const startTimeInput = document.getElementById('startTimeInput');
+    const endTimeInput = document.getElementById('endTimeInput');
+    const toast = document.getElementById('toast');
+    let activePeople = '朱俊锋、赵鲁鹏';
+
+    const showToast = (text) => {
+      toast.textContent = text;
+      toast.classList.add('show');
+      window.clearTimeout(window.demoToastTimer);
+      window.demoToastTimer = window.setTimeout(() => toast.classList.remove('show'), 1800);
+    };
+
+    const updateDetailPreview = () => {
+      const sendMode = document.querySelector('input[name="sendMode"]:checked')?.value || 'start';
+      const peopleText = `@${activePeople.replaceAll('、', ' @')}`;
+      const startBlock = `<strong>开始 ${startTimeInput.value}</strong>\n${peopleText} ${detailStartMessage.value}`;
+      const endBlock = `<strong>结束 ${endTimeInput.value}</strong>\n${peopleText} ${detailEndMessage.value}`;
+      detailPreview.innerHTML = sendMode === 'both' ? `${startBlock}\n\n${endBlock}` : startBlock;
+    };
+
+    const openDutyDetail = ({ mode, label, people, times, message, endMessage }) => {
+      const modeText = mode === 'monthly' ? '每月日期' : '每周星期';
+      dutyDetailTitle.textContent = `${modeText}值班配置 - ${label}`;
+      dutyDetailSubtitle.textContent = '配置值班人员、开始提醒时间、结束提醒时间，以及两段可换行的钉钉 webhook 通知内容。';
+      detailPeriod.value = `${modeText} / ${label}`;
+      const safePeople = people || '朱俊锋、赵鲁鹏';
+      const safeTimes = times || '09:00 / 18:30';
+      const timeParts = safeTimes.split('/').map(item => item.trim()).filter(Boolean);
+      const safeMessage = message || '请关注线上告警和待处理反馈。\n如有异常请及时同步处理进展。';
+      const safeEndMessage = endMessage || '请同步今日值班处理结果。\n如仍有未闭环事项请备注说明。';
+      activePeople = safePeople;
+      startTimeInput.value = timeParts[0] || '09:00:00';
+      endTimeInput.value = timeParts[1] || '18:30:00';
+      detailStartMessage.value = safeMessage;
+      detailEndMessage.value = safeEndMessage;
+      document.querySelector('input[name="sendMode"][value="start"]').checked = true;
+      updateDetailPreview();
+      dutyDetailModal.classList.add('show');
+    };
+
+    document.getElementById('addRuleBtn').addEventListener('click', () => {
+      typeModal.classList.add('show');
+    });
+
+    document.getElementById('closeTypeModal').addEventListener('click', () => {
+      typeModal.classList.remove('show');
+    });
+
+    document.querySelectorAll('.type-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const label = card.dataset.type === 'create' ? '自动任务创建并通知' : '自动值班通知';
+        typeModal.classList.remove('show');
+        showToast(`Demo：已选择新增「${label}」规则`);
+      });
+    });
+
+    document.querySelectorAll('.delete-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        confirmText.textContent = `确认删除「${btn.dataset.name}」？删除后不可恢复。`;
+        confirmModal.classList.add('show');
+      });
+    });
+
+    document.getElementById('cancelDelete').addEventListener('click', () => {
+      confirmModal.classList.remove('show');
+    });
+
+    document.getElementById('confirmDelete').addEventListener('click', () => {
+      confirmModal.classList.remove('show');
+      showToast('Demo：已确认删除，正式开发后才会调用删除接口');
+    });
+
+    document.querySelector('.duty-mode').addEventListener('change', (event) => {
+      const weekly = document.querySelector('.compact-weekly');
+      const monthly = document.querySelector('.compact-monthly');
+      if (event.target.value === 'weekly') {
+        weekly.classList.remove('hidden');
+        monthly.classList.add('hidden');
+      } else {
+        weekly.classList.add('hidden');
+        monthly.classList.remove('hidden');
+      }
+    });
+
+    document.querySelectorAll('.mini-day').forEach(day => {
+      day.addEventListener('click', () => {
+        document.querySelectorAll('.mini-day').forEach(item => item.classList.remove('active'));
+        day.classList.add('active');
+        const label = day.querySelector('b')?.textContent || '周一';
+        const people = day.querySelectorAll('span')[0]?.textContent || '';
+        const times = day.querySelectorAll('span')[1]?.textContent || '';
+        openDutyDetail({ mode: 'weekly', label, people, times });
+      });
+    });
+
+    document.querySelectorAll('.date-cell').forEach(cell => {
+      cell.addEventListener('click', () => {
+        document.querySelectorAll('.date-cell').forEach(item => item.classList.remove('configured'));
+        cell.classList.add('configured');
+        const label = cell.querySelector('span')?.textContent || '1日';
+        openDutyDetail({
+          mode: 'monthly',
+          label,
+          people: label === '1日' ? '温嘉敏、郑家成' : '朱俊锋、赵鲁鹏',
+          times: label === '1日' ? '09:30' : '10:00',
+          message: '请按配置内容完成当日值班通知。',
+          endMessage: '请同步当日值班处理结果。'
+        });
+      });
+    });
+
+    document.querySelector('.compact-weekly .compact-duty-head .btn').addEventListener('click', () => {
+      bulkCopyModal.classList.add('show');
+    });
+
+    document.getElementById('bulkContentBtn').addEventListener('click', () => {
+      bulkContentModal.classList.add('show');
+    });
+
+    document.getElementById('addDateConfigBtn').addEventListener('click', () => {
+      openDutyDetail({
+        mode: 'monthly',
+        label: '新增日期',
+        people: '',
+        times: '09:00',
+        message: '请填写通知内容。',
+        endMessage: '请填写结束通知内容。'
+      });
+    });
+
+    document.querySelectorAll('.compact-preview .btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const isMonthly = btn.closest('.compact-monthly');
+        openDutyDetail({
+          mode: isMonthly ? 'monthly' : 'weekly',
+          label: isMonthly ? '1日' : '周一',
+          people: isMonthly ? '温嘉敏、郑家成' : '朱俊锋、赵鲁鹏',
+          times: isMonthly ? '09:30' : '09:00 / 18:30',
+          message: isMonthly
+            ? '请检查上月遗留问题。'
+            : '请关注线上告警和待处理反馈。',
+          endMessage: isMonthly
+            ? '请同步月初巡检处理结果。'
+            : '请同步今日值班处理结果。'
+        });
+      });
+    });
+
+    document.getElementById('closeDutyDetail').addEventListener('click', () => {
+      dutyDetailModal.classList.remove('show');
+    });
+
+    document.getElementById('saveDutyDetail').addEventListener('click', () => {
+      dutyDetailModal.classList.remove('show');
+      showToast('Demo：值班通知配置已保存');
+    });
+
+    document.getElementById('testDutyWebhook').addEventListener('click', () => {
+      showToast('Demo：已模拟发送 webhook');
+    });
+
+    document.getElementById('closeBulkCopy').addEventListener('click', () => {
+      bulkCopyModal.classList.remove('show');
+    });
+
+    document.getElementById('saveBulkCopy').addEventListener('click', () => {
+      bulkCopyModal.classList.remove('show');
+      showToast('Demo：已模拟批量复制配置');
+    });
+
+    document.getElementById('closeBulkContent').addEventListener('click', () => {
+      bulkContentModal.classList.remove('show');
+    });
+
+    document.getElementById('saveBulkContent').addEventListener('click', () => {
+      bulkContentModal.classList.remove('show');
+      showToast('Demo：已批量编辑所有日期通知内容');
+    });
+
+    [detailStartMessage, detailEndMessage, startTimeInput, endTimeInput].forEach(input => {
+      input.addEventListener('input', updateDetailPreview);
+    });
+
+    document.querySelectorAll('input[name="sendMode"]').forEach(input => {
+      input.addEventListener('change', updateDetailPreview);
+    });
+  </script>
+</body>
+</html>

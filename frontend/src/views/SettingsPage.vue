@@ -29,6 +29,27 @@ const recipientRule = ref(null)
 const recipientRuleIndex = ref(-1)
 const recipientStaffList = ref([])
 const recipientConfig = ref(createDefaultRecipientConfig())
+const taskTypeDialogVisible = ref(false)
+const staffList = ref([])
+const staffLoading = ref(false)
+const dutyDetailDialogVisible = ref(false)
+const dutyBulkDialogVisible = ref(false)
+const dutyDetailRule = ref(null)
+const dutyDetailRuleIndex = ref(-1)
+const dutyDetailKey = ref('')
+const dutyDetailMode = ref('weekly')
+const dutyDetailForm = ref(createDefaultDutyItem())
+const dutyReferenceKey = ref('')
+const dutyBulkRule = ref(null)
+const dutyBulkRuleIndex = ref(-1)
+const dutyBulkForm = ref({
+  scope: 'all',
+  apply_mode: 'content',
+  source_key: '',
+  send_mode: 'start_only',
+  start_message: '请关注线上告警和待处理反馈。',
+  end_message: '请同步今日值班处理结果。'
+})
 const backupFormat = ref('xlsx')
 const nowTs = ref(Date.now())
 let countdownTimer = null
@@ -51,6 +72,10 @@ const actionModeOptions = [
   { value: 'run_only', label: '仅执行规则' },
   { value: 'notify_only', label: '仅通知' }
 ]
+const TASK_TYPE_CREATE_NOTIFY = 'task_create_notify'
+const TASK_TYPE_DUTY_NOTIFY = 'duty_notify'
+const DUTY_SEND_MODE_START = 'start_only'
+const DUTY_SEND_MODE_BOTH = 'start_and_end'
 const ROLE_LABEL = { frontend: '前端', backend: '后端', test: '测试' }
 const PHONE_PATTERN = /^\d{5,20}$/
 
@@ -83,22 +108,44 @@ function createDefaultRecipientConfig() {
   }
 }
 
-function createDefaultRule() {
+function createDefaultDutyItem() {
+  return {
+    enabled: false,
+    staff_ids: [],
+    start_time: '09:00:00',
+    end_time: '18:30:00',
+    send_mode: DUTY_SEND_MODE_START,
+    start_message: '请关注线上告警和待处理反馈。',
+    end_message: '请同步今日值班处理结果。'
+  }
+}
+
+function createDefaultDutyConfig() {
+  return {
+    weekly: {},
+    monthly: {}
+  }
+}
+
+function createDefaultRule(taskType = TASK_TYPE_CREATE_NOTIFY) {
+  const isDuty = taskType === TASK_TYPE_DUTY_NOTIFY
   return {
     localKey: `new_${Date.now()}_${Math.random().toString(16).slice(2)}`,
     id: '',
-    name: '自动生成下一周任务',
+    name: isDuty ? '自动值班通知' : '自动生成下一周任务',
     enabled: true,
-    action_mode: 'run_and_notify',
+    task_type: taskType,
+    action_mode: isDuty ? 'notify_only' : 'run_and_notify',
     schedule_type: 'weekly',
     schedule_year: CURRENT_YEAR,
-    month_days: [1],
-    week_days: [1],
+    month_days: isDuty ? monthDayOptions : [1],
+    week_days: isDuty ? weekDayOptions.map(item => item.value) : [1],
     execute_time: '09:00:00',
     notify_enabled: true,
     dingtalk_webhooks: [createDefaultWebhook()],
     dingtalk_message: '',
     dingtalk_recipients: createDefaultRecipientConfig(),
+    duty_config: createDefaultDutyConfig(),
     next_run_at: null,
     _savedNotificationKey: ''
   }
@@ -147,6 +194,14 @@ function normalizeActionMode(value) {
   return actionModeOptions.some(item => item.value === value) ? value : 'run_and_notify'
 }
 
+function normalizeTaskType(value) {
+  return value === TASK_TYPE_DUTY_NOTIFY ? TASK_TYPE_DUTY_NOTIFY : TASK_TYPE_CREATE_NOTIFY
+}
+
+function isDutyRule(rule) {
+  return normalizeTaskType(rule?.task_type) === TASK_TYPE_DUTY_NOTIFY
+}
+
 function isRunOnly(rule) {
   return normalizeActionMode(rule?.action_mode) === 'run_only'
 }
@@ -156,6 +211,11 @@ function isNotifyOnly(rule) {
 }
 
 function applyActionMode(rule) {
+  if (isDutyRule(rule)) {
+    rule.action_mode = 'notify_only'
+    rule.notify_enabled = true
+    return rule
+  }
   rule.action_mode = normalizeActionMode(rule.action_mode)
   if (isRunOnly(rule)) {
     rule.notify_enabled = false
@@ -180,13 +240,14 @@ function isNotifySwitchDisabled(rule) {
 }
 
 function testRunTooltip(rule) {
+  if (isDutyRule(rule)) return '自动值班通知仅发送 webhook，不生成任务'
   if (isNotifyOnly(rule)) return '当前任务仅通知，已禁止生成任务'
   if (!rule.id) return '请先保存规则后再测试执行'
   return '立即测试执行一次任务和通知，不修改自动触发规则'
 }
 
 function isTestRunDisabled(rule) {
-  return !canEditAutoTasks.value || !rule.id || isNotifyOnly(rule)
+  return !canEditAutoTasks.value || !rule.id || isNotifyOnly(rule) || isDutyRule(rule)
 }
 
 function normalizeRecipientConfig(value) {
@@ -222,11 +283,74 @@ function hasRecipientConfig(value) {
   return Boolean(config.enabled || config.staff_ids.length || config.extra.length)
 }
 
+function normalizeTime(value, fallback = '09:00:00') {
+  const text = String(value || '').trim()
+  if (/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(text)) return text
+  if (/^([01]\d|2[0-3]):[0-5]\d$/.test(text)) return `${text}:00`
+  return fallback
+}
+
+function normalizeDutyItem(value = {}) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+  const staffIds = Array.isArray(source.staff_ids) ? source.staff_ids : []
+  return {
+    enabled: source.enabled === true,
+    staff_ids: [...new Set(staffIds.map(id => String(id || '').trim()).filter(Boolean))],
+    start_time: normalizeTime(source.start_time, '09:00:00'),
+    end_time: normalizeTime(source.end_time, '18:30:00'),
+    send_mode: source.send_mode === DUTY_SEND_MODE_BOTH ? DUTY_SEND_MODE_BOTH : DUTY_SEND_MODE_START,
+    start_message: String(source.start_message || ''),
+    end_message: String(source.end_message || '')
+  }
+}
+
+function normalizeDutyDayMap(value, min, max) {
+  const result = {}
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+  Object.entries(source).forEach(([key, item]) => {
+    const day = Number(key)
+    if (Number.isInteger(day) && day >= min && day <= max) {
+      result[String(day)] = normalizeDutyItem(item)
+    }
+  })
+  return result
+}
+
+function normalizeDutyConfig(value) {
+  let raw = value
+  if (typeof raw === 'string') {
+    try {
+      raw = JSON.parse(raw)
+    } catch {
+      raw = null
+    }
+  }
+  const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
+  return {
+    weekly: normalizeDutyDayMap(source.weekly, 1, 7),
+    monthly: normalizeDutyDayMap(source.monthly, 1, 31)
+  }
+}
+
+function dutyItemConfigured(item) {
+  return Boolean(
+    item?.enabled &&
+    item.staff_ids?.length &&
+    String(item.start_message || '').trim()
+  )
+}
+
+function dutyMapForRule(rule) {
+  const config = normalizeDutyConfig(rule.duty_config)
+  return rule.schedule_type === 'monthly' ? config.monthly : config.weekly
+}
+
 function notificationKey(rule) {
   return JSON.stringify({
     webhooks: compactWebhooks(rule),
     message: String(rule.dingtalk_message || '').trim(),
-    recipients: normalizeRecipientConfig(rule.dingtalk_recipients)
+    recipients: normalizeRecipientConfig(rule.dingtalk_recipients),
+    duty: normalizeDutyConfig(rule.duty_config)
   })
 }
 
@@ -237,7 +361,9 @@ function normalizeRule(rule) {
     month_days: Array.isArray(rule.month_days) ? rule.month_days : [],
     week_days: Array.isArray(rule.week_days) ? rule.week_days : [],
     dingtalk_webhooks: normalizeWebhookConfigs(rule.dingtalk_webhooks || rule.dingtalk_webhook),
-    dingtalk_recipients: normalizeRecipientConfig(rule.dingtalk_recipients)
+    dingtalk_recipients: normalizeRecipientConfig(rule.dingtalk_recipients),
+    duty_config: normalizeDutyConfig(rule.duty_config),
+    task_type: normalizeTaskType(rule.task_type)
   }
   applyActionMode(normalized)
   normalized._savedNotificationKey = normalized.id ? notificationKey(normalized) : ''
@@ -265,8 +391,26 @@ async function loadSettings() {
   }
 }
 
+async function ensureStaffList() {
+  if (staffList.value.length || staffLoading.value) return
+  staffLoading.value = true
+  try {
+    const res = await api.get('/staff')
+    staffList.value = res.data || []
+  } catch {
+    ElMessage.error('加载团队人员失败')
+  } finally {
+    staffLoading.value = false
+  }
+}
+
 function addRule() {
-  rules.value.push(createDefaultRule())
+  taskTypeDialogVisible.value = true
+}
+
+function addRuleByType(taskType) {
+  rules.value.push(createDefaultRule(taskType))
+  taskTypeDialogVisible.value = false
 }
 
 function localRuleKey(rule) {
@@ -290,7 +434,7 @@ function warnRule(rule, message) {
 
 function validateWebhooks(rule, requireComplete = false) {
   const webhooks = compactWebhooks(rule)
-  const message = String(rule.dingtalk_message || '').trim()
+  const message = isDutyRule(rule) ? dutyFirstMessage(rule) : String(rule.dingtalk_message || '').trim()
   if (requireComplete && webhooks.length === 0) {
     warnRule(rule, '请至少配置一个钉钉 webhook')
     return false
@@ -307,6 +451,16 @@ function validateWebhooks(rule, requireComplete = false) {
   return true
 }
 
+function dutyFirstMessage(rule) {
+  const dayMap = dutyMapForRule(rule)
+  const item = Object.values(dayMap).find(dutyItemConfigured)
+  return String(item?.start_message || '').trim()
+}
+
+function hasConfiguredDutyItem(rule) {
+  return Object.values(dutyMapForRule(rule)).some(dutyItemConfigured)
+}
+
 function validateRule(rule, options = {}) {
   applyActionMode(rule)
   if (!rule.name?.trim()) {
@@ -316,6 +470,14 @@ function validateRule(rule, options = {}) {
   if (!/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(rule.execute_time || '')) {
     warnRule(rule, '执行时间格式必须为 HH:mm:ss')
     return false
+  }
+  if (isDutyRule(rule)) {
+    if (!hasConfiguredDutyItem(rule)) {
+      warnRule(rule, '请至少配置一个值班日期/星期的人员和开始提醒内容')
+      return false
+    }
+    if (!validateWebhooks(rule, options.requireNotification ?? true)) return false
+    return true
   }
   if (rule.schedule_type === 'monthly') {
     if (!rule.schedule_year) {
@@ -337,9 +499,11 @@ function validateRule(rule, options = {}) {
 
 function buildPayload(rule) {
   applyActionMode(rule)
+  const dutyConfig = normalizeDutyConfig(rule.duty_config)
   return {
     name: rule.name.trim(),
     enabled: !!rule.enabled,
+    task_type: normalizeTaskType(rule.task_type),
     action_mode: normalizeActionMode(rule.action_mode),
     schedule_type: rule.schedule_type,
     schedule_year: rule.schedule_type === 'monthly' ? Number(rule.schedule_year) : null,
@@ -349,7 +513,8 @@ function buildPayload(rule) {
     notify_enabled: !!rule.notify_enabled,
     dingtalk_webhooks: compactWebhooks(rule),
     dingtalk_message: rule.dingtalk_message || '',
-    dingtalk_recipients: normalizeRecipientConfig(rule.dingtalk_recipients)
+    dingtalk_recipients: normalizeRecipientConfig(rule.dingtalk_recipients),
+    duty_config: dutyConfig
   }
 }
 
@@ -423,11 +588,15 @@ async function testNotification(rule) {
   if (!validateWebhooks(rule, true)) return
   testingId.value = rule.id || rule.localKey
   try {
+    const dutyItem = isDutyRule(rule) ? firstConfiguredDutyItem(rule) : null
     await api.post('/settings/auto-tasks/test-notify', {
       rule_id: rule.id,
+      task_type: normalizeTaskType(rule.task_type),
       dingtalk_webhooks: compactWebhooks(rule),
-      dingtalk_message: rule.dingtalk_message || '',
-      dingtalk_recipients: normalizeRecipientConfig(rule.dingtalk_recipients)
+      dingtalk_message: isDutyRule(rule) ? dutyItem.start_message : (rule.dingtalk_message || ''),
+      dingtalk_recipients: isDutyRule(rule)
+        ? { enabled: true, at_mode: 'people', staff_ids: normalizeDutyStaffIds(dutyItem.staff_ids), extra: [] }
+        : normalizeRecipientConfig(rule.dingtalk_recipients)
     })
     ElMessage.success('测试发送成功')
     await loadSettings()
@@ -436,6 +605,16 @@ async function testNotification(rule) {
   } finally {
     testingId.value = ''
   }
+}
+
+function firstConfiguredDutyItem(rule) {
+  const item = Object.values(dutyMapForRule(rule)).find(dutyItemConfigured)
+  if (!item) {
+    const err = new Error('请至少配置一个值班日期/星期的人员和开始提醒内容')
+    err.userMessage = err.message
+    throw err
+  }
+  return item
 }
 
 async function testRunRule(rule) {
@@ -585,6 +764,259 @@ async function saveRecipients() {
   } finally {
     recipientSaving.value = false
   }
+}
+
+function taskTypeTitle(rule) {
+  return isDutyRule(rule) ? '自动值班通知' : '自动任务创建并通知'
+}
+
+function dutyKeys(rule) {
+  return rule.schedule_type === 'monthly'
+    ? monthDayOptions.map(day => String(day))
+    : weekDayOptions.map(day => String(day.value))
+}
+
+function dutyKeyLabel(rule, key) {
+  if (rule.schedule_type === 'monthly') return `${key}日`
+  return weekDayOptions.find(day => String(day.value) === String(key))?.label || `周${key}`
+}
+
+function getDutyItem(rule, key) {
+  const config = normalizeDutyConfig(rule.duty_config)
+  const map = rule.schedule_type === 'monthly' ? config.monthly : config.weekly
+  return normalizeDutyItem(map[String(key)] || createDefaultDutyItem())
+}
+
+function setDutyItem(rule, key, item) {
+  const config = normalizeDutyConfig(rule.duty_config)
+  const target = rule.schedule_type === 'monthly' ? config.monthly : config.weekly
+  target[String(key)] = normalizeDutyItem(item)
+  rule.duty_config = config
+}
+
+function syncDutyRuleScheduleKeys(rule) {
+  const configuredKeys = dutyKeys(rule).filter(key => dutyItemConfigured(getDutyItem(rule, key))).map(Number)
+  if (rule.schedule_type === 'monthly') {
+    rule.month_days = configuredKeys
+  } else {
+    rule.week_days = configuredKeys
+  }
+}
+
+function dutyReferenceOptions(rule, excludeKey = '') {
+  if (!rule) return []
+  return dutyKeys(rule)
+    .filter(key => String(key) !== String(excludeKey))
+    .map(key => ({
+      value: String(key),
+      label: `${dutyKeyLabel(rule, key)}${dutyItemConfigured(getDutyItem(rule, key)) ? '（已配置）' : '（未配置）'}`
+    }))
+}
+
+function staffById(id) {
+  const key = String(id || '').trim()
+  if (!key) return null
+  return staffList.value.find(staff => String(staff.id) === key)
+    || staffList.value.find(staff => String(staff.phone || '').trim() === key)
+    || staffList.value.find(staff => String(staff.name || '').trim() === key)
+    || null
+}
+
+function staffDisplayName(staff) {
+  if (!staff) return ''
+  const name = String(staff.name || '').trim()
+  const phone = String(staff.phone || '').trim()
+  if (name && name !== phone && !isValidPhone(name)) return name
+  const samePhone = phone
+    ? staffList.value.find(item =>
+      String(item.phone || '').trim() === phone &&
+      String(item.name || '').trim() &&
+      !isValidPhone(item.name)
+    )
+    : null
+  return samePhone ? samePhone.name : (name || phone || '未命名')
+}
+
+function normalizeDutyStaffIds(ids = []) {
+  return [...new Set((Array.isArray(ids) ? ids : [])
+    .map(id => staffById(id)?.id || String(id || '').trim())
+    .filter(Boolean))]
+}
+
+function staffNames(ids = []) {
+  const names = ids
+    .map(id => {
+      const staff = staffById(id)
+      return staff ? staffDisplayName(staff) : String(id || '').trim()
+    })
+    .filter(Boolean)
+  return names.length ? names.join('、') : '未配置'
+}
+
+function dutyPeopleText(item) {
+  return item.staff_ids?.length ? staffNames(item.staff_ids) : '未配置'
+}
+
+function dutyTimeText(item) {
+  if (!item.enabled) return '--'
+  return item.send_mode === DUTY_SEND_MODE_BOTH
+    ? `${item.start_time.slice(0, 5)} / ${item.end_time.slice(0, 5)}`
+    : item.start_time.slice(0, 5)
+}
+
+function dutyStatusText(item) {
+  return dutyItemConfigured(item) ? '已配置' : '跳过'
+}
+
+function dutyPreviewText(rule) {
+  const key = dutyKeys(rule).find(itemKey => dutyItemConfigured(getDutyItem(rule, itemKey)))
+  if (!key) return '尚未配置值班通知内容'
+  const item = getDutyItem(rule, key)
+  return `${dutyKeyLabel(rule, key)} ${item.start_time.slice(0, 5)} ${staffNames(item.staff_ids)} ${item.start_message}`
+}
+
+async function openDutyDetail(rule, index, key) {
+  await ensureStaffList()
+  dutyDetailRule.value = rule
+  dutyDetailRuleIndex.value = index
+  dutyDetailKey.value = String(key)
+  dutyDetailMode.value = rule.schedule_type
+  dutyDetailForm.value = getDutyItem(rule, key)
+  dutyReferenceKey.value = dutyReferenceOptions(rule, key).find(option => option.label.includes('已配置'))?.value || ''
+  dutyDetailDialogVisible.value = true
+}
+
+function closeDutyDetail() {
+  dutyDetailDialogVisible.value = false
+  dutyDetailRule.value = null
+  dutyDetailRuleIndex.value = -1
+  dutyDetailKey.value = ''
+  dutyReferenceKey.value = ''
+}
+
+function isDutyStaffChecked(staff) {
+  const ids = dutyDetailForm.value.staff_ids.map(id => String(id))
+  return ids.includes(String(staff.id)) || Boolean(staff.phone && ids.includes(String(staff.phone).trim()))
+}
+
+function toggleDutyStaff(staff, checked) {
+  if (checked && !isValidPhone(staff.phone)) {
+    ElMessage.warning('手机号码为空，请在【团队人员】页面添加后再试')
+    return
+  }
+  const current = dutyDetailForm.value.staff_ids
+  const phone = String(staff.phone || '').trim()
+  dutyDetailForm.value.staff_ids = checked
+    ? [...new Set([...current, staff.id])]
+    : current.filter(id => id !== staff.id && String(id) !== phone)
+}
+
+function applyDutyReference() {
+  const rule = dutyDetailRule.value
+  if (!rule || !dutyReferenceKey.value) {
+    ElMessage.warning('请选择要引用的配置')
+    return
+  }
+  dutyDetailForm.value = getDutyItem(rule, dutyReferenceKey.value)
+  ElMessage.success(`已引用${dutyKeyLabel(rule, dutyReferenceKey.value)}配置`)
+}
+
+function saveDutyDetail() {
+  const rule = dutyDetailRule.value
+  if (!rule || !dutyDetailKey.value) return
+  const staffIds = normalizeDutyStaffIds(dutyDetailForm.value.staff_ids)
+  const item = normalizeDutyItem({
+    ...dutyDetailForm.value,
+    staff_ids: staffIds,
+    enabled: staffIds.length > 0 && Boolean(dutyDetailForm.value.start_message?.trim())
+  })
+  setDutyItem(rule, dutyDetailKey.value, item)
+  syncDutyRuleScheduleKeys(rule)
+  closeDutyDetail()
+  ElMessage.success('值班配置已保存到当前规则，请点击保存通知提交')
+}
+
+function openFirstDutyDetail(rule, index) {
+  const key = dutyKeys(rule).find(itemKey => dutyItemConfigured(getDutyItem(rule, itemKey))) || dutyKeys(rule)[0]
+  openDutyDetail(rule, index, key)
+}
+
+function openDutyBulk(rule, index) {
+  const firstConfiguredKey = dutyKeys(rule).find(key => dutyItemConfigured(getDutyItem(rule, key))) || ''
+  dutyBulkRule.value = rule
+  dutyBulkRuleIndex.value = index
+  dutyBulkForm.value = {
+    scope: 'all',
+    apply_mode: 'content',
+    source_key: firstConfiguredKey,
+    send_mode: DUTY_SEND_MODE_START,
+    start_message: '请关注线上告警和待处理反馈。',
+    end_message: '请同步今日值班处理结果。'
+  }
+  dutyBulkDialogVisible.value = true
+}
+
+function dutyBulkTitle() {
+  const unit = dutyBulkRule.value?.schedule_type === 'monthly' ? '日期' : '星期'
+  return `批量编辑所有${unit}通知内容`
+}
+
+function dutyBulkScopeLabel(scope) {
+  const unit = dutyBulkRule.value?.schedule_type === 'monthly' ? '日期' : '星期'
+  return scope === 'configured' ? `仅已配置${unit}` : `所有${unit}`
+}
+
+function dutyBulkReferencePreview() {
+  const rule = dutyBulkRule.value
+  if (!rule || !dutyBulkForm.value.source_key) return '请选择引用来源'
+  const item = getDutyItem(rule, dutyBulkForm.value.source_key)
+  return `${dutyKeyLabel(rule, dutyBulkForm.value.source_key)} ${dutyPeopleText(item)} ${dutyTimeText(item)} ${item.start_message || '未填写开始提醒'}`
+}
+
+function saveDutyBulkContent() {
+  const rule = dutyBulkRule.value
+  if (!rule) return
+  if (dutyBulkForm.value.apply_mode === 'reference' && !dutyBulkForm.value.source_key) {
+    ElMessage.warning('请选择引用来源')
+    return
+  }
+  const targetKeys = dutyKeys(rule).filter(key => {
+    if (dutyBulkForm.value.scope === 'configured') return dutyItemConfigured(getDutyItem(rule, key))
+    return true
+  })
+  const sourceItem = dutyBulkForm.value.apply_mode === 'reference'
+    ? getDutyItem(rule, dutyBulkForm.value.source_key)
+    : null
+  targetKeys.forEach(key => {
+    const current = getDutyItem(rule, key)
+    if (sourceItem) {
+      setDutyItem(rule, key, sourceItem)
+    } else {
+      setDutyItem(rule, key, {
+        ...current,
+        send_mode: dutyBulkForm.value.send_mode,
+        start_message: dutyBulkForm.value.start_message,
+        end_message: dutyBulkForm.value.send_mode === DUTY_SEND_MODE_BOTH
+          ? dutyBulkForm.value.end_message
+          : current.end_message
+      })
+    }
+  })
+  syncDutyRuleScheduleKeys(rule)
+  dutyBulkDialogVisible.value = false
+  ElMessage.success('批量配置已写入当前规则，请点击保存通知提交')
+}
+
+function dutyDetailPreview() {
+  const names = staffNames(dutyDetailForm.value.staff_ids)
+  const atText = dutyDetailForm.value.staff_ids.length ? `@${names.replaceAll('、', ' @')}` : '未选择接收人'
+  const start = `开始 ${dutyDetailForm.value.start_time.slice(0, 5)}\n${atText} ${dutyDetailForm.value.start_message}`
+  if (dutyDetailForm.value.send_mode !== DUTY_SEND_MODE_BOTH) return start
+  return `${start}\n\n结束 ${dutyDetailForm.value.end_time.slice(0, 5)}\n${atText} ${dutyDetailForm.value.end_message}`
+}
+
+function dutyDetailLabel() {
+  return dutyKeyLabel(dutyDetailRule.value || { schedule_type: dutyDetailMode.value }, dutyDetailKey.value || '1')
 }
 
 function historyKey(rule) {
@@ -753,12 +1185,15 @@ function hasSavedNotification(rule) {
     rule.id &&
     rule.notify_enabled &&
     compactWebhooks(rule).length > 0 &&
-    String(rule.dingtalk_message || '').trim() &&
+    (isDutyRule(rule) ? hasConfiguredDutyItem(rule) : String(rule.dingtalk_message || '').trim()) &&
     notificationKey(rule) === rule._savedNotificationKey
   )
 }
 
 function notificationPreview(rule) {
+  if (isDutyRule(rule)) {
+    return dutyPreviewText(rule)
+  }
   const text = String(rule.dingtalk_message || '').trim()
   return text.length > 20 ? `${text.slice(0, 20)}...` : text
 }
@@ -812,6 +1247,7 @@ async function downloadBackup() {
 
 onMounted(async () => {
   await loadSettings()
+  if (rules.value.some(isDutyRule)) await ensureStaffList()
   countdownTimer = setInterval(() => { nowTs.value = Date.now() }, 1000)
 })
 
@@ -850,12 +1286,13 @@ onUnmounted(() => {
         <div v-for="(rule, index) in rules" :key="rule.id || rule.localKey" class="dt-settings-rule">
           <div class="dt-rule-line">
             <span class="dt-rule-index">{{ index + 1 }}</span>
+            <span class="dt-rule-title" :class="{ 'is-duty': isDutyRule(rule) }">{{ taskTypeTitle(rule) }}</span>
             <el-select v-model="rule.schedule_type" class="dt-rule-type" size="small" :disabled="!canEditAutoTasks">
               <el-option label="每周星期" value="weekly" />
               <el-option label="年内每月日期" value="monthly" />
             </el-select>
             <el-input-number
-              v-if="rule.schedule_type === 'monthly'"
+              v-if="!isDutyRule(rule) && rule.schedule_type === 'monthly'"
               v-model="rule.schedule_year"
               class="dt-rule-year"
               size="small"
@@ -864,7 +1301,7 @@ onUnmounted(() => {
               :disabled="!canEditAutoTasks"
             />
             <el-select
-              v-if="rule.schedule_type === 'monthly'"
+              v-if="!isDutyRule(rule) && rule.schedule_type === 'monthly'"
               v-model="rule.month_days"
               class="dt-rule-days"
               size="small"
@@ -877,7 +1314,7 @@ onUnmounted(() => {
               <el-option v-for="day in monthDayOptions" :key="day" :label="`${day}日`" :value="day" />
             </el-select>
             <el-select
-              v-if="rule.schedule_type === 'weekly'"
+              v-if="!isDutyRule(rule) && rule.schedule_type === 'weekly'"
               v-model="rule.week_days"
               class="dt-rule-weekdays"
               size="small"
@@ -890,6 +1327,7 @@ onUnmounted(() => {
               <el-option v-for="day in weekDayOptions" :key="day.value" :label="day.label" :value="day.value" />
             </el-select>
             <el-time-picker
+              v-if="!isDutyRule(rule)"
               v-model="rule.execute_time"
               class="dt-rule-time"
               size="small"
@@ -899,6 +1337,7 @@ onUnmounted(() => {
               :disabled="!canEditAutoTasks"
             />
             <el-select
+              v-if="!isDutyRule(rule)"
               v-model="rule.action_mode"
               class="dt-rule-action-mode"
               size="small"
@@ -912,16 +1351,17 @@ onUnmounted(() => {
                 :value="option.value"
               />
             </el-select>
+            <span class="dt-rule-actions-spacer"></span>
             <el-button
               size="small"
               type="primary"
               :loading="savingId === (rule.id || rule.localKey)"
               :disabled="!canEditAutoTasks"
-              @click="saveRule(rule, index)"
+              @click="saveRule(rule, index, { requireNotification: isDutyRule(rule) })"
             >
-              保存规则
+              {{ isDutyRule(rule) ? '保存通知' : '保存规则' }}
             </el-button>
-            <el-tooltip :content="testRunTooltip(rule)" placement="top" :disabled="!isTestRunDisabled(rule)">
+            <el-tooltip v-if="!isDutyRule(rule)" :content="testRunTooltip(rule)" placement="top" :disabled="!isTestRunDisabled(rule)">
               <span class="dt-button-tooltip-wrap" :class="{ 'is-disabled': isTestRunDisabled(rule) }">
                 <el-button
                   size="small"
@@ -934,6 +1374,16 @@ onUnmounted(() => {
                 </el-button>
               </span>
             </el-tooltip>
+            <el-button
+              v-if="isDutyRule(rule)"
+              size="small"
+              :icon="Promotion"
+              :loading="testingId === (rule.id || rule.localKey)"
+              :disabled="!canEditAutoTasks"
+              @click="testNotification(rule)"
+            >
+              测试发送webhook
+            </el-button>
             <el-button
               v-if="canDeleteAutoTasks"
               size="small"
@@ -954,21 +1404,11 @@ onUnmounted(() => {
             />
           </div>
 
-          <div class="dt-notify-submodule">
+          <div v-if="!isDutyRule(rule)" class="dt-notify-submodule">
             <div class="dt-notify-connector" aria-hidden="true"></div>
             <div class="dt-notify-content">
               <div class="dt-settings-notify-row">
                 <span class="dt-settings-switch-label">钉钉 webhook 通知</span>
-                <el-tooltip :content="notifySwitchTooltip(rule)" placement="top" :disabled="!notifySwitchTooltip(rule)">
-                  <span class="dt-switch-tooltip-wrap" :class="{ 'is-disabled': isNotifySwitchDisabled(rule) }">
-                    <el-switch
-                      v-model="rule.notify_enabled"
-                      class="dt-switch-large"
-                      size="large"
-                      :disabled="isNotifySwitchDisabled(rule)"
-                    />
-                  </span>
-                </el-tooltip>
                 <template v-if="hasSavedNotification(rule)">
                   <span class="dt-next-run">下次通知：{{ nextCountdown(rule) }}</span>
                   <el-tooltip :content="rule.dingtalk_message" placement="top">
@@ -977,7 +1417,106 @@ onUnmounted(() => {
                 </template>
               </div>
 
-              <div v-if="rule.notify_enabled" class="dt-settings-notify-fields">
+              <div class="dt-settings-notify-fields" :class="{ 'is-notify-off': !rule.notify_enabled }">
+                <div v-if="rule.notify_enabled" class="dt-webhook-list">
+                  <div v-for="(webhook, webhookIndex) in rule.dingtalk_webhooks" :key="webhookIndex" class="dt-webhook-row">
+                    <el-input
+                      v-model="webhook.name"
+                      size="small"
+                      :placeholder="defaultWebhookName(webhookIndex)"
+                      :disabled="!canEditAutoTasks"
+                    />
+                    <el-input
+                      v-model="webhook.url"
+                      size="small"
+                      :placeholder="`机器人 ${webhookIndex + 1} webhook`"
+                      :disabled="!canEditAutoTasks"
+                    />
+                    <el-button
+                      size="small"
+                      plain
+                      :icon="Plus"
+                      title="添加机器人"
+                      :disabled="!canEditAutoTasks"
+                      @click="addWebhook(rule)"
+                    />
+                    <el-button
+                      size="small"
+                      plain
+                      type="danger"
+                      :icon="Delete"
+                      title="删除机器人"
+                      :disabled="!canEditAutoTasks"
+                      @click="removeWebhook(rule, webhookIndex)"
+                    />
+                  </div>
+                </div>
+                <div v-else class="dt-notify-disabled-hint">钉钉 webhook 通知已关闭</div>
+                <el-input
+                  v-if="rule.notify_enabled"
+                  v-model="rule.dingtalk_message"
+                  class="dt-notify-message"
+                  type="textarea"
+                  :rows="2"
+                  placeholder="发送给所有钉钉 webhook 机器人的固定文本内容"
+                  :disabled="!canEditAutoTasks"
+                />
+                <div class="dt-notify-actions">
+                  <template v-if="rule.notify_enabled">
+                    <el-button
+                      size="small"
+                      type="primary"
+                      :loading="savingId === (rule.id || rule.localKey)"
+                      :disabled="!canEditAutoTasks"
+                      @click="saveRule(rule, index, { requireNotification: true })"
+                    >
+                      保存通知
+                    </el-button>
+                    <el-button
+                      size="small"
+                      plain
+                      :disabled="!canEditAutoTasks || !rule.id"
+                      @click="openRecipients(rule, index)"
+                    >
+                      配置接收人
+                    </el-button>
+                    <el-button
+                      size="small"
+                      :icon="Promotion"
+                      :loading="testingId === (rule.id || rule.localKey)"
+                      :disabled="!canEditAutoTasks"
+                      @click="testNotification(rule)"
+                    >
+                      测试发送webhook
+                    </el-button>
+                  </template>
+                  <el-tooltip :content="notifySwitchTooltip(rule)" placement="top" :disabled="!notifySwitchTooltip(rule)">
+                    <span class="dt-switch-tooltip-wrap" :class="{ 'is-disabled': isNotifySwitchDisabled(rule) }">
+                      <el-switch
+                        v-model="rule.notify_enabled"
+                        class="dt-switch-large"
+                        size="large"
+                        :disabled="isNotifySwitchDisabled(rule)"
+                      />
+                    </span>
+                  </el-tooltip>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-else class="dt-duty-submodule">
+            <div class="dt-notify-connector" aria-hidden="true"></div>
+            <div class="dt-notify-content">
+              <div class="dt-settings-notify-row">
+                <span class="dt-settings-switch-label">钉钉 webhook 通知</span>
+                <span class="dt-next-run">下次通知：{{ nextCountdown(rule) }}</span>
+                <el-tooltip :content="dutyPreviewText(rule)" placement="top">
+                  <span class="dt-notify-preview is-duty-full">内容：{{ notificationPreview(rule) }}</span>
+                </el-tooltip>
+              </div>
+
+              <div class="dt-duty-layout">
                 <div class="dt-webhook-list">
                   <div v-for="(webhook, webhookIndex) in rule.dingtalk_webhooks" :key="webhookIndex" class="dt-webhook-row">
                     <el-input
@@ -1011,41 +1550,49 @@ onUnmounted(() => {
                     />
                   </div>
                 </div>
-                <el-input
-                  v-model="rule.dingtalk_message"
-                  class="dt-notify-message"
-                  type="textarea"
-                  :rows="2"
-                  placeholder="发送给所有钉钉 webhook 机器人的固定文本内容"
-                  :disabled="!canEditAutoTasks"
-                />
-                <div class="dt-notify-actions">
-                  <el-button
-                    size="small"
-                    type="primary"
-                    :loading="savingId === (rule.id || rule.localKey)"
-                    :disabled="!canEditAutoTasks"
-                    @click="saveRule(rule, index, { requireNotification: true })"
-                  >
-                    保存通知
-                  </el-button>
-                  <el-button
-                    size="small"
-                    plain
-                    :disabled="!canEditAutoTasks || !rule.id"
-                    @click="openRecipients(rule, index)"
-                  >
-                    配置接收人
-                  </el-button>
-                  <el-button
-                    size="small"
-                    :icon="Promotion"
-                    :loading="testingId === (rule.id || rule.localKey)"
-                    :disabled="!canEditAutoTasks"
-                    @click="testNotification(rule)"
-                  >
-                    测试发送webhook
-                  </el-button>
+
+                <div class="dt-duty-card">
+                  <div class="dt-duty-card-head">
+                    <div>
+                      <strong>{{ rule.schedule_type === 'monthly' ? '每月值班概览' : '每周值班概览' }}</strong>
+                      <span>{{ rule.schedule_type === 'monthly' ? '1-31 日完整展示，点击日期配置提醒。' : '周一至周日完整展示，点击星期配置提醒。' }}</span>
+                    </div>
+                    <div class="dt-duty-card-actions">
+                      <el-button
+                        size="small"
+                        plain
+                        :disabled="!canEditAutoTasks"
+                        @click="openDutyBulk(rule, index)"
+                      >
+                        批量编辑/引用
+                      </el-button>
+                      <el-button class="dt-duty-detail-button" plain :disabled="!canEditAutoTasks" @click="openFirstDutyDetail(rule, index)">
+                        编辑详情
+                      </el-button>
+                    </div>
+                  </div>
+
+                  <div :class="rule.schedule_type === 'monthly' ? 'dt-duty-month-grid' : 'dt-duty-week-grid'">
+                    <button
+                      v-for="key in dutyKeys(rule)"
+                      :key="key"
+                      type="button"
+                      class="dt-duty-cell"
+                      :class="{ 'is-configured': dutyItemConfigured(getDutyItem(rule, key)) }"
+                      :disabled="!canEditAutoTasks"
+                      @click="openDutyDetail(rule, index, key)"
+                    >
+                      <strong>{{ dutyKeyLabel(rule, key) }}</strong>
+                      <span>{{ dutyPeopleText(getDutyItem(rule, key)) }}</span>
+                      <em>{{ dutyTimeText(getDutyItem(rule, key)) }}</em>
+                      <small>{{ dutyStatusText(getDutyItem(rule, key)) }}</small>
+                    </button>
+                  </div>
+
+                  <div class="dt-duty-preview">
+                    <strong>预览：</strong>
+                    <span>{{ dutyPreviewText(rule) }}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1098,6 +1645,184 @@ onUnmounted(() => {
           </div>
         </div>
       </section>
+
+      <el-dialog
+        v-model="taskTypeDialogVisible"
+        title="请选择一个自动执行任务类型"
+        width="560px"
+        :close-on-click-modal="false"
+      >
+        <div class="dt-task-type-options">
+          <button type="button" class="dt-task-type-card" @click="addRuleByType(TASK_TYPE_CREATE_NOTIFY)">
+            <strong>1，自动任务创建并通知</strong>
+            <span>沿用当前自动生成下一周任务和钉钉通知能力。</span>
+          </button>
+          <button type="button" class="dt-task-type-card is-duty" @click="addRuleByType(TASK_TYPE_DUTY_NOTIFY)">
+            <strong>2，自动值班通知</strong>
+            <span>按星期或每月日期配置值班人员、开始/结束提醒和 webhook 通知。</span>
+          </button>
+        </div>
+      </el-dialog>
+
+      <el-dialog
+        v-model="dutyDetailDialogVisible"
+        width="920px"
+        :close-on-click-modal="false"
+        class="dt-duty-dialog"
+      >
+        <template #header>
+          <div class="dt-duty-dialog-title">
+            {{ dutyDetailMode === 'monthly' ? '每月日期值班配置' : '每周星期值班配置' }} - {{ dutyDetailLabel() }}
+          </div>
+        </template>
+
+        <div class="dt-duty-dialog-grid">
+          <div class="dt-duty-dialog-card">
+            <h4>值班对象</h4>
+            <label class="dt-duty-field-label">团队人员</label>
+            <div class="dt-duty-staff-grid" v-loading="staffLoading">
+              <label v-for="staff in staffList" :key="staff.id" class="dt-duty-staff-item">
+                <el-checkbox
+                  :model-value="isDutyStaffChecked(staff)"
+                  :disabled="!isValidPhone(staff.phone)"
+                  @change="checked => toggleDutyStaff(staff, checked)"
+                />
+                <span>{{ staffDisplayName(staff) }}</span>
+                <em>{{ staff.phone || '空' }}</em>
+              </label>
+            </div>
+            <p class="dt-duty-dialog-tip">勾选人员会在 webhook 消息中按手机号 @，手机号为空不可勾选。</p>
+          </div>
+
+          <div class="dt-duty-dialog-card">
+            <h4>通知配置</h4>
+            <div class="dt-duty-reference-row">
+              <label class="dt-duty-field-label">引用配置</label>
+              <div class="dt-duty-reference-controls">
+                <el-select v-model="dutyReferenceKey" size="small" clearable placeholder="选择来源">
+                  <el-option
+                    v-for="option in dutyReferenceOptions(dutyDetailRule, dutyDetailKey)"
+                    :key="option.value"
+                    :label="option.label"
+                    :value="option.value"
+                  />
+                </el-select>
+                <el-button size="small" plain :disabled="!dutyReferenceKey" @click="applyDutyReference">
+                  引用
+                </el-button>
+              </div>
+            </div>
+            <label class="dt-duty-field-label">发送策略</label>
+            <el-radio-group v-model="dutyDetailForm.send_mode" size="small" class="dt-duty-send-mode">
+              <el-radio-button :label="DUTY_SEND_MODE_START">只发送开始提醒</el-radio-button>
+              <el-radio-button :label="DUTY_SEND_MODE_BOTH">开始和结束都发送</el-radio-button>
+            </el-radio-group>
+
+            <div class="dt-duty-time-row" :class="{ 'is-single': dutyDetailForm.send_mode !== DUTY_SEND_MODE_BOTH }">
+              <div>
+                <label class="dt-duty-field-label">值班开始时间</label>
+                <el-time-picker
+                  v-model="dutyDetailForm.start_time"
+                  value-format="HH:mm:ss"
+                  format="HH:mm:ss"
+                  size="small"
+                  placeholder="开始时间"
+                />
+              </div>
+              <div v-if="dutyDetailForm.send_mode === DUTY_SEND_MODE_BOTH">
+                <label class="dt-duty-field-label">值班结束时间</label>
+                <el-time-picker
+                  v-model="dutyDetailForm.end_time"
+                  value-format="HH:mm:ss"
+                  format="HH:mm:ss"
+                  size="small"
+                  placeholder="结束时间"
+                />
+              </div>
+            </div>
+
+            <label class="dt-duty-field-label">今日值班开始提醒：</label>
+            <el-input
+              v-model="dutyDetailForm.start_message"
+              type="textarea"
+              :rows="3"
+              placeholder="这里填写的内容就是开始时间 webhook 实际发送内容"
+            />
+            <template v-if="dutyDetailForm.send_mode === DUTY_SEND_MODE_BOTH">
+              <label class="dt-duty-field-label">今日值班结束提醒：</label>
+              <el-input
+                v-model="dutyDetailForm.end_message"
+                type="textarea"
+                :rows="3"
+                placeholder="这里填写的内容就是结束时间 webhook 实际发送内容"
+              />
+            </template>
+
+            <div class="dt-duty-dialog-preview">
+              <strong>发送预览</strong>
+              <pre>{{ dutyDetailPreview() }}</pre>
+            </div>
+          </div>
+        </div>
+
+        <template #footer>
+          <el-button @click="closeDutyDetail">退出</el-button>
+          <el-button type="primary" @click="saveDutyDetail">保存通知</el-button>
+        </template>
+      </el-dialog>
+
+      <el-dialog
+        v-model="dutyBulkDialogVisible"
+        :title="dutyBulkTitle()"
+        width="760px"
+        :close-on-click-modal="false"
+      >
+        <div class="dt-duty-dialog-grid is-bulk">
+          <div class="dt-duty-dialog-card">
+            <h4>应用范围</h4>
+            <el-radio-group v-model="dutyBulkForm.scope" class="dt-duty-bulk-scope">
+              <el-radio label="all">{{ dutyBulkScopeLabel('all') }}</el-radio>
+              <el-radio label="configured">{{ dutyBulkScopeLabel('configured') }}</el-radio>
+            </el-radio-group>
+            <label class="dt-duty-field-label">批量方式</label>
+            <el-radio-group v-model="dutyBulkForm.apply_mode" class="dt-duty-bulk-scope">
+              <el-radio label="content">批量填写内容</el-radio>
+              <el-radio label="reference">引用某一天配置</el-radio>
+            </el-radio-group>
+            <template v-if="dutyBulkForm.apply_mode === 'reference'">
+              <label class="dt-duty-field-label">引用来源</label>
+              <el-select v-model="dutyBulkForm.source_key" size="small" class="dt-duty-reference-select" placeholder="选择来源">
+                <el-option
+                  v-for="option in dutyReferenceOptions(dutyBulkRule)"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                />
+              </el-select>
+              <div class="dt-duty-reference-preview">{{ dutyBulkReferencePreview() }}</div>
+            </template>
+            <template v-else>
+              <label class="dt-duty-field-label">发送策略</label>
+              <el-radio-group v-model="dutyBulkForm.send_mode" size="small" class="dt-duty-send-mode">
+                <el-radio-button :label="DUTY_SEND_MODE_START">只发送开始提醒</el-radio-button>
+                <el-radio-button :label="DUTY_SEND_MODE_BOTH">开始和结束都发送</el-radio-button>
+              </el-radio-group>
+            </template>
+          </div>
+          <div v-if="dutyBulkForm.apply_mode === 'content'" class="dt-duty-dialog-card">
+            <label class="dt-duty-field-label">今日值班开始提醒：</label>
+            <el-input v-model="dutyBulkForm.start_message" type="textarea" :rows="3" />
+            <template v-if="dutyBulkForm.send_mode === DUTY_SEND_MODE_BOTH">
+              <label class="dt-duty-field-label">今日值班结束提醒：</label>
+              <el-input v-model="dutyBulkForm.end_message" type="textarea" :rows="3" />
+            </template>
+          </div>
+        </div>
+        <template #footer>
+          <el-button @click="dutyBulkDialogVisible = false">退出</el-button>
+          <el-button type="primary" @click="saveDutyBulkContent">保存批量内容</el-button>
+        </template>
+      </el-dialog>
 
       <el-dialog
         v-model="recipientDialogVisible"
@@ -1265,6 +1990,18 @@ onUnmounted(() => {
   flex: 0 0 auto;
 }
 
+.dt-rule-title {
+  flex: 0 0 auto;
+  min-width: 132px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.dt-rule-title.is-duty {
+  color: #b45309;
+}
+
 .dt-inline-label,
 .dt-settings-switch-label {
   font-size: 13px;
@@ -1272,12 +2009,25 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
-.dt-rule-type { flex: 1 1 160px; min-width: 150px; }
+.dt-rule-type { flex: 0 0 150px; min-width: 150px; }
 .dt-rule-year { flex: 0 0 116px; }
-.dt-rule-days { flex: 2 1 220px; min-width: 190px; }
-.dt-rule-weekdays { flex: 2 1 240px; min-width: 200px; }
-.dt-rule-time { flex: 1 1 150px; min-width: 140px; }
-.dt-rule-action-mode { flex: 1 1 170px; min-width: 160px; }
+.dt-rule-days { flex: 0 0 220px; min-width: 190px; }
+.dt-rule-weekdays { flex: 0 0 96px; min-width: 96px; }
+.dt-rule-time { flex: 0 0 116px; width: 116px !important; min-width: 116px; max-width: 116px; }
+.dt-rule-action-mode { flex: 0 0 128px; min-width: 128px; }
+.dt-rule-actions-spacer { flex: 1 1 auto; min-width: 12px; }
+
+.dt-rule-time.el-date-editor.el-input {
+  width: 116px !important;
+  max-width: 116px;
+}
+
+.dt-rule-line :deep(.dt-rule-time.el-date-editor.el-input) {
+  flex: 0 0 116px;
+  width: 116px !important;
+  min-width: 116px;
+  max-width: 116px;
+}
 
 .dt-rule-line :deep(.el-input__wrapper),
 .dt-rule-line :deep(.el-select__wrapper),
@@ -1392,9 +2142,17 @@ onUnmounted(() => {
   cursor: default;
 }
 
+.dt-notify-preview.is-duty-full {
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  flex: 1 1 auto;
+}
+
 .dt-settings-notify-fields {
   display: grid;
-  grid-template-columns: minmax(280px, 1fr) minmax(280px, 1.4fr) auto;
+  grid-template-columns: minmax(590px, 590px) minmax(280px, 1fr) auto;
   gap: 10px;
   align-items: flex-start;
   margin-top: 8px;
@@ -1424,8 +2182,370 @@ onUnmounted(() => {
   justify-content: flex-end;
 }
 
+.dt-notify-actions :deep(.el-button) {
+  height: 30px;
+  min-height: 30px;
+  padding-left: 12px;
+  padding-right: 12px;
+  font-size: 12px;
+}
+
+.dt-notify-actions .dt-switch-large {
+  transform: scale(1);
+}
+
+.dt-settings-notify-fields.is-notify-off .dt-notify-actions {
+  grid-column: 3;
+}
+
+.dt-notify-disabled-hint {
+  height: 30px;
+  display: flex;
+  align-items: center;
+  border: 1px dashed var(--color-border);
+  border-radius: 6px;
+  padding: 0 12px;
+  color: var(--color-text-3);
+  font-size: 12px;
+  background: var(--color-bg-white);
+}
+
 .dt-settings-history {
   margin-top: 8px;
+}
+
+.dt-duty-submodule {
+  position: relative;
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  margin-left: 32px;
+}
+
+.dt-duty-layout {
+  display: grid;
+  grid-template-columns: minmax(590px, 590px) minmax(520px, 1fr);
+  gap: 10px;
+  margin-top: 8px;
+  align-items: flex-start;
+}
+
+.dt-duty-card {
+  border: 1px solid #fde7c4;
+  border-radius: 8px;
+  background: #fffaf2;
+  padding: 8px;
+}
+
+.dt-duty-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.dt-duty-card-head strong {
+  display: block;
+  color: #9a5b00;
+  font-size: 13px;
+}
+
+.dt-duty-card-head span {
+  color: var(--color-text-3);
+  font-size: 12px;
+}
+
+.dt-duty-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.dt-duty-detail-button {
+  height: 34px;
+  padding: 0 18px;
+  font-weight: 600;
+}
+
+.dt-duty-week-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.dt-duty-month-grid {
+  display: grid;
+  grid-template-columns: repeat(16, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.dt-duty-cell {
+  min-width: 0;
+  height: 72px;
+  border: 1px solid var(--color-border-light);
+  border-radius: 6px;
+  background: var(--color-bg-white);
+  padding: 5px 6px;
+  text-align: left;
+  color: var(--color-text-2);
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.dt-duty-month-grid .dt-duty-cell {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dt-duty-cell.is-configured {
+  border-color: #f4c37d;
+  background: #fff7ed;
+}
+
+.dt-duty-cell:disabled {
+  cursor: not-allowed;
+}
+
+.dt-duty-cell strong,
+.dt-duty-cell span,
+.dt-duty-cell em,
+.dt-duty-cell small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dt-duty-cell strong {
+  font-size: 12px;
+  color: #9a5b00;
+}
+
+.dt-duty-cell span,
+.dt-duty-cell em,
+.dt-duty-cell small {
+  font-size: 12px;
+  font-style: normal;
+  color: var(--color-text-3);
+}
+
+.dt-duty-month-grid .dt-duty-cell span,
+.dt-duty-month-grid .dt-duty-cell em,
+.dt-duty-month-grid .dt-duty-cell small {
+  display: none;
+}
+
+.dt-duty-month-grid .dt-duty-cell strong {
+  text-align: center;
+  overflow: visible;
+}
+
+.dt-duty-preview {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  margin-top: 6px;
+  border: 1px solid var(--color-border-light);
+  border-radius: 6px;
+  background: var(--color-bg-white);
+  padding: 6px 8px;
+  color: var(--color-text-2);
+  font-size: 12px;
+}
+
+.dt-duty-preview span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dt-task-type-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.dt-task-type-card {
+  min-height: 116px;
+  border: 1px solid var(--color-border-light);
+  border-radius: 8px;
+  background: var(--color-bg-3);
+  padding: 14px;
+  text-align: left;
+  cursor: pointer;
+  color: var(--color-text-2);
+}
+
+.dt-task-type-card:hover {
+  border-color: var(--color-primary);
+  background: var(--color-primary-light);
+}
+
+.dt-task-type-card strong,
+.dt-task-type-card span {
+  display: block;
+}
+
+.dt-task-type-card strong {
+  margin-bottom: 8px;
+  color: var(--color-text-1);
+  font-size: 15px;
+}
+
+.dt-task-type-card span {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.dt-duty-dialog-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-text-1);
+}
+
+.dt-duty-dialog-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, .75fr) minmax(420px, 1.25fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.dt-duty-dialog-grid.is-bulk {
+  grid-template-columns: minmax(240px, .8fr) minmax(360px, 1.2fr);
+}
+
+.dt-duty-dialog-card {
+  border: 1px solid var(--color-border-light);
+  border-radius: 8px;
+  background: var(--color-bg-3);
+  padding: 12px;
+}
+
+.dt-duty-dialog-card h4 {
+  margin-bottom: 10px;
+  color: var(--color-text-1);
+  font-size: 14px;
+}
+
+.dt-duty-reference-row {
+  margin-bottom: 8px;
+}
+
+.dt-duty-reference-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.dt-duty-field-label {
+  display: block;
+  margin: 8px 0 5px;
+  color: var(--color-text-3);
+  font-size: 12px;
+}
+
+.dt-duty-staff-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.dt-duty-staff-item {
+  min-height: 28px;
+  border: 1px solid var(--color-border-light);
+  border-radius: 6px;
+  background: var(--color-bg-white);
+  padding: 3px 6px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+}
+
+.dt-duty-staff-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dt-duty-staff-item em {
+  color: var(--color-text-3);
+  font-style: normal;
+}
+
+.dt-duty-staff-item :deep(.el-checkbox) {
+  height: 18px;
+}
+
+.dt-duty-dialog-tip {
+  margin-top: 8px;
+  color: var(--color-text-3);
+  font-size: 12px;
+}
+
+.dt-duty-send-mode,
+.dt-duty-bulk-scope {
+  margin-bottom: 8px;
+}
+
+.dt-duty-reference-select {
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.dt-duty-reference-preview {
+  border: 1px solid var(--color-border-light);
+  border-radius: 6px;
+  background: var(--color-bg-white);
+  padding: 7px 8px;
+  color: var(--color-text-3);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.dt-duty-time-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.dt-duty-time-row.is-single {
+  grid-template-columns: 1fr;
+}
+
+.dt-duty-time-row :deep(.el-date-editor.el-input) {
+  width: 100%;
+}
+
+.dt-duty-dialog-preview {
+  margin-top: 10px;
+  border: 1px solid #fde7c4;
+  border-radius: 8px;
+  background: #fffaf2;
+  padding: 10px;
+}
+
+.dt-duty-dialog-preview strong {
+  display: block;
+  margin-bottom: 5px;
+  color: #9a5b00;
+  font-size: 13px;
+}
+
+.dt-duty-dialog-preview pre {
+  margin: 0;
+  color: var(--color-text-2);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
 }
 
 .dt-history-summary,
@@ -1583,6 +2703,24 @@ onUnmounted(() => {
   .dt-notify-submodule {
     margin-left: 12px;
   }
+
+  .dt-duty-submodule {
+    margin-left: 12px;
+  }
+
+  .dt-duty-layout,
+  .dt-duty-dialog-grid,
+  .dt-duty-dialog-grid.is-bulk {
+    grid-template-columns: 1fr;
+  }
+
+  .dt-duty-week-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .dt-duty-month-grid {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 900px) {
@@ -1615,6 +2753,12 @@ onUnmounted(() => {
 
   .dt-notify-actions {
     justify-content: flex-start;
+  }
+
+  .dt-task-type-options,
+  .dt-duty-staff-grid,
+  .dt-duty-time-row {
+    grid-template-columns: 1fr;
   }
 }
 </style>

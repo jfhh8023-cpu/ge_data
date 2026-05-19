@@ -8,6 +8,7 @@ const { v4: uuidv4 } = require('uuid');
 const { AutoTaskRule, AutoTaskRunLog, AutoTaskMessage } = require('../models');
 const {
   getNextRunAt,
+  normalizeDutyConfig,
   normalizeRulePayload,
   normalizeRecipientConfig,
   normalizeWebhookConfigs,
@@ -33,6 +34,7 @@ function serializeRule(rule) {
     week_days: safeParseJsonArray(plain.week_days),
     dingtalk_webhooks: dingtalkWebhooks,
     dingtalk_recipients: dingtalkRecipients,
+    duty_config: normalizeDutyConfig(plain.duty_config),
     next_run_at: nextRunAt ? nextRunAt.toISOString() : null
   };
 }
@@ -205,6 +207,7 @@ router.post('/auto-tasks/test-notify', async (req, res, next) => {
       return res.status(400).json({ code: 1, message: '请填写通知内容' });
     }
     const result = await sendDingTalkWebhook({
+      task_type: req.body.task_type,
       dingtalk_webhooks: req.body.dingtalk_webhooks ?? req.body.dingtalk_webhook,
       dingtalk_message: message,
       dingtalk_recipients: req.body.dingtalk_recipients

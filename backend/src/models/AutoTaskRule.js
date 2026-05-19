@@ -5,6 +5,7 @@ const AutoTaskRule = sequelize.define('auto_task_rules', {
   id:               { type: DataTypes.CHAR(36), primaryKey: true },
   name:             { type: DataTypes.STRING(100), allowNull: false },
   enabled:          { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+  task_type:        { type: DataTypes.STRING(40), allowNull: false, defaultValue: 'task_create_notify' },
   action_mode:      { type: DataTypes.STRING(30), allowNull: false, defaultValue: 'run_and_notify' },
   schedule_type:    { type: DataTypes.ENUM('monthly', 'weekly'), allowNull: false, defaultValue: 'weekly' },
   schedule_year:    { type: DataTypes.INTEGER },
@@ -15,6 +16,7 @@ const AutoTaskRule = sequelize.define('auto_task_rules', {
   dingtalk_webhook: { type: DataTypes.TEXT },
   dingtalk_message: { type: DataTypes.TEXT },
   dingtalk_recipients: { type: DataTypes.TEXT },
+  duty_config:      { type: DataTypes.TEXT },
   created_at:       { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
   updated_at:       { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
 });
