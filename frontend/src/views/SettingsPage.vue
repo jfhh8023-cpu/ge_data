@@ -46,6 +46,11 @@ const weekDayOptions = [
   { value: 6, label: '周六' },
   { value: 7, label: '周日' }
 ]
+const actionModeOptions = [
+  { value: 'run_and_notify', label: '执行规则并通知' },
+  { value: 'run_only', label: '仅执行规则' },
+  { value: 'notify_only', label: '仅通知' }
+]
 const ROLE_LABEL = { frontend: '前端', backend: '后端', test: '测试' }
 const PHONE_PATTERN = /^\d{5,20}$/
 
@@ -84,6 +89,7 @@ function createDefaultRule() {
     id: '',
     name: '自动生成下一周任务',
     enabled: true,
+    action_mode: 'run_and_notify',
     schedule_type: 'weekly',
     schedule_year: CURRENT_YEAR,
     month_days: [1],
@@ -137,6 +143,52 @@ function isValidPhone(phone) {
   return PHONE_PATTERN.test(String(phone || '').trim())
 }
 
+function normalizeActionMode(value) {
+  return actionModeOptions.some(item => item.value === value) ? value : 'run_and_notify'
+}
+
+function isRunOnly(rule) {
+  return normalizeActionMode(rule?.action_mode) === 'run_only'
+}
+
+function isNotifyOnly(rule) {
+  return normalizeActionMode(rule?.action_mode) === 'notify_only'
+}
+
+function applyActionMode(rule) {
+  rule.action_mode = normalizeActionMode(rule.action_mode)
+  if (isRunOnly(rule)) {
+    rule.notify_enabled = false
+  } else if (isNotifyOnly(rule)) {
+    rule.notify_enabled = true
+  }
+  return rule
+}
+
+function handleActionModeChange(rule) {
+  applyActionMode(rule)
+}
+
+function notifySwitchTooltip(rule) {
+  if (isRunOnly(rule)) return '当前任务仅新增任务，已禁止开放通知'
+  if (isNotifyOnly(rule)) return '当前任务仅通知，已禁止生成任务'
+  return ''
+}
+
+function isNotifySwitchDisabled(rule) {
+  return !canEditAutoTasks.value || isRunOnly(rule) || isNotifyOnly(rule)
+}
+
+function testRunTooltip(rule) {
+  if (isNotifyOnly(rule)) return '当前任务仅通知，已禁止生成任务'
+  if (!rule.id) return '请先保存规则后再测试执行'
+  return '立即测试执行一次任务和通知，不修改自动触发规则'
+}
+
+function isTestRunDisabled(rule) {
+  return !canEditAutoTasks.value || !rule.id || isNotifyOnly(rule)
+}
+
 function normalizeRecipientConfig(value) {
   let raw = value
   if (typeof raw === 'string') {
@@ -187,6 +239,7 @@ function normalizeRule(rule) {
     dingtalk_webhooks: normalizeWebhookConfigs(rule.dingtalk_webhooks || rule.dingtalk_webhook),
     dingtalk_recipients: normalizeRecipientConfig(rule.dingtalk_recipients)
   }
+  applyActionMode(normalized)
   normalized._savedNotificationKey = normalized.id ? notificationKey(normalized) : ''
   return normalized
 }
@@ -255,6 +308,7 @@ function validateWebhooks(rule, requireComplete = false) {
 }
 
 function validateRule(rule, options = {}) {
+  applyActionMode(rule)
   if (!rule.name?.trim()) {
     warnRule(rule, '请输入规则名称')
     return false
@@ -282,9 +336,11 @@ function validateRule(rule, options = {}) {
 }
 
 function buildPayload(rule) {
+  applyActionMode(rule)
   return {
     name: rule.name.trim(),
     enabled: !!rule.enabled,
+    action_mode: normalizeActionMode(rule.action_mode),
     schedule_type: rule.schedule_type,
     schedule_year: rule.schedule_type === 'monthly' ? Number(rule.schedule_year) : null,
     month_days: rule.schedule_type === 'monthly' ? rule.month_days : [],
@@ -383,6 +439,10 @@ async function testNotification(rule) {
 }
 
 async function testRunRule(rule) {
+  if (isNotifyOnly(rule)) {
+    ElMessage.warning('当前任务仅通知，已禁止生成任务')
+    return
+  }
   if (!rule.id) {
     ElMessage.warning('请先保存规则后再测试执行')
     return
@@ -838,6 +898,20 @@ onUnmounted(() => {
               placeholder="HH:mm:ss"
               :disabled="!canEditAutoTasks"
             />
+            <el-select
+              v-model="rule.action_mode"
+              class="dt-rule-action-mode"
+              size="small"
+              :disabled="!canEditAutoTasks"
+              @change="handleActionModeChange(rule)"
+            >
+              <el-option
+                v-for="option in actionModeOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </el-select>
             <el-button
               size="small"
               type="primary"
@@ -847,16 +921,19 @@ onUnmounted(() => {
             >
               保存规则
             </el-button>
-            <el-button
-              size="small"
-              plain
-              :loading="testingRunId === rule.id"
-              :disabled="!canEditAutoTasks || !rule.id"
-              title="立即测试执行一次任务和通知，不修改自动触发规则"
-              @click="testRunRule(rule)"
-            >
-              测试执行
-            </el-button>
+            <el-tooltip :content="testRunTooltip(rule)" placement="top" :disabled="!isTestRunDisabled(rule)">
+              <span class="dt-button-tooltip-wrap" :class="{ 'is-disabled': isTestRunDisabled(rule) }">
+                <el-button
+                  size="small"
+                  plain
+                  :loading="testingRunId === rule.id"
+                  :disabled="isTestRunDisabled(rule)"
+                  @click="testRunRule(rule)"
+                >
+                  测试执行
+                </el-button>
+              </span>
+            </el-tooltip>
             <el-button
               v-if="canDeleteAutoTasks"
               size="small"
@@ -877,91 +954,100 @@ onUnmounted(() => {
             />
           </div>
 
-          <div class="dt-settings-notify-row">
-            <span class="dt-settings-switch-label">钉钉 webhook 通知</span>
-            <el-switch
-              v-model="rule.notify_enabled"
-              class="dt-switch-large"
-              size="large"
-              :disabled="!canEditAutoTasks"
-            />
-            <template v-if="hasSavedNotification(rule)">
-              <span class="dt-next-run">下次通知：{{ nextCountdown(rule) }}</span>
-              <el-tooltip :content="rule.dingtalk_message" placement="top">
-                <span class="dt-notify-preview">内容：{{ notificationPreview(rule) }}</span>
-              </el-tooltip>
-            </template>
-          </div>
-
-          <div v-if="rule.notify_enabled" class="dt-settings-notify-fields">
-            <div class="dt-webhook-list">
-              <div v-for="(webhook, webhookIndex) in rule.dingtalk_webhooks" :key="webhookIndex" class="dt-webhook-row">
-                <el-input
-                  v-model="webhook.name"
-                  size="small"
-                  :placeholder="defaultWebhookName(webhookIndex)"
-                  :disabled="!canEditAutoTasks"
-                />
-                <el-input
-                  v-model="webhook.url"
-                  size="small"
-                  :placeholder="`机器人 ${webhookIndex + 1} webhook`"
-                  :disabled="!canEditAutoTasks"
-                />
-                <el-button
-                  size="small"
-                  plain
-                  :icon="Plus"
-                  title="添加机器人"
-                  :disabled="!canEditAutoTasks"
-                  @click="addWebhook(rule)"
-                />
-                <el-button
-                  size="small"
-                  plain
-                  type="danger"
-                  :icon="Delete"
-                  title="删除机器人"
-                  :disabled="!canEditAutoTasks"
-                  @click="removeWebhook(rule, webhookIndex)"
-                />
+          <div class="dt-notify-submodule">
+            <div class="dt-notify-connector" aria-hidden="true"></div>
+            <div class="dt-notify-content">
+              <div class="dt-settings-notify-row">
+                <span class="dt-settings-switch-label">钉钉 webhook 通知</span>
+                <el-tooltip :content="notifySwitchTooltip(rule)" placement="top" :disabled="!notifySwitchTooltip(rule)">
+                  <span class="dt-switch-tooltip-wrap" :class="{ 'is-disabled': isNotifySwitchDisabled(rule) }">
+                    <el-switch
+                      v-model="rule.notify_enabled"
+                      class="dt-switch-large"
+                      size="large"
+                      :disabled="isNotifySwitchDisabled(rule)"
+                    />
+                  </span>
+                </el-tooltip>
+                <template v-if="hasSavedNotification(rule)">
+                  <span class="dt-next-run">下次通知：{{ nextCountdown(rule) }}</span>
+                  <el-tooltip :content="rule.dingtalk_message" placement="top">
+                    <span class="dt-notify-preview">内容：{{ notificationPreview(rule) }}</span>
+                  </el-tooltip>
+                </template>
               </div>
-            </div>
-            <el-input
-              v-model="rule.dingtalk_message"
-              class="dt-notify-message"
-              type="textarea"
-              :rows="2"
-              placeholder="发送给所有钉钉 webhook 机器人的固定文本内容"
-              :disabled="!canEditAutoTasks"
-            />
-            <div class="dt-notify-actions">
-              <el-button
-                size="small"
-                :icon="Promotion"
-                :loading="testingId === (rule.id || rule.localKey)"
-                :disabled="!canEditAutoTasks"
-                @click="testNotification(rule)"
-              >
-                测试发送
-              </el-button>
-              <el-button
-                size="small"
-                plain
-                :disabled="!canEditAutoTasks || !rule.id"
-                @click="openRecipients(rule, index)"
-              >
-                接收人
-              </el-button>
-              <el-button
-                size="small"
-                type="primary"
-                :loading="savingId === (rule.id || rule.localKey)"
-                :disabled="!canEditAutoTasks"
-                @click="saveRule(rule, index, { requireNotification: true })"
-              >
-                保存通知
-              </el-button>
+
+              <div v-if="rule.notify_enabled" class="dt-settings-notify-fields">
+                <div class="dt-webhook-list">
+                  <div v-for="(webhook, webhookIndex) in rule.dingtalk_webhooks" :key="webhookIndex" class="dt-webhook-row">
+                    <el-input
+                      v-model="webhook.name"
+                      size="small"
+                      :placeholder="defaultWebhookName(webhookIndex)"
+                      :disabled="!canEditAutoTasks"
+                    />
+                    <el-input
+                      v-model="webhook.url"
+                      size="small"
+                      :placeholder="`机器人 ${webhookIndex + 1} webhook`"
+                      :disabled="!canEditAutoTasks"
+                    />
+                    <el-button
+                      size="small"
+                      plain
+                      :icon="Plus"
+                      title="添加机器人"
+                      :disabled="!canEditAutoTasks"
+                      @click="addWebhook(rule)"
+                    />
+                    <el-button
+                      size="small"
+                      plain
+                      type="danger"
+                      :icon="Delete"
+                      title="删除机器人"
+                      :disabled="!canEditAutoTasks"
+                      @click="removeWebhook(rule, webhookIndex)"
+                    />
+                  </div>
+                </div>
+                <el-input
+                  v-model="rule.dingtalk_message"
+                  class="dt-notify-message"
+                  type="textarea"
+                  :rows="2"
+                  placeholder="发送给所有钉钉 webhook 机器人的固定文本内容"
+                  :disabled="!canEditAutoTasks"
+                />
+                <div class="dt-notify-actions">
+                  <el-button
+                    size="small"
+                    type="primary"
+                    :loading="savingId === (rule.id || rule.localKey)"
+                    :disabled="!canEditAutoTasks"
+                    @click="saveRule(rule, index, { requireNotification: true })"
+                  >
+                    保存通知
+                  </el-button>
+                  <el-button
+                    size="small"
+                    plain
+                    :disabled="!canEditAutoTasks || !rule.id"
+                    @click="openRecipients(rule, index)"
+                  >
+                    配置接收人
+                  </el-button>
+                  <el-button
+                    size="small"
+                    :icon="Promotion"
+                    :loading="testingId === (rule.id || rule.localKey)"
+                    :disabled="!canEditAutoTasks"
+                    @click="testNotification(rule)"
+                  >
+                    测试发送webhook
+                  </el-button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1191,6 +1277,7 @@ onUnmounted(() => {
 .dt-rule-days { flex: 2 1 220px; min-width: 190px; }
 .dt-rule-weekdays { flex: 2 1 240px; min-width: 200px; }
 .dt-rule-time { flex: 1 1 150px; min-width: 140px; }
+.dt-rule-action-mode { flex: 1 1 170px; min-width: 160px; }
 
 .dt-rule-line :deep(.el-input__wrapper),
 .dt-rule-line :deep(.el-select__wrapper),
@@ -1221,6 +1308,17 @@ onUnmounted(() => {
   padding-right: 18px;
 }
 
+.dt-button-tooltip-wrap,
+.dt-switch-tooltip-wrap {
+  display: inline-flex;
+  align-items: center;
+}
+
+.dt-button-tooltip-wrap.is-disabled,
+.dt-switch-tooltip-wrap.is-disabled {
+  cursor: not-allowed;
+}
+
 .dt-switch-large {
   --el-switch-on-color: var(--color-primary);
   --el-switch-off-color: #C9CDD4;
@@ -1228,13 +1326,52 @@ onUnmounted(() => {
   transform-origin: center;
 }
 
+.dt-notify-submodule {
+  position: relative;
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  margin-left: 32px;
+}
+
+.dt-notify-connector {
+  position: relative;
+  flex: 0 0 22px;
+  align-self: stretch;
+  min-height: 34px;
+}
+
+.dt-notify-connector::before {
+  content: '';
+  position: absolute;
+  left: 10px;
+  top: 0;
+  bottom: 14px;
+  width: 1px;
+  background: var(--color-border);
+}
+
+.dt-notify-connector::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  top: 20px;
+  width: 18px;
+  height: 1px;
+  background: var(--color-border);
+}
+
+.dt-notify-content {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .dt-settings-notify-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--color-border-light);
+  margin-top: 0;
+  padding-top: 0;
   min-height: 28px;
 }
 
@@ -1441,6 +1578,10 @@ onUnmounted(() => {
   .dt-rule-line {
     flex-wrap: wrap;
     white-space: normal;
+  }
+
+  .dt-notify-submodule {
+    margin-left: 12px;
   }
 }
 

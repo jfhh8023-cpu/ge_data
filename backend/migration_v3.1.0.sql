@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS auto_task_rules (
   id               CHAR(36)     NOT NULL PRIMARY KEY,
   name             VARCHAR(100) NOT NULL,
   enabled          TINYINT(1)   NOT NULL DEFAULT 1,
+  action_mode      VARCHAR(30)  NOT NULL DEFAULT 'run_and_notify',
   schedule_type    ENUM('monthly','weekly') NOT NULL DEFAULT 'weekly',
   schedule_year    INT NULL,
   month_days       JSON NULL,
@@ -53,6 +54,18 @@ SET @has_staff_phone := (
 );
 SET @sql := IF(@has_staff_phone = 0,
   'ALTER TABLE staff ADD COLUMN phone VARCHAR(30) NULL AFTER name',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @has_auto_task_action_mode := (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'auto_task_rules' AND COLUMN_NAME = 'action_mode'
+);
+SET @sql := IF(@has_auto_task_action_mode = 0,
+  'ALTER TABLE auto_task_rules ADD COLUMN action_mode VARCHAR(30) NOT NULL DEFAULT ''run_and_notify'' AFTER enabled',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;

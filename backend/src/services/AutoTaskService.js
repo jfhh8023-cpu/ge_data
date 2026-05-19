@@ -17,6 +17,7 @@ const {
 
 const SKIP_MESSAGE = '该任务已存在或无法新增超过下一周的新收集任务，若仍需新增，请手动处理';
 const DINGTALK_CARD_TITLE = '语音产研进度维护通知：';
+const ACTION_MODES = new Set(['run_and_notify', 'run_only', 'notify_only']);
 let schedulerTimer = null;
 let ticking = false;
 
@@ -32,6 +33,11 @@ async function ensureAutoTaskTables() {
   await AutoTaskRunLog.sync();
   await AutoTaskMessage.sync();
   await ensureColumn('staff', 'phone', { type: DataTypes.STRING(30), allowNull: true });
+  await ensureColumn('auto_task_rules', 'action_mode', {
+    type: DataTypes.STRING(30),
+    allowNull: false,
+    defaultValue: 'run_and_notify'
+  });
   await ensureColumn('auto_task_rules', 'dingtalk_recipients', { type: DataTypes.TEXT, allowNull: true });
 }
 
@@ -109,6 +115,17 @@ function isValidPhone(phone) {
   return /^\d{5,20}$/.test(String(phone || '').trim());
 }
 
+function normalizeActionMode(value) {
+  const mode = String(value || '').trim();
+  return ACTION_MODES.has(mode) ? mode : 'run_and_notify';
+}
+
+function normalizeNotifyEnabled(actionMode, value) {
+  if (actionMode === 'run_only') return false;
+  if (actionMode === 'notify_only') return true;
+  return value !== false;
+}
+
 function normalizeRecipientConfig(value) {
   let raw = value;
   if (typeof raw === 'string') {
@@ -175,6 +192,11 @@ async function recordAutoTaskMessage(ruleId, level, action, message) {
 function normalizeRulePayload(payload, existing = null) {
   const scheduleType = payload.schedule_type || existing?.schedule_type || 'weekly';
   const executeTime = payload.execute_time || existing?.execute_time || '09:00:00';
+  const actionMode = normalizeActionMode(payload.action_mode ?? existing?.action_mode);
+  const notifyEnabled = normalizeNotifyEnabled(
+    actionMode,
+    payload.notify_enabled ?? existing?.notify_enabled ?? true
+  );
   if (!/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(executeTime)) {
     const err = new Error('执行时间格式必须为 HH:mm:ss');
     err.status = 400;
@@ -207,12 +229,13 @@ function normalizeRulePayload(payload, existing = null) {
   return {
     name: payload.name ?? existing?.name ?? '自动生成任务规则',
     enabled: payload.enabled ?? existing?.enabled ?? true,
+    action_mode: actionMode,
     schedule_type: scheduleType,
     schedule_year: scheduleType === 'monthly' ? Number(scheduleYear) : null,
     month_days: scheduleType === 'monthly' ? monthDays : [],
     week_days: scheduleType === 'weekly' ? weekDays : [],
     execute_time: executeTime,
-    notify_enabled: payload.notify_enabled ?? existing?.notify_enabled ?? true,
+    notify_enabled: notifyEnabled,
     dingtalk_webhook: JSON.stringify(webhooks),
     dingtalk_message: payload.dingtalk_message ?? existing?.dingtalk_message ?? '',
     dingtalk_recipients: JSON.stringify(normalizeRecipientConfig(
@@ -418,6 +441,17 @@ async function sendDingTalkWebhook(rule) {
 }
 
 async function runRuleOnce(rule) {
+  const actionMode = normalizeActionMode(rule.action_mode);
+  if (actionMode === 'notify_only') {
+    return {
+      ok: false,
+      task_created: false,
+      task: null,
+      notify_status: 'not_required',
+      message: '当前任务仅通知，已禁止生成任务'
+    };
+  }
+
   const result = await createNextWeeklyTask();
   if (!result.created) {
     return {
@@ -429,13 +463,13 @@ async function runRuleOnce(rule) {
     };
   }
 
-  if (!rule.notify_enabled) {
+  if (actionMode === 'run_only' || !rule.notify_enabled) {
     return {
       ok: true,
       task_created: true,
       task: result.task,
       notify_status: 'skipped',
-      message: `${result.message}，通知开关未开启`
+      message: actionMode === 'run_only' ? `${result.message}，仅执行规则未通知` : `${result.message}，通知开关未开启`
     };
   }
 
@@ -462,6 +496,7 @@ async function runRuleOnce(rule) {
 }
 
 async function executeRule(rule, scheduledAt) {
+  const actionMode = normalizeActionMode(rule.action_mode);
   const [log, created] = await AutoTaskRunLog.findOrCreate({
     where: { rule_id: rule.id, scheduled_at: scheduledAt },
     defaults: {
@@ -476,6 +511,27 @@ async function executeRule(rule, scheduledAt) {
   if (!created) return null;
 
   try {
+    if (actionMode === 'notify_only') {
+      try {
+        await sendDingTalkWebhook(rule);
+        await log.update({
+          status: 'success',
+          message: '仅通知模式，通知发送成功',
+          notify_status: 'success'
+        });
+        await recordAutoTaskMessage(rule.id, 'success', 'auto_run', '仅通知模式，通知发送成功');
+      } catch (notifyErr) {
+        await log.update({
+          status: 'notify_failed',
+          message: '仅通知模式，通知发送失败',
+          notify_status: 'failed',
+          notify_error: notifyErr.message
+        });
+        await recordAutoTaskMessage(rule.id, 'error', 'auto_run', `仅通知模式，通知发送失败：${notifyErr.message}`);
+      }
+      return log;
+    }
+
     const result = await createNextWeeklyTask();
     if (!result.created) {
       await log.update({
@@ -487,14 +543,19 @@ async function executeRule(rule, scheduledAt) {
       return log;
     }
 
-    if (!rule.notify_enabled) {
+    if (actionMode === 'run_only' || !rule.notify_enabled) {
       await log.update({
         status: 'success',
         message: result.message,
         created_task_id: result.task.id,
         notify_status: 'skipped'
       });
-      await recordAutoTaskMessage(rule.id, 'success', 'auto_run', `${result.message}，通知开关未开启`);
+      await recordAutoTaskMessage(
+        rule.id,
+        'success',
+        'auto_run',
+        actionMode === 'run_only' ? `${result.message}，仅执行规则未通知` : `${result.message}，通知开关未开启`
+      );
       return log;
     }
 
