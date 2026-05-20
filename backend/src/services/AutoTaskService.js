@@ -24,6 +24,7 @@ const ACTION_MODES = new Set(['run_and_notify', 'run_only', 'notify_only']);
 const TASK_TYPES = new Set([TASK_TYPE_CREATE_NOTIFY, TASK_TYPE_DUTY_NOTIFY]);
 const DUTY_SEND_MODES = new Set(['start_only', 'start_and_end']);
 const STALE_RUNNING_LOG_MS = 60 * 1000;
+const SCHEDULE_TRIGGER_GRACE_MS = 60 * 1000;
 let schedulerTimer = null;
 let ticking = false;
 
@@ -421,12 +422,27 @@ function isRuleDateMatched(rule, parts) {
   return weekDays.includes(getWeekdayNumber(parts.date));
 }
 
+function getRuleTouchedAt(rule) {
+  const raw = rule?.updated_at || rule?.created_at;
+  const value = raw ? new Date(raw).getTime() : NaN;
+  return Number.isNaN(value) ? 0 : value;
+}
+
+function isScheduleEventTriggerable(rule, scheduledAt, now = new Date()) {
+  const scheduledTime = scheduledAt instanceof Date ? scheduledAt.getTime() : new Date(scheduledAt).getTime();
+  const nowTime = now instanceof Date ? now.getTime() : new Date(now).getTime();
+  if (Number.isNaN(scheduledTime) || Number.isNaN(nowTime)) return false;
+  if (scheduledTime > nowTime) return false;
+  if (nowTime - scheduledTime > SCHEDULE_TRIGGER_GRACE_MS) return false;
+  return getRuleTouchedAt(rule) <= scheduledTime;
+}
+
 function isRuleDue(rule, now = new Date()) {
   if (!rule.enabled) return null;
   const parts = getBeijingParts(now);
   if (!isRuleDateMatched(rule, parts)) return null;
   const scheduledAt = getBeijingScheduledAt(parts, rule.execute_time);
-  return now >= scheduledAt ? scheduledAt : null;
+  return isScheduleEventTriggerable(rule, scheduledAt, now) ? scheduledAt : null;
 }
 
 function getDutyItemForParts(rule, parts) {
@@ -464,7 +480,8 @@ function buildDutyEventsForParts(rule, parts) {
 function getDueDutyEvents(rule, now = new Date()) {
   if (!rule.enabled) return [];
   const parts = getBeijingParts(now);
-  return buildDutyEventsForParts(rule, parts).filter(event => now >= event.scheduledAt);
+  return buildDutyEventsForParts(rule, parts)
+    .filter(event => isScheduleEventTriggerable(rule, event.scheduledAt, now));
 }
 
 function getNextRunAt(rule, now = new Date()) {
