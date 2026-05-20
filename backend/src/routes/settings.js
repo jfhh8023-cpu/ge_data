@@ -216,7 +216,7 @@ router.post('/auto-tasks/test-notify', async (req, res, next) => {
     res.json({ code: 0, data: result, message: '测试发送成功' });
   } catch (err) {
     await createRuleMessage(req.body?.rule_id, 'error', 'test_notify', `测试发送失败：${err.message}`);
-    next(err);
+    res.status(400).json({ code: 1, message: `测试发送失败：${err.message}` });
   }
 });
 

@@ -23,6 +23,7 @@ const TASK_TYPE_DUTY_NOTIFY = 'duty_notify';
 const ACTION_MODES = new Set(['run_and_notify', 'run_only', 'notify_only']);
 const TASK_TYPES = new Set([TASK_TYPE_CREATE_NOTIFY, TASK_TYPE_DUTY_NOTIFY]);
 const DUTY_SEND_MODES = new Set(['start_only', 'start_and_end']);
+const STALE_RUNNING_LOG_MS = 60 * 1000;
 let schedulerTimer = null;
 let ticking = false;
 
@@ -594,11 +595,22 @@ function postJson(url, body, timeoutMs = 8000) {
       res.on('data', chunk => chunks.push(chunk));
       res.on('end', () => {
         const text = Buffer.concat(chunks).toString('utf8');
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-          resolve(text);
-        } else {
+        if (res.statusCode < 200 || res.statusCode >= 300) {
           reject(new Error(`webhook 返回 HTTP ${res.statusCode}: ${text.slice(0, 200)}`));
+          return;
         }
+
+        try {
+          const payload = JSON.parse(text);
+          if (payload && Object.prototype.hasOwnProperty.call(payload, 'errcode') && Number(payload.errcode) !== 0) {
+            const errmsg = payload.errmsg || payload.message || text;
+            reject(new Error(`webhook 返回失败 errcode=${payload.errcode}: ${String(errmsg).slice(0, 200)}`));
+            return;
+          }
+        } catch {
+          // Some webhook providers return plain text on success.
+        }
+        resolve(text);
       });
     });
     req.on('timeout', () => {
@@ -668,6 +680,28 @@ async function sendDutyWebhook(rule, event) {
   return sendDingTalkCard(webhooks, content, atConfig, DINGTALK_DUTY_CARD_TITLE);
 }
 
+async function prepareRunLog(where, defaults) {
+  const [log, created] = await AutoTaskRunLog.findOrCreate({ where, defaults });
+  if (created) return log;
+  if (log.status !== 'running') return null;
+
+  const createdAt = new Date(log.created_at || 0).getTime();
+  if (Number.isNaN(createdAt) || Date.now() - createdAt < STALE_RUNNING_LOG_MS) {
+    return null;
+  }
+
+  await log.update({
+    ...defaults,
+    id: log.id,
+    status: 'running',
+    notify_status: 'not_required',
+    notify_error: null,
+    created_task_id: null,
+    created_at: new Date()
+  });
+  return log;
+}
+
 async function runRuleOnce(rule) {
   if (normalizeTaskType(rule.task_type) === TASK_TYPE_DUTY_NOTIFY) {
     return {
@@ -735,9 +769,9 @@ async function runRuleOnce(rule) {
 async function executeDutyEvent(rule, event) {
   const actionLabel = event.kind === 'end' ? '值班结束提醒' : '值班开始提醒';
   const eventType = event.kind === 'end' ? 'duty_end' : 'duty_start';
-  const [log, created] = await AutoTaskRunLog.findOrCreate({
-    where: { rule_id: rule.id, scheduled_at: event.scheduledAt, event_type: eventType },
-    defaults: {
+  const log = await prepareRunLog(
+    { rule_id: rule.id, scheduled_at: event.scheduledAt, event_type: eventType },
+    {
       id: uuidv4(),
       rule_id: rule.id,
       scheduled_at: event.scheduledAt,
@@ -746,8 +780,8 @@ async function executeDutyEvent(rule, event) {
       message: `${actionLabel}发送中`,
       notify_status: 'not_required'
     }
-  });
-  if (!created) return null;
+  );
+  if (!log) return null;
 
   try {
     await sendDutyWebhook(rule, event);
@@ -771,9 +805,9 @@ async function executeDutyEvent(rule, event) {
 
 async function executeRule(rule, scheduledAt) {
   const actionMode = normalizeActionMode(rule.action_mode);
-  const [log, created] = await AutoTaskRunLog.findOrCreate({
-    where: { rule_id: rule.id, scheduled_at: scheduledAt, event_type: 'auto_task' },
-    defaults: {
+  const log = await prepareRunLog(
+    { rule_id: rule.id, scheduled_at: scheduledAt, event_type: 'auto_task' },
+    {
       id: uuidv4(),
       rule_id: rule.id,
       scheduled_at: scheduledAt,
@@ -782,8 +816,8 @@ async function executeRule(rule, scheduledAt) {
       message: '执行中',
       notify_status: 'not_required'
     }
-  });
-  if (!created) return null;
+  );
+  if (!log) return null;
 
   try {
     if (actionMode === 'notify_only') {
@@ -905,6 +939,11 @@ function startAutoTaskScheduler() {
   if (schedulerTimer) return schedulerTimer;
   schedulerTimer = setInterval(schedulerTick, 1000);
   if (typeof schedulerTimer.unref === 'function') schedulerTimer.unref();
+  setTimeout(() => {
+    schedulerTick().catch(err => {
+      console.error('[auto-task] 调度器启动后立即检查失败:', err.message);
+    });
+  }, 0);
   console.log('[auto-task] 自动任务调度器已启动');
   return schedulerTimer;
 }

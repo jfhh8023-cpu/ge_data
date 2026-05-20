@@ -3,7 +3,7 @@
  * SettingsPage.vue — v3.1.0 设置中心
  * 自动执行任务并通知 + 需求工时统计全量备份下载
  */
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, Download, Plus, Promotion } from '@element-plus/icons-vue'
 import api from '../api'
@@ -53,6 +53,8 @@ const dutyBulkForm = ref({
 const backupFormat = ref('xlsx')
 const nowTs = ref(Date.now())
 let countdownTimer = null
+let dueRefreshRunning = false
+let lastDueRefreshAt = 0
 
 const CURRENT_YEAR = new Date().getFullYear()
 const OLD_SKIP_MESSAGE = '本周任务已存在，若需新增，请手动处理'
@@ -90,6 +92,15 @@ const canDownloadBackup = computed(() => authStore.hasPermission('btn:settings:b
 
 function defaultWebhookName(index) {
   return `钉钉群webhook机器人${String(index + 1).padStart(2, '0')}`
+}
+
+function pad2(value) {
+  return String(value).padStart(2, '0')
+}
+
+function currentTimeString() {
+  const now = new Date()
+  return `${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`
 }
 
 function createDefaultWebhook(index = 0) {
@@ -378,8 +389,9 @@ function sortRules(list) {
   })
 }
 
-async function loadSettings() {
-  loading.value = true
+async function loadSettings(options = {}) {
+  const silent = options.silent === true
+  if (!silent) loading.value = true
   try {
     const res = await api.get('/settings/auto-tasks')
     const data = res.data || {}
@@ -387,7 +399,7 @@ async function loadSettings() {
     logs.value = data.logs || []
     messages.value = data.messages || []
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
 }
 
@@ -606,8 +618,8 @@ async function testNotification(rule) {
     })
     ElMessage.success('测试发送成功')
     await loadSettings()
-  } catch {
-    ElMessage.error('测试发送失败')
+  } catch (err) {
+    ElMessage.error(err.response?.data?.message || err.response?.data?.detail || '测试发送失败')
   } finally {
     testingId.value = ''
   }
@@ -641,8 +653,8 @@ async function testRunRule(rule) {
       ElMessage.success(res.message || '测试执行完成')
     }
     await loadSettings()
-  } catch {
-    ElMessage.error('测试执行失败')
+  } catch (err) {
+    ElMessage.error(err.response?.data?.message || err.response?.data?.detail || '测试执行失败')
   } finally {
     testingRunId.value = ''
   }
@@ -843,6 +855,26 @@ function staffDisplayName(staff) {
   return samePhone ? samePhone.name : (name || phone || '未命名')
 }
 
+function hasDutyStaffName(staff) {
+  const name = String(staff?.name || '').trim()
+  if (name && !isValidPhone(name)) return true
+  const displayName = staffDisplayName(staff)
+  return Boolean(displayName && displayName !== '未命名' && !isValidPhone(displayName))
+}
+
+function canSelectDutyStaff(staff) {
+  return Boolean(hasDutyStaffName(staff) && isValidPhone(staff?.phone))
+}
+
+function dutyStaffUnavailableReason(staff) {
+  const hasName = hasDutyStaffName(staff)
+  const hasPhone = isValidPhone(staff?.phone)
+  if (!hasName && !hasPhone) return '姓名和手机号码为空，请在【团队人员】页面添加后再试'
+  if (!hasName) return '姓名为空，请在【团队人员】页面添加后再试'
+  if (!hasPhone) return '手机号码为空，请在【团队人员】页面添加后再试'
+  return ''
+}
+
 function normalizeDutyStaffIds(ids = []) {
   return [...new Set((Array.isArray(ids) ? ids : [])
     .map(id => staffById(id)?.id || String(id || '').trim())
@@ -874,11 +906,99 @@ function dutyStatusText(item) {
   return dutyItemConfigured(item) ? '已配置' : '跳过'
 }
 
+function dutyItemHasStartPreview(item) {
+  return Boolean(item?.enabled && item.staff_ids?.length && String(item.start_message || '').trim())
+}
+
+function dutyItemHasEndPreview(item) {
+  return Boolean(
+    item?.enabled &&
+    item.send_mode === DUTY_SEND_MODE_BOTH &&
+    item.staff_ids?.length &&
+    String(item.end_message || '').trim()
+  )
+}
+
+function localDateOnly(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
+}
+
+function addLocalDays(date, days) {
+  const next = new Date(date)
+  next.setDate(next.getDate() + days)
+  return next
+}
+
+function localWeekdayNumber(date) {
+  const day = date.getDay()
+  return day === 0 ? 7 : day
+}
+
+function localDateAtTime(date, time) {
+  const [hours, minutes, seconds] = normalizeTime(time).split(':').map(Number)
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), hours, minutes, seconds, 0)
+}
+
+function dutyKeyForDate(rule, date) {
+  return rule.schedule_type === 'monthly'
+    ? String(date.getDate())
+    : String(localWeekdayNumber(date))
+}
+
+function canUseDutyDate(rule, date) {
+  return rule.schedule_type !== 'monthly' ||
+    !rule.schedule_year ||
+    Number(rule.schedule_year) === date.getFullYear()
+}
+
+function dutyPreviewEvents(item, date) {
+  const events = []
+  if (dutyItemHasStartPreview(item)) {
+    events.push(localDateAtTime(date, item.start_time))
+  }
+  if (dutyItemHasEndPreview(item)) {
+    events.push(localDateAtTime(date, item.end_time))
+  }
+  return events
+}
+
+function findNextDutyPreview(rule) {
+  const now = new Date(nowTs.value)
+  const today = localDateOnly(now)
+  for (let offset = 0; offset <= 400; offset += 1) {
+    const date = addLocalDays(today, offset)
+    if (!canUseDutyDate(rule, date)) continue
+    const key = dutyKeyForDate(rule, date)
+    const item = getDutyItem(rule, key)
+    if (!item.enabled) continue
+    const nextEvent = dutyPreviewEvents(item, date)
+      .filter(runAt => runAt.getTime() > now.getTime())
+      .sort((a, b) => a.getTime() - b.getTime())[0]
+    if (nextEvent) return { key, item }
+  }
+  return null
+}
+
+function formatDutyPreview(rule, key, item) {
+  const label = dutyKeyLabel(rule, key)
+  const people = staffNames(item.staff_ids)
+  const lines = []
+  if (dutyItemHasStartPreview(item)) {
+    lines.push(`${label} 开始 ${item.start_time.slice(0, 5)} ${people} ${item.start_message}`)
+  }
+  if (dutyItemHasEndPreview(item)) {
+    lines.push(`${label} 结束 ${item.end_time.slice(0, 5)} ${people} ${item.end_message}`)
+  }
+  return lines.join('\n')
+}
+
 function dutyPreviewText(rule) {
+  const next = findNextDutyPreview(rule)
+  if (next) return formatDutyPreview(rule, next.key, next.item)
   const key = dutyKeys(rule).find(itemKey => dutyItemConfigured(getDutyItem(rule, itemKey)))
   if (!key) return '尚未配置值班通知内容'
   const item = getDutyItem(rule, key)
-  return `${dutyKeyLabel(rule, key)} ${item.start_time.slice(0, 5)} ${staffNames(item.staff_ids)} ${item.start_message}`
+  return formatDutyPreview(rule, key, item)
 }
 
 async function openDutyDetail(rule, index, key) {
@@ -902,12 +1022,12 @@ function closeDutyDetail() {
 
 function isDutyStaffChecked(staff) {
   const ids = dutyDetailForm.value.staff_ids.map(id => String(id))
-  return ids.includes(String(staff.id)) || Boolean(staff.phone && ids.includes(String(staff.phone).trim()))
+  return canSelectDutyStaff(staff) && (ids.includes(String(staff.id)) || Boolean(staff.phone && ids.includes(String(staff.phone).trim())))
 }
 
 function toggleDutyStaff(staff, checked) {
-  if (checked && !isValidPhone(staff.phone)) {
-    ElMessage.warning('手机号码为空，请在【团队人员】页面添加后再试')
+  if (checked && !canSelectDutyStaff(staff)) {
+    ElMessage.warning(dutyStaffUnavailableReason(staff))
     return
   }
   const current = dutyDetailForm.value.staff_ids
@@ -931,6 +1051,7 @@ async function saveDutyDetail() {
   const rule = dutyDetailRule.value
   if (!rule || !dutyDetailKey.value) return
   const staffIds = normalizeDutyStaffIds(dutyDetailForm.value.staff_ids)
+    .filter(id => canSelectDutyStaff(staffById(id)))
   const item = normalizeDutyItem({
     ...dutyDetailForm.value,
     staff_ids: staffIds,
@@ -1237,9 +1358,69 @@ function nextCountdown(rule) {
   const hours = Math.floor((totalSeconds % 86400) / 3600)
   const minutes = Math.floor((totalSeconds % 3600) / 60)
   const seconds = totalSeconds % 60
-  if (days > 0) return `${days}天${hours}时${minutes}分`
+  if (days > 0) return `${days}天${hours}时${minutes}分${seconds}秒`
   if (hours > 0) return `${hours}时${minutes}分${seconds}秒`
   return `${minutes}分${seconds}秒`
+}
+
+function hasExpiredNextRun() {
+  return rules.value.some(rule => {
+    if (!rule.enabled || !rule.next_run_at) return false
+    const target = new Date(rule.next_run_at).getTime()
+    return !Number.isNaN(target) && target <= nowTs.value
+  })
+}
+
+async function refreshExpiredRuns() {
+  const current = Date.now()
+  if (dueRefreshRunning || current - lastDueRefreshAt < 3000) return
+  dueRefreshRunning = true
+  lastDueRefreshAt = current
+  try {
+    await loadSettings({ silent: true })
+  } finally {
+    dueRefreshRunning = false
+  }
+}
+
+function handleCountdownTick() {
+  nowTs.value = Date.now()
+  if (hasExpiredNextRun()) {
+    refreshExpiredRuns()
+  }
+}
+
+function removeTimeNowButtons() {
+  document.querySelectorAll('.dt-time-now-button').forEach(button => button.remove())
+}
+
+function injectTimeNowButton(assignTime) {
+  const mountButton = () => {
+    const footers = document.querySelectorAll('.dt-time-now-popper .el-time-panel__footer')
+    footers.forEach(footer => {
+      footer.querySelectorAll('.dt-time-now-button').forEach(button => button.remove())
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.className = 'el-time-panel__btn dt-time-now-button'
+      button.textContent = '此刻'
+      button.addEventListener('click', event => {
+        event.preventDefault()
+        event.stopPropagation()
+        assignTime(currentTimeString())
+      })
+      footer.insertBefore(button, footer.firstChild)
+    })
+  }
+  nextTick(mountButton)
+  window.setTimeout(mountButton, 0)
+}
+
+function handleTimePickerVisible(visible, assignTime) {
+  if (visible) {
+    injectTimeNowButton(assignTime)
+  } else {
+    window.setTimeout(removeTimeNowButtons, 0)
+  }
 }
 
 function downloadFilename(format) {
@@ -1276,11 +1457,12 @@ async function downloadBackup() {
 onMounted(async () => {
   await loadSettings()
   if (rules.value.some(isDutyRule)) await ensureStaffList()
-  countdownTimer = setInterval(() => { nowTs.value = Date.now() }, 1000)
+  countdownTimer = setInterval(handleCountdownTick, 1000)
 })
 
 onUnmounted(() => {
   if (countdownTimer) clearInterval(countdownTimer)
+  removeTimeNowButtons()
 })
 </script>
 
@@ -1361,8 +1543,10 @@ onUnmounted(() => {
               size="small"
               value-format="HH:mm:ss"
               format="HH:mm:ss"
+              popper-class="dt-time-now-popper"
               placeholder="HH:mm:ss"
               :disabled="!canEditAutoTasks"
+              @visible-change="visible => handleTimePickerVisible(visible, value => { rule.execute_time = value })"
             />
             <el-select
               v-if="!isDutyRule(rule)"
@@ -1611,14 +1795,16 @@ onUnmounted(() => {
                       @click="openDutyDetail(rule, index, key)"
                     >
                       <strong>{{ dutyKeyLabel(rule, key) }}</strong>
-                      <span>{{ dutyPeopleText(getDutyItem(rule, key)) }}</span>
-                      <em>{{ dutyTimeText(getDutyItem(rule, key)) }}</em>
-                      <small>{{ dutyStatusText(getDutyItem(rule, key)) }}</small>
+                      <div class="dt-duty-cell-info">
+                        <span>{{ dutyPeopleText(getDutyItem(rule, key)) }}</span>
+                        <em>{{ dutyTimeText(getDutyItem(rule, key)) }}</em>
+                        <small>{{ dutyStatusText(getDutyItem(rule, key)) }}</small>
+                      </div>
                     </button>
                   </div>
 
                   <div class="dt-duty-preview">
-                    <strong>预览：</strong>
+                    <strong>最近一次任务通知信息预览：</strong>
                     <span>{{ dutyPreviewText(rule) }}</span>
                   </div>
                 </div>
@@ -1709,17 +1895,23 @@ onUnmounted(() => {
             <h4>值班对象</h4>
             <label class="dt-duty-field-label">团队人员</label>
             <div class="dt-duty-staff-grid" v-loading="staffLoading">
-              <label v-for="staff in staffList" :key="staff.id" class="dt-duty-staff-item">
+              <label
+                v-for="staff in staffList"
+                :key="staff.id"
+                class="dt-duty-staff-item"
+                :class="{ 'is-disabled': !canSelectDutyStaff(staff) }"
+                :title="dutyStaffUnavailableReason(staff)"
+              >
                 <el-checkbox
                   :model-value="isDutyStaffChecked(staff)"
-                  :disabled="!isValidPhone(staff.phone)"
+                  :disabled="!canSelectDutyStaff(staff)"
                   @change="checked => toggleDutyStaff(staff, checked)"
                 />
                 <span>{{ staffDisplayName(staff) }}</span>
                 <em>{{ staff.phone || '空' }}</em>
               </label>
             </div>
-            <p class="dt-duty-dialog-tip">勾选人员会在 webhook 消息中按手机号 @，手机号为空不可勾选。</p>
+            <p class="dt-duty-dialog-tip">勾选人员会在 webhook 消息中按手机号 @，姓名和手机号完整才可勾选。</p>
           </div>
 
           <div class="dt-duty-dialog-card">
@@ -1754,7 +1946,9 @@ onUnmounted(() => {
                   value-format="HH:mm:ss"
                   format="HH:mm:ss"
                   size="small"
+                  popper-class="dt-time-now-popper"
                   placeholder="开始时间"
+                  @visible-change="visible => handleTimePickerVisible(visible, value => { dutyDetailForm.start_time = value })"
                 />
               </div>
               <div v-if="dutyDetailForm.send_mode === DUTY_SEND_MODE_BOTH">
@@ -1764,7 +1958,9 @@ onUnmounted(() => {
                   value-format="HH:mm:ss"
                   format="HH:mm:ss"
                   size="small"
+                  popper-class="dt-time-now-popper"
                   placeholder="结束时间"
+                  @visible-change="visible => handleTimePickerVisible(visible, value => { dutyDetailForm.end_time = value })"
                 />
               </div>
             </div>
@@ -2174,8 +2370,14 @@ onUnmounted(() => {
   max-width: none;
   overflow: visible;
   text-overflow: clip;
-  white-space: normal;
+  white-space: pre-wrap;
   flex: 1 1 auto;
+}
+
+:global(.dt-time-now-popper .dt-time-now-button) {
+  color: var(--color-primary);
+  font-weight: 600;
+  margin-right: 8px;
 }
 
 .dt-settings-notify-fields {
@@ -2211,15 +2413,19 @@ onUnmounted(() => {
 }
 
 .dt-notify-actions :deep(.el-button) {
-  height: 30px;
-  min-height: 30px;
-  padding-left: 12px;
-  padding-right: 12px;
+  height: 24px;
+  min-height: 24px;
+  padding-left: 9px;
+  padding-right: 9px;
   font-size: 12px;
 }
 
 .dt-notify-actions .dt-switch-large {
-  transform: scale(1);
+  transform: scale(0.75);
+}
+
+.dt-notify-actions .dt-switch-tooltip-wrap {
+  height: 24px;
 }
 
 .dt-settings-notify-fields.is-notify-off .dt-notify-actions {
@@ -2262,7 +2468,7 @@ onUnmounted(() => {
   border: 1px solid #fde7c4;
   border-radius: 8px;
   background: #fffaf2;
-  padding: 8px;
+  padding: 6px;
 }
 
 .dt-duty-card-head {
@@ -2270,7 +2476,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .dt-duty-card-head strong {
@@ -2281,7 +2487,7 @@ onUnmounted(() => {
 
 .dt-duty-card-head span {
   color: var(--color-text-3);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .dt-duty-card-actions {
@@ -2300,22 +2506,26 @@ onUnmounted(() => {
 .dt-duty-week-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 6px;
+  gap: 4px;
 }
 
 .dt-duty-month-grid {
   display: grid;
   grid-template-columns: repeat(16, minmax(0, 1fr));
-  gap: 4px;
+  gap: 3px;
 }
 
 .dt-duty-cell {
   min-width: 0;
-  height: 72px;
+  height: 48px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
   border: 1px solid var(--color-border-light);
   border-radius: 6px;
   background: var(--color-bg-white);
-  padding: 5px 6px;
+  padding: 4px 6px;
   text-align: left;
   color: var(--color-text-2);
   cursor: pointer;
@@ -2323,10 +2533,12 @@ onUnmounted(() => {
 }
 
 .dt-duty-month-grid .dt-duty-cell {
-  height: 32px;
-  display: flex;
+  height: 26px;
+  grid-template-columns: 1fr;
+  gap: 0;
   align-items: center;
-  justify-content: center;
+  justify-items: center;
+  padding: 2px 3px;
 }
 
 .dt-duty-cell.is-configured {
@@ -2338,58 +2550,74 @@ onUnmounted(() => {
   cursor: not-allowed;
 }
 
-.dt-duty-cell strong,
-.dt-duty-cell span,
-.dt-duty-cell em,
-.dt-duty-cell small {
-  display: block;
+.dt-duty-cell strong {
+  display: flex;
+  align-items: center;
+  height: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.dt-duty-cell strong {
   font-size: 12px;
   color: #9a5b00;
+  border-right: 1px solid #fde7c4;
+  padding-right: 4px;
 }
 
-.dt-duty-cell span,
-.dt-duty-cell em,
-.dt-duty-cell small {
-  font-size: 12px;
+.dt-duty-cell-info {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.dt-duty-cell-info span,
+.dt-duty-cell-info em,
+.dt-duty-cell-info small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
   font-style: normal;
   color: var(--color-text-3);
+  line-height: 1.15;
 }
 
-.dt-duty-month-grid .dt-duty-cell span,
-.dt-duty-month-grid .dt-duty-cell em,
-.dt-duty-month-grid .dt-duty-cell small {
+.dt-duty-month-grid .dt-duty-cell-info {
   display: none;
 }
 
 .dt-duty-month-grid .dt-duty-cell strong {
-  text-align: center;
   overflow: visible;
+  font-size: 11px;
+  border-right: 0;
+  padding-right: 0;
+  justify-content: center;
 }
 
 .dt-duty-preview {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
-  min-height: 32px;
-  margin-top: 6px;
+  min-height: 28px;
+  margin-top: 4px;
   border: 1px solid var(--color-border-light);
   border-radius: 6px;
   background: var(--color-bg-white);
-  padding: 6px 8px;
+  padding: 5px 8px;
   color: var(--color-text-2);
   font-size: 12px;
 }
 
+.dt-duty-preview strong {
+  flex: 0 0 auto;
+}
+
 .dt-duty-preview span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  flex: 1 1 auto;
+  overflow: visible;
+  white-space: pre-wrap;
+  line-height: 1.5;
 }
 
 .dt-task-type-options {
@@ -2506,6 +2734,16 @@ onUnmounted(() => {
 .dt-duty-staff-item em {
   color: var(--color-text-3);
   font-style: normal;
+}
+
+.dt-duty-staff-item.is-disabled {
+  cursor: not-allowed;
+  background: var(--color-bg-3);
+  color: var(--color-text-4);
+}
+
+.dt-duty-staff-item.is-disabled em {
+  color: var(--color-text-4);
 }
 
 .dt-duty-staff-item :deep(.el-checkbox) {
