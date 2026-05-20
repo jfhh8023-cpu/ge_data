@@ -609,14 +609,14 @@ async function testNotification(rule) {
   if (!validateWebhooks(rule, true)) return
   testingId.value = rule.id || rule.localKey
   try {
-    const dutyItem = isDutyRule(rule) ? firstConfiguredDutyItem(rule) : null
+    const dutyTarget = isDutyRule(rule) ? dutyTestNotificationTarget(rule) : null
     await api.post('/settings/auto-tasks/test-notify', {
       rule_id: rule.id,
       task_type: normalizeTaskType(rule.task_type),
       dingtalk_webhooks: compactWebhooks(rule),
-      dingtalk_message: isDutyRule(rule) ? dutyItem.start_message : (rule.dingtalk_message || ''),
+      dingtalk_message: isDutyRule(rule) ? dutyTarget.message : (rule.dingtalk_message || ''),
       dingtalk_recipients: isDutyRule(rule)
-        ? { enabled: true, at_mode: 'people', staff_ids: normalizeDutyStaffIds(dutyItem.staff_ids), extra: [] }
+        ? { enabled: true, at_mode: 'people', staff_ids: normalizeDutyStaffIds(dutyTarget.item.staff_ids), extra: [] }
         : normalizeRecipientConfig(rule.dingtalk_recipients)
     })
     ElMessage.success('测试发送成功')
@@ -626,6 +626,15 @@ async function testNotification(rule) {
   } finally {
     testingId.value = ''
   }
+}
+
+function dutyTestNotificationTarget(rule) {
+  const next = findNextDutyPreviewEntry(rule)
+  if (next?.item && next?.event) {
+    return { item: next.item, message: next.event.message }
+  }
+  const item = firstConfiguredDutyItem(rule)
+  return { item, message: item.start_message }
 }
 
 function firstConfiguredDutyItem(rule) {

@@ -279,16 +279,19 @@ function normalizeRecipientConfig(value) {
 
 async function resolveAtConfig(value) {
   const config = normalizeRecipientConfig(value);
-  if (!config.enabled) return { enabled: false, atAll: false, mobiles: [] };
-  if (config.at_mode === 'all') return { enabled: true, atAll: true, mobiles: [] };
+  if (!config.enabled) return { enabled: false, atAll: false, mobiles: [], missing: [] };
+  if (config.at_mode === 'all') return { enabled: true, atAll: true, mobiles: [], missing: [] };
   const phones = [];
+  const missing = [];
   if (config.staff_ids.length > 0) {
-    phones.push(...await resolveStaffPhones(config.staff_ids));
+    const result = await resolveStaffPhoneDetails(config.staff_ids);
+    phones.push(...result.mobiles);
+    missing.push(...result.missing);
   }
   for (const item of config.extra) {
     if (item.selected && isValidPhone(item.phone)) phones.push(item.phone);
   }
-  return { enabled: true, atAll: false, mobiles: [...new Set(phones)] };
+  return { enabled: true, atAll: false, mobiles: [...new Set(phones)], missing: [...new Set(missing)] };
 }
 
 function normalizeStaffIdentifiers(staffIds = []) {
@@ -298,8 +301,13 @@ function normalizeStaffIdentifiers(staffIds = []) {
 }
 
 async function resolveStaffPhones(staffIds = []) {
+  const result = await resolveStaffPhoneDetails(staffIds);
+  return result.mobiles;
+}
+
+async function resolveStaffPhoneDetails(staffIds = []) {
   const ids = normalizeStaffIdentifiers(staffIds);
-  if (ids.length === 0) return [];
+  if (ids.length === 0) return { mobiles: [], missing: [] };
   const staffRows = await Staff.findAll({
     where: {
       [Op.or]: [
@@ -311,24 +319,37 @@ async function resolveStaffPhones(staffIds = []) {
     attributes: ['id', 'name', 'phone']
   });
   const phones = [];
+  const missing = [];
   for (const id of ids) {
-    if (isValidPhone(id)) phones.push(id);
+    if (isValidPhone(id)) {
+      phones.push(id);
+      continue;
+    }
     const matched = staffRows.find(staff =>
       String(staff.id || '').trim() === id ||
       String(staff.phone || '').trim() === id ||
       String(staff.name || '').trim() === id
     );
     const phone = String(matched?.phone || '').trim();
-    if (isValidPhone(phone)) phones.push(phone);
+    if (isValidPhone(phone)) {
+      phones.push(phone);
+    } else {
+      missing.push(String(matched?.name || id).trim());
+    }
   }
-  return [...new Set(phones)];
+  return { mobiles: [...new Set(phones)], missing: [...new Set(missing)] };
 }
 
 async function resolveStaffAtConfig(staffIds = []) {
   const ids = normalizeStaffIdentifiers(staffIds);
-  if (ids.length === 0) return { enabled: false, atAll: false, mobiles: [] };
-  const mobiles = await resolveStaffPhones(ids);
-  return { enabled: mobiles.length > 0, atAll: false, mobiles: [...new Set(mobiles)] };
+  if (ids.length === 0) return { enabled: false, atAll: false, mobiles: [], missing: [] };
+  const result = await resolveStaffPhoneDetails(ids);
+  return {
+    enabled: result.mobiles.length > 0 || result.missing.length > 0,
+    atAll: false,
+    mobiles: [...new Set(result.mobiles)],
+    missing: [...new Set(result.missing)]
+  };
 }
 
 async function recordAutoTaskMessage(ruleId, level, action, message) {
@@ -656,6 +677,9 @@ function postJson(url, body, timeoutMs = 8000) {
 async function sendDingTalkCard(webhooks, content, atConfig, title = DINGTALK_CARD_TITLE) {
   if (!webhooks.length) throw new Error('webhook 地址为空');
   if (!content) throw new Error('消息内容为空');
+  if (atConfig.enabled && !atConfig.atAll && Array.isArray(atConfig.missing) && atConfig.missing.length > 0) {
+    throw new Error(`以下人员未找到可用于钉钉 @ 的手机号：${atConfig.missing.join('、')}，请检查团队人员手机号配置`);
+  }
   if (atConfig.enabled && !atConfig.atAll && atConfig.mobiles.length === 0) {
     throw new Error('未找到可用于钉钉 @ 的手机号，请检查团队人员手机号配置');
   }
