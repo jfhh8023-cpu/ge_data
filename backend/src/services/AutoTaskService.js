@@ -283,13 +283,7 @@ async function resolveAtConfig(value) {
   if (config.at_mode === 'all') return { enabled: true, atAll: true, mobiles: [] };
   const phones = [];
   if (config.staff_ids.length > 0) {
-    const staffRows = await Staff.findAll({
-      where: { id: { [Op.in]: config.staff_ids } },
-      attributes: ['phone']
-    });
-    for (const staff of staffRows) {
-      if (isValidPhone(staff.phone)) phones.push(String(staff.phone).trim());
-    }
+    phones.push(...await resolveStaffPhones(config.staff_ids));
   }
   for (const item of config.extra) {
     if (item.selected && isValidPhone(item.phone)) phones.push(item.phone);
@@ -297,23 +291,43 @@ async function resolveAtConfig(value) {
   return { enabled: true, atAll: false, mobiles: [...new Set(phones)] };
 }
 
-async function resolveStaffAtConfig(staffIds = []) {
-  const ids = [...new Set((Array.isArray(staffIds) ? staffIds : [])
+function normalizeStaffIdentifiers(staffIds = []) {
+  return [...new Set((Array.isArray(staffIds) ? staffIds : [])
     .map(id => String(id || '').trim())
     .filter(Boolean))];
-  if (ids.length === 0) return { enabled: false, atAll: false, mobiles: [] };
+}
+
+async function resolveStaffPhones(staffIds = []) {
+  const ids = normalizeStaffIdentifiers(staffIds);
+  if (ids.length === 0) return [];
   const staffRows = await Staff.findAll({
     where: {
       [Op.or]: [
         { id: { [Op.in]: ids } },
-        { phone: { [Op.in]: ids } }
+        { phone: { [Op.in]: ids } },
+        { name: { [Op.in]: ids } }
       ]
     },
-    attributes: ['phone']
+    attributes: ['id', 'name', 'phone']
   });
-  const mobiles = staffRows
-    .map(staff => String(staff.phone || '').trim())
-    .filter(isValidPhone);
+  const phones = [];
+  for (const id of ids) {
+    if (isValidPhone(id)) phones.push(id);
+    const matched = staffRows.find(staff =>
+      String(staff.id || '').trim() === id ||
+      String(staff.phone || '').trim() === id ||
+      String(staff.name || '').trim() === id
+    );
+    const phone = String(matched?.phone || '').trim();
+    if (isValidPhone(phone)) phones.push(phone);
+  }
+  return [...new Set(phones)];
+}
+
+async function resolveStaffAtConfig(staffIds = []) {
+  const ids = normalizeStaffIdentifiers(staffIds);
+  if (ids.length === 0) return { enabled: false, atAll: false, mobiles: [] };
+  const mobiles = await resolveStaffPhones(ids);
   return { enabled: mobiles.length > 0, atAll: false, mobiles: [...new Set(mobiles)] };
 }
 
@@ -642,6 +656,9 @@ function postJson(url, body, timeoutMs = 8000) {
 async function sendDingTalkCard(webhooks, content, atConfig, title = DINGTALK_CARD_TITLE) {
   if (!webhooks.length) throw new Error('webhook 地址为空');
   if (!content) throw new Error('消息内容为空');
+  if (atConfig.enabled && !atConfig.atAll && atConfig.mobiles.length === 0) {
+    throw new Error('未找到可用于钉钉 @ 的手机号，请检查团队人员手机号配置');
+  }
   const atText = atConfig.atAll ? '@所有人' : atConfig.mobiles.map(phone => `@${phone}`).join(' ');
   const cardText = [
     `### ${title}`,
