@@ -518,7 +518,7 @@ function buildPayload(rule) {
   }
 }
 
-async function saveRule(rule, index, options = {}) {
+async function persistRule(rule, index, options = {}, successMessage = '编辑成功', errorMessage = '编辑失败') {
   if (!validateRule(rule, options)) return
   savingId.value = rule.id || rule.localKey
   try {
@@ -527,13 +527,19 @@ async function saveRule(rule, index, options = {}) {
       ? await api.put(`/settings/auto-tasks/${rule.id}`, payload)
       : await api.post('/settings/auto-tasks', payload)
     rules.value[index] = normalizeRule(res.data)
-    ElMessage.success('编辑成功')
+    ElMessage.success(successMessage)
     await loadSettings()
+    return true
   } catch {
-    ElMessage.error('编辑失败')
+    ElMessage.error(errorMessage)
+    return false
   } finally {
     savingId.value = ''
   }
+}
+
+async function saveRule(rule, index, options = {}) {
+  await persistRule(rule, index, options)
 }
 
 async function handleRuleStatusChange(rule, index) {
@@ -921,7 +927,7 @@ function applyDutyReference() {
   ElMessage.success(`已引用${dutyKeyLabel(rule, dutyReferenceKey.value)}配置`)
 }
 
-function saveDutyDetail() {
+async function saveDutyDetail() {
   const rule = dutyDetailRule.value
   if (!rule || !dutyDetailKey.value) return
   const staffIds = normalizeDutyStaffIds(dutyDetailForm.value.staff_ids)
@@ -932,8 +938,19 @@ function saveDutyDetail() {
   })
   setDutyItem(rule, dutyDetailKey.value, item)
   syncDutyRuleScheduleKeys(rule)
+  if (rule.id && dutyDetailRuleIndex.value > -1) {
+    const saved = await persistRule(
+      rule,
+      dutyDetailRuleIndex.value,
+      { requireNotification: true },
+      '值班配置已保存并生效'
+    )
+    if (!saved) return
+  }
   closeDutyDetail()
-  ElMessage.success('值班配置已保存到当前规则，请点击保存通知提交')
+  if (!rule.id) {
+    ElMessage.success('值班配置已保存到当前规则，请点击保存通知提交')
+  }
 }
 
 function openFirstDutyDetail(rule, index) {
@@ -973,7 +990,7 @@ function dutyBulkReferencePreview() {
   return `${dutyKeyLabel(rule, dutyBulkForm.value.source_key)} ${dutyPeopleText(item)} ${dutyTimeText(item)} ${item.start_message || '未填写开始提醒'}`
 }
 
-function saveDutyBulkContent() {
+async function saveDutyBulkContent() {
   const rule = dutyBulkRule.value
   if (!rule) return
   if (dutyBulkForm.value.apply_mode === 'reference' && !dutyBulkForm.value.source_key) {
@@ -1003,8 +1020,19 @@ function saveDutyBulkContent() {
     }
   })
   syncDutyRuleScheduleKeys(rule)
+  if (rule.id && dutyBulkRuleIndex.value > -1) {
+    const saved = await persistRule(
+      rule,
+      dutyBulkRuleIndex.value,
+      { requireNotification: true },
+      '批量值班配置已保存并生效'
+    )
+    if (!saved) return
+  }
   dutyBulkDialogVisible.value = false
-  ElMessage.success('批量配置已写入当前规则，请点击保存通知提交')
+  if (!rule.id) {
+    ElMessage.success('批量配置已写入当前规则，请点击保存通知提交')
+  }
 }
 
 function dutyDetailPreview() {
