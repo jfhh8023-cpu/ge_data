@@ -46,7 +46,10 @@ const dutyBulkForm = ref({
   scope: 'all',
   apply_mode: 'content',
   source_key: '',
-  send_mode: 'start_only',
+  staff_ids: [],
+  start_time: '09:00:00',
+  end_time: '18:30:00',
+  send_mode: 'start_and_end',
   start_message: '请关注线上告警和待处理反馈。',
   end_message: '请同步今日值班处理结果。'
 })
@@ -962,6 +965,29 @@ function dutyPreviewEvents(item, date) {
   return events
 }
 
+function dutyPreviewEntries(item, date) {
+  const entries = []
+  if (dutyItemHasStartPreview(item)) {
+    entries.push({
+      kind: 'start',
+      label: '开始',
+      time: item.start_time,
+      message: item.start_message,
+      scheduledAt: localDateAtTime(date, item.start_time)
+    })
+  }
+  if (dutyItemHasEndPreview(item)) {
+    entries.push({
+      kind: 'end',
+      label: '结束',
+      time: item.end_time,
+      message: item.end_message,
+      scheduledAt: localDateAtTime(date, item.end_time)
+    })
+  }
+  return entries
+}
+
 function findNextDutyPreview(rule) {
   const now = new Date(nowTs.value)
   const today = localDateOnly(now)
@@ -977,6 +1003,66 @@ function findNextDutyPreview(rule) {
     if (nextEvent) return { key, item }
   }
   return null
+}
+
+function findNextDutyPreviewEntry(rule) {
+  const now = new Date(nowTs.value)
+  const today = localDateOnly(now)
+  for (let offset = 0; offset <= 400; offset += 1) {
+    const date = addLocalDays(today, offset)
+    if (!canUseDutyDate(rule, date)) continue
+    const key = dutyKeyForDate(rule, date)
+    const item = getDutyItem(rule, key)
+    if (!item.enabled) continue
+    const event = dutyPreviewEntries(item, date)
+      .filter(entry => entry.scheduledAt.getTime() > now.getTime())
+      .sort((a, b) => a.scheduledAt.getTime() - b.scheduledAt.getTime())[0]
+    if (event) return { key, item, date, event }
+  }
+  return null
+}
+
+function dutyDateFromKey(rule, key) {
+  const now = new Date(nowTs.value)
+  if (rule.schedule_type === 'monthly') {
+    const year = Number(rule.schedule_year) || now.getFullYear()
+    return new Date(year, now.getMonth(), Number(key))
+  }
+  const diff = Number(key) - localWeekdayNumber(now)
+  return addLocalDays(localDateOnly(now), diff)
+}
+
+function isDutyCurrentKey(rule, key) {
+  const now = new Date(nowTs.value)
+  if (rule.schedule_type === 'monthly') {
+    if (rule.schedule_year && Number(rule.schedule_year) !== now.getFullYear()) return false
+    return String(key) === String(now.getDate())
+  }
+  return String(key) === String(localWeekdayNumber(now))
+}
+
+function dutyPreviewLines(rule) {
+  const next = findNextDutyPreviewEntry(rule)
+  const key = next?.key || dutyKeys(rule).find(itemKey => dutyItemConfigured(getDutyItem(rule, itemKey)))
+  if (!key) return []
+  const item = next?.item || getDutyItem(rule, key)
+  const date = next?.date || dutyDateFromKey(rule, key)
+  return dutyPreviewEntries(item, date).map(entry => {
+    const isPending = entry.scheduledAt.getTime() > nowTs.value
+    const isNext = Boolean(
+      next &&
+      String(next.key) === String(key) &&
+      next.event.kind === entry.kind &&
+      next.event.scheduledAt.getTime() === entry.scheduledAt.getTime()
+    )
+    return {
+      id: `${key}-${entry.kind}`,
+      text: `${dutyKeyLabel(rule, key)} ${entry.label} ${entry.time.slice(0, 5)} ${staffNames(item.staff_ids)} ${entry.message}`,
+      status: isPending ? 'pending' : 'done',
+      statusText: isPending ? '待通知' : '已通知',
+      isNext
+    }
+  })
 }
 
 function formatDutyPreview(rule, key, item) {
@@ -1074,22 +1160,22 @@ async function saveDutyDetail() {
   }
 }
 
-function openFirstDutyDetail(rule, index) {
-  const key = dutyKeys(rule).find(itemKey => dutyItemConfigured(getDutyItem(rule, itemKey))) || dutyKeys(rule)[0]
-  openDutyDetail(rule, index, key)
-}
-
-function openDutyBulk(rule, index) {
+async function openDutyBulk(rule, index) {
+  await ensureStaffList()
   const firstConfiguredKey = dutyKeys(rule).find(key => dutyItemConfigured(getDutyItem(rule, key))) || ''
+  const seedItem = firstConfiguredKey ? getDutyItem(rule, firstConfiguredKey) : createDefaultDutyItem()
   dutyBulkRule.value = rule
   dutyBulkRuleIndex.value = index
   dutyBulkForm.value = {
     scope: 'all',
     apply_mode: 'content',
     source_key: firstConfiguredKey,
-    send_mode: DUTY_SEND_MODE_START,
-    start_message: '请关注线上告警和待处理反馈。',
-    end_message: '请同步今日值班处理结果。'
+    staff_ids: [...seedItem.staff_ids],
+    start_time: seedItem.start_time,
+    end_time: seedItem.end_time,
+    send_mode: DUTY_SEND_MODE_BOTH,
+    start_message: seedItem.start_message || '请关注线上告警和待处理反馈。',
+    end_message: seedItem.end_message || '请同步今日值班处理结果。'
   }
   dutyBulkDialogVisible.value = true
 }
@@ -1101,7 +1187,8 @@ function dutyBulkTitle() {
 
 function dutyBulkScopeLabel(scope) {
   const unit = dutyBulkRule.value?.schedule_type === 'monthly' ? '日期' : '星期'
-  return scope === 'configured' ? `仅已配置${unit}` : `所有${unit}`
+  if (scope === 'configured') return `仅已配置${unit}`
+  return dutyBulkRule.value?.schedule_type === 'monthly' ? '全日期范畴' : '全星期范畴'
 }
 
 function dutyBulkReferencePreview() {
@@ -1111,12 +1198,49 @@ function dutyBulkReferencePreview() {
   return `${dutyKeyLabel(rule, dutyBulkForm.value.source_key)} ${dutyPeopleText(item)} ${dutyTimeText(item)} ${item.start_message || '未填写开始提醒'}`
 }
 
+function isDutyBulkStaffChecked(staff) {
+  const ids = dutyBulkForm.value.staff_ids.map(id => String(id))
+  return canSelectDutyStaff(staff) && (ids.includes(String(staff.id)) || Boolean(staff.phone && ids.includes(String(staff.phone).trim())))
+}
+
+function toggleDutyBulkStaff(staff, checked) {
+  if (checked && !canSelectDutyStaff(staff)) {
+    ElMessage.warning(dutyStaffUnavailableReason(staff))
+    return
+  }
+  const current = dutyBulkForm.value.staff_ids
+  const phone = String(staff.phone || '').trim()
+  dutyBulkForm.value.staff_ids = checked
+    ? [...new Set([...current, staff.id])]
+    : current.filter(id => id !== staff.id && String(id) !== phone)
+}
+
+function dutyBulkPreview() {
+  const names = staffNames(dutyBulkForm.value.staff_ids)
+  const atText = dutyBulkForm.value.staff_ids.length ? `@${names.replaceAll('、', ' @')}` : '未选择接收人'
+  const start = `开始 ${dutyBulkForm.value.start_time.slice(0, 5)}\n${atText} ${dutyBulkForm.value.start_message}`
+  if (dutyBulkForm.value.send_mode !== DUTY_SEND_MODE_BOTH) return start
+  return `${start}\n\n结束 ${dutyBulkForm.value.end_time.slice(0, 5)}\n${atText} ${dutyBulkForm.value.end_message}`
+}
+
 async function saveDutyBulkContent() {
   const rule = dutyBulkRule.value
   if (!rule) return
   if (dutyBulkForm.value.apply_mode === 'reference' && !dutyBulkForm.value.source_key) {
     ElMessage.warning('请选择引用来源')
     return
+  }
+  const staffIds = normalizeDutyStaffIds(dutyBulkForm.value.staff_ids)
+    .filter(id => canSelectDutyStaff(staffById(id)))
+  if (dutyBulkForm.value.apply_mode === 'content') {
+    if (!staffIds.length) {
+      ElMessage.warning('请选择值班对象')
+      return
+    }
+    if (!String(dutyBulkForm.value.start_message || '').trim()) {
+      ElMessage.warning('请填写今日值班开始提醒')
+      return
+    }
   }
   const targetKeys = dutyKeys(rule).filter(key => {
     if (dutyBulkForm.value.scope === 'configured') return dutyItemConfigured(getDutyItem(rule, key))
@@ -1125,19 +1249,22 @@ async function saveDutyBulkContent() {
   const sourceItem = dutyBulkForm.value.apply_mode === 'reference'
     ? getDutyItem(rule, dutyBulkForm.value.source_key)
     : null
+  const bulkItem = sourceItem
+    ? null
+    : normalizeDutyItem({
+      enabled: staffIds.length > 0 && Boolean(dutyBulkForm.value.start_message?.trim()),
+      staff_ids: staffIds,
+      start_time: dutyBulkForm.value.start_time,
+      end_time: dutyBulkForm.value.end_time,
+      send_mode: dutyBulkForm.value.send_mode,
+      start_message: dutyBulkForm.value.start_message,
+      end_message: dutyBulkForm.value.end_message
+    })
   targetKeys.forEach(key => {
-    const current = getDutyItem(rule, key)
     if (sourceItem) {
       setDutyItem(rule, key, sourceItem)
     } else {
-      setDutyItem(rule, key, {
-        ...current,
-        send_mode: dutyBulkForm.value.send_mode,
-        start_message: dutyBulkForm.value.start_message,
-        end_message: dutyBulkForm.value.send_mode === DUTY_SEND_MODE_BOTH
-          ? dutyBulkForm.value.end_message
-          : current.end_message
-      })
+      setDutyItem(rule, key, bulkItem)
     }
   })
   syncDutyRuleScheduleKeys(rule)
@@ -1778,9 +1905,6 @@ onUnmounted(() => {
                       >
                         批量编辑/引用
                       </el-button>
-                      <el-button class="dt-duty-detail-button" plain :disabled="!canEditAutoTasks" @click="openFirstDutyDetail(rule, index)">
-                        编辑详情
-                      </el-button>
                     </div>
                   </div>
 
@@ -1790,7 +1914,10 @@ onUnmounted(() => {
                       :key="key"
                       type="button"
                       class="dt-duty-cell"
-                      :class="{ 'is-configured': dutyItemConfigured(getDutyItem(rule, key)) }"
+                      :class="{
+                        'is-configured': dutyItemConfigured(getDutyItem(rule, key)),
+                        'is-current-duty': isDutyCurrentKey(rule, key)
+                      }"
                       :disabled="!canEditAutoTasks"
                       @click="openDutyDetail(rule, index, key)"
                     >
@@ -1805,7 +1932,18 @@ onUnmounted(() => {
 
                   <div class="dt-duty-preview">
                     <strong>最近一次任务通知信息预览：</strong>
-                    <span>{{ dutyPreviewText(rule) }}</span>
+                    <div v-if="dutyPreviewLines(rule).length" class="dt-duty-preview-lines">
+                      <div
+                        v-for="line in dutyPreviewLines(rule)"
+                        :key="line.id"
+                        class="dt-duty-preview-line"
+                        :class="{ 'is-next': line.isNext }"
+                      >
+                        <span class="dt-duty-preview-text">{{ line.text }}</span>
+                        <span class="dt-duty-preview-status" :class="`is-${line.status}`">{{ line.statusText }}</span>
+                      </div>
+                    </div>
+                    <span v-else class="dt-duty-preview-empty">尚未配置值班通知内容</span>
                   </div>
                 </div>
               </div>
@@ -1997,7 +2135,7 @@ onUnmounted(() => {
       <el-dialog
         v-model="dutyBulkDialogVisible"
         :title="dutyBulkTitle()"
-        width="760px"
+        width="1080px"
         :close-on-click-modal="false"
       >
         <div class="dt-duty-dialog-grid is-bulk">
@@ -2026,19 +2164,85 @@ onUnmounted(() => {
             </template>
             <template v-else>
               <label class="dt-duty-field-label">发送策略</label>
-              <el-radio-group v-model="dutyBulkForm.send_mode" size="small" class="dt-duty-send-mode">
-                <el-radio-button :label="DUTY_SEND_MODE_START">只发送开始提醒</el-radio-button>
-                <el-radio-button :label="DUTY_SEND_MODE_BOTH">开始和结束都发送</el-radio-button>
+              <el-radio-group v-model="dutyBulkForm.send_mode" class="dt-duty-bulk-scope">
+                <el-radio :label="DUTY_SEND_MODE_BOTH">开始和结束都发送</el-radio>
+                <el-radio :label="DUTY_SEND_MODE_START">只发送开始提醒</el-radio>
               </el-radio-group>
             </template>
           </div>
+
           <div v-if="dutyBulkForm.apply_mode === 'content'" class="dt-duty-dialog-card">
+            <h4>值班对象</h4>
+            <label class="dt-duty-field-label">团队人员</label>
+            <div class="dt-duty-staff-grid is-bulk" v-loading="staffLoading">
+              <label
+                v-for="staff in staffList"
+                :key="staff.id"
+                class="dt-duty-staff-item"
+                :class="{ 'is-disabled': !canSelectDutyStaff(staff) }"
+                :title="dutyStaffUnavailableReason(staff)"
+              >
+                <el-checkbox
+                  :model-value="isDutyBulkStaffChecked(staff)"
+                  :disabled="!canSelectDutyStaff(staff)"
+                  @change="checked => toggleDutyBulkStaff(staff, checked)"
+                />
+                <span>{{ staffDisplayName(staff) }}</span>
+              </label>
+            </div>
+            <p class="dt-duty-dialog-tip">勾选人员会在 webhook 消息中按手机号 @，姓名和手机号完整才可勾选。</p>
+          </div>
+
+          <div v-if="dutyBulkForm.apply_mode === 'content'" class="dt-duty-dialog-card">
+            <h4>通知配置</h4>
+            <div class="dt-duty-time-row" :class="{ 'is-single': dutyBulkForm.send_mode !== DUTY_SEND_MODE_BOTH }">
+              <div>
+                <label class="dt-duty-field-label">值班开始时间</label>
+                <el-time-picker
+                  v-model="dutyBulkForm.start_time"
+                  value-format="HH:mm:ss"
+                  format="HH:mm:ss"
+                  size="small"
+                  popper-class="dt-time-now-popper"
+                  placeholder="开始时间"
+                  @visible-change="visible => handleTimePickerVisible(visible, value => { dutyBulkForm.start_time = value })"
+                />
+              </div>
+              <div v-if="dutyBulkForm.send_mode === DUTY_SEND_MODE_BOTH">
+                <label class="dt-duty-field-label">值班结束时间</label>
+                <el-time-picker
+                  v-model="dutyBulkForm.end_time"
+                  value-format="HH:mm:ss"
+                  format="HH:mm:ss"
+                  size="small"
+                  popper-class="dt-time-now-popper"
+                  placeholder="结束时间"
+                  @visible-change="visible => handleTimePickerVisible(visible, value => { dutyBulkForm.end_time = value })"
+                />
+              </div>
+            </div>
+
             <label class="dt-duty-field-label">今日值班开始提醒：</label>
-            <el-input v-model="dutyBulkForm.start_message" type="textarea" :rows="3" />
+            <el-input
+              v-model="dutyBulkForm.start_message"
+              type="textarea"
+              :rows="3"
+              placeholder="这里填写的内容就是开始时间 webhook 实际发送内容"
+            />
             <template v-if="dutyBulkForm.send_mode === DUTY_SEND_MODE_BOTH">
               <label class="dt-duty-field-label">今日值班结束提醒：</label>
-              <el-input v-model="dutyBulkForm.end_message" type="textarea" :rows="3" />
+              <el-input
+                v-model="dutyBulkForm.end_message"
+                type="textarea"
+                :rows="3"
+                placeholder="这里填写的内容就是结束时间 webhook 实际发送内容"
+              />
             </template>
+
+            <div class="dt-duty-dialog-preview">
+              <strong>发送预览</strong>
+              <pre>{{ dutyBulkPreview() }}</pre>
+            </div>
           </div>
         </div>
         <template #footer>
@@ -2496,12 +2700,6 @@ onUnmounted(() => {
   flex-wrap: wrap;
 }
 
-.dt-duty-detail-button {
-  height: 34px;
-  padding: 0 18px;
-  font-weight: 600;
-}
-
 .dt-duty-week-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -2515,6 +2713,7 @@ onUnmounted(() => {
 }
 
 .dt-duty-cell {
+  position: relative;
   min-width: 0;
   height: 48px;
   display: grid;
@@ -2528,7 +2727,7 @@ onUnmounted(() => {
   text-align: left;
   color: var(--color-text-2);
   cursor: pointer;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .dt-duty-month-grid .dt-duty-cell {
@@ -2545,11 +2744,41 @@ onUnmounted(() => {
   background: #fff7ed;
 }
 
+.dt-duty-cell.is-current-duty::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  z-index: 1;
+  border-radius: 7px;
+  padding: 1px;
+  background: conic-gradient(
+    from var(--dt-duty-spin, 0deg),
+    rgba(255, 77, 79, 0) 0deg,
+    #ff4d4f 22deg,
+    #ffd666 42deg,
+    #52c41a 62deg,
+    #13c2c2 82deg,
+    #1677ff 102deg,
+    #722ed1 122deg,
+    rgba(114, 46, 209, 0) 152deg,
+    rgba(255, 77, 79, 0) 360deg
+  );
+  pointer-events: none;
+  animation: dt-duty-rainbow-border 3.6s linear infinite;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
 .dt-duty-cell:disabled {
   cursor: not-allowed;
 }
 
 .dt-duty-cell strong {
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
   height: 100%;
@@ -2563,6 +2792,8 @@ onUnmounted(() => {
 }
 
 .dt-duty-cell-info {
+  position: relative;
+  z-index: 2;
   min-width: 0;
   display: grid;
   gap: 1px;
@@ -2594,6 +2825,18 @@ onUnmounted(() => {
   justify-content: center;
 }
 
+@property --dt-duty-spin {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes dt-duty-rainbow-border {
+  to {
+    --dt-duty-spin: 360deg;
+  }
+}
+
 .dt-duty-preview {
   display: flex;
   align-items: flex-start;
@@ -2612,11 +2855,53 @@ onUnmounted(() => {
   flex: 0 0 auto;
 }
 
-.dt-duty-preview span {
+.dt-duty-preview-lines {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.dt-duty-preview-line {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dt-duty-preview-text,
+.dt-duty-preview-empty {
   flex: 1 1 auto;
   overflow: visible;
   white-space: pre-wrap;
   line-height: 1.5;
+}
+
+.dt-duty-preview-line.is-next .dt-duty-preview-text {
+  color: var(--color-text-1);
+  font-weight: 700;
+}
+
+.dt-duty-preview-status {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.dt-duty-preview-status.is-pending {
+  background: #e8f3ff;
+  color: #165dff;
+}
+
+.dt-duty-preview-status.is-done {
+  background: #f2f3f5;
+  color: #86909c;
+}
+
+.dt-duty-preview-empty {
+  color: var(--color-text-3);
 }
 
 .dt-task-type-options {
@@ -2671,7 +2956,7 @@ onUnmounted(() => {
 }
 
 .dt-duty-dialog-grid.is-bulk {
-  grid-template-columns: minmax(240px, .8fr) minmax(360px, 1.2fr);
+  grid-template-columns: minmax(220px, .7fr) minmax(300px, .95fr) minmax(420px, 1.35fr);
 }
 
 .dt-duty-dialog-card {
@@ -2709,6 +2994,13 @@ onUnmounted(() => {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
+}
+
+.dt-duty-staff-grid.is-bulk {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-height: 260px;
+  overflow: auto;
+  padding-right: 2px;
 }
 
 .dt-duty-staff-item {
