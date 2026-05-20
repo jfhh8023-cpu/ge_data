@@ -1908,7 +1908,6 @@ onUnmounted(() => {
                   @change="checked => toggleDutyStaff(staff, checked)"
                 />
                 <span>{{ staffDisplayName(staff) }}</span>
-                <em>{{ staff.phone || '空' }}</em>
               </label>
             </div>
             <p class="dt-duty-dialog-tip">勾选人员会在 webhook 消息中按手机号 @，姓名和手机号完整才可勾选。</p>
@@ -2719,7 +2718,7 @@ onUnmounted(() => {
   background: var(--color-bg-white);
   padding: 3px 6px;
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) auto;
+  grid-template-columns: 18px minmax(0, 1fr);
   align-items: center;
   gap: 5px;
   font-size: 12px;
@@ -2729,11 +2728,8 @@ onUnmounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.dt-duty-staff-item em {
-  color: var(--color-text-3);
-  font-style: normal;
+  font-weight: 500;
+  color: var(--color-text-1);
 }
 
 .dt-duty-staff-item.is-disabled {
@@ -2742,7 +2738,7 @@ onUnmounted(() => {
   color: var(--color-text-4);
 }
 
-.dt-duty-staff-item.is-disabled em {
+.dt-duty-staff-item.is-disabled span {
   color: var(--color-text-4);
 }
 
