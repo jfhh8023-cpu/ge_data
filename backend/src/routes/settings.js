@@ -212,11 +212,17 @@ router.post('/auto-tasks/test-notify', async (req, res, next) => {
       dingtalk_message: message,
       dingtalk_recipients: req.body.dingtalk_recipients
     });
-    await createRuleMessage(ruleId, 'success', 'test_notify', '测试发送成功');
-    res.json({ code: 0, data: result, message: '测试发送成功' });
+    const isDutyLineSend = req.body.test_source === 'duty_preview_line';
+    const action = isDutyLineSend ? 'duty_line_send' : 'test_notify';
+    const successMessage = isDutyLineSend ? '单条值班通知发送成功' : '测试发送成功';
+    await createRuleMessage(ruleId, 'success', action, successMessage);
+    res.json({ code: 0, data: result, message: successMessage });
   } catch (err) {
-    await createRuleMessage(req.body?.rule_id, 'error', 'test_notify', `测试发送失败：${err.message}`);
-    res.status(400).json({ code: 1, message: `测试发送失败：${err.message}` });
+    const isDutyLineSend = req.body?.test_source === 'duty_preview_line';
+    const action = isDutyLineSend ? 'duty_line_send' : 'test_notify';
+    const errorPrefix = isDutyLineSend ? '单条值班通知发送失败' : '测试发送失败';
+    await createRuleMessage(req.body?.rule_id, 'error', action, `${errorPrefix}：${err.message}`);
+    res.status(400).json({ code: 1, message: `${errorPrefix}：${err.message}` });
   }
 });
 

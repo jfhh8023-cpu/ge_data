@@ -15,6 +15,7 @@ const loading = ref(true)
 const savingId = ref('')
 const testingId = ref('')
 const testingRunId = ref('')
+const dutyLineSendingId = ref('')
 const downloading = ref(false)
 const rules = ref([])
 const logs = ref([])
@@ -613,6 +614,7 @@ async function testNotification(rule) {
     await api.post('/settings/auto-tasks/test-notify', {
       rule_id: rule.id,
       task_type: normalizeTaskType(rule.task_type),
+      test_source: isDutyRule(rule) ? 'duty_today_test' : 'notify_test',
       dingtalk_webhooks: compactWebhooks(rule),
       dingtalk_message: isDutyRule(rule) ? dutyTarget.message : (rule.dingtalk_message || ''),
       dingtalk_recipients: isDutyRule(rule)
@@ -622,29 +624,46 @@ async function testNotification(rule) {
     ElMessage.success('测试发送成功')
     await loadSettings()
   } catch (err) {
-    ElMessage.error(err.response?.data?.message || err.response?.data?.detail || '测试发送失败')
+    ElMessage.error(err.userMessage || err.response?.data?.message || err.response?.data?.detail || '测试发送失败')
   } finally {
     testingId.value = ''
   }
 }
 
 function dutyTestNotificationTarget(rule) {
-  const next = findNextDutyPreviewEntry(rule)
-  if (next?.item && next?.event) {
-    return { item: next.item, message: next.event.message }
+  const today = findTodayClosestDutyPreviewEntry(rule)
+  if (today?.item && today?.event) {
+    return { item: today.item, message: today.event.message }
   }
-  const item = firstConfiguredDutyItem(rule)
-  return { item, message: item.start_message }
+  const err = new Error('今天未配置可发送的值班通知内容')
+  err.userMessage = err.message
+  throw err
 }
 
-function firstConfiguredDutyItem(rule) {
-  const item = Object.values(dutyMapForRule(rule)).find(dutyItemConfigured)
-  if (!item) {
-    const err = new Error('请至少配置一个值班日期/星期的人员和开始提醒内容')
-    err.userMessage = err.message
-    throw err
+async function sendDutyPreviewLine(rule, line) {
+  if (!validateWebhooks(rule, true)) return
+  dutyLineSendingId.value = `${rule.id || rule.localKey}-${line.id}`
+  try {
+    await api.post('/settings/auto-tasks/test-notify', {
+      rule_id: rule.id,
+      task_type: normalizeTaskType(rule.task_type),
+      test_source: 'duty_preview_line',
+      dingtalk_webhooks: compactWebhooks(rule),
+      dingtalk_message: line.message,
+      dingtalk_recipients: {
+        enabled: true,
+        at_mode: 'people',
+        staff_ids: normalizeDutyStaffIds(line.item.staff_ids),
+        extra: []
+      }
+    })
+    ElMessage.success('单条通知发送成功')
+    await loadSettings()
+  } catch (err) {
+    ElMessage.error(err.response?.data?.message || err.response?.data?.detail || '单条通知发送失败')
+  } finally {
+    dutyLineSendingId.value = ''
   }
-  return item
 }
 
 async function testRunRule(rule) {
@@ -1031,6 +1050,26 @@ function findNextDutyPreviewEntry(rule) {
   return null
 }
 
+function findTodayClosestDutyPreviewEntry(rule) {
+  const now = new Date(nowTs.value)
+  const today = localDateOnly(now)
+  if (!canUseDutyDate(rule, today)) return null
+  const key = dutyKeyForDate(rule, today)
+  const item = getDutyItem(rule, key)
+  if (!item.enabled) return null
+  const event = dutyPreviewEntries(item, today)
+    .sort((a, b) => {
+      const distanceA = Math.abs(a.scheduledAt.getTime() - now.getTime())
+      const distanceB = Math.abs(b.scheduledAt.getTime() - now.getTime())
+      if (distanceA !== distanceB) return distanceA - distanceB
+      const futureA = a.scheduledAt.getTime() >= now.getTime()
+      const futureB = b.scheduledAt.getTime() >= now.getTime()
+      if (futureA !== futureB) return futureA ? -1 : 1
+      return a.scheduledAt.getTime() - b.scheduledAt.getTime()
+    })[0]
+  return event ? { key, item, date: today, event } : null
+}
+
 function dutyDateFromKey(rule, key) {
   const now = new Date(nowTs.value)
   if (rule.schedule_type === 'monthly') {
@@ -1067,6 +1106,8 @@ function dutyPreviewLines(rule) {
     return {
       id: `${key}-${entry.kind}`,
       text: `${dutyKeyLabel(rule, key)} ${entry.label} ${entry.time.slice(0, 5)} ${staffNames(item.staff_ids)} ${entry.message}`,
+      item,
+      message: entry.message,
       status: isPending ? 'pending' : 'done',
       statusText: isPending ? '待通知' : '已通知',
       isNext
@@ -1950,6 +1991,14 @@ onUnmounted(() => {
                       >
                         <span class="dt-duty-preview-text">{{ line.text }}</span>
                         <span class="dt-duty-preview-status" :class="`is-${line.status}`">{{ line.statusText }}</span>
+                        <el-button
+                          size="small"
+                          class="dt-duty-preview-send"
+                          :loading="dutyLineSendingId === `${rule.id || rule.localKey}-${line.id}`"
+                          @click.stop="sendDutyPreviewLine(rule, line)"
+                        >
+                          发送
+                        </el-button>
                       </div>
                     </div>
                     <span v-else class="dt-duty-preview-empty">尚未配置值班通知内容</span>
@@ -2907,6 +2956,12 @@ onUnmounted(() => {
 .dt-duty-preview-status.is-done {
   background: #f2f3f5;
   color: #86909c;
+}
+
+.dt-duty-preview-send {
+  flex: 0 0 auto;
+  height: 22px;
+  padding: 0 9px;
 }
 
 .dt-duty-preview-empty {
