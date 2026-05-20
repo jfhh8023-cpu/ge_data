@@ -530,13 +530,13 @@ function exportHistory() {
           <!-- 有任务时的表单 -->
           <template v-else>
             <!-- 标题区 -->
-            <div style="padding:28px 32px 20px; border-bottom:1px solid var(--color-border-light);">
-              <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-                <div>
-                  <h1 style="font-size:20px; font-weight:700; color:var(--color-text-1); margin-bottom:6px;">
+            <div style="padding:10px 18px 8px; border-bottom:1px solid var(--color-border-light);">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+                <div style="min-width:0; display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;">
+                  <h1 style="font-size:18px; line-height:1.25; font-weight:700; color:var(--color-text-1); margin-bottom:0;">
                     {{ currentTask?.title || '工作统计' }}
                   </h1>
-                  <p style="font-size:14px; color:var(--color-text-3);">
+                  <p style="font-size:13px; line-height:1.35; color:var(--color-text-3);">
                     【{{ ROLE_LABEL[fillData?.staff?.role] }}】{{ fillData?.staff?.name }} 工作内容填写
                   </p>
                 </div>
