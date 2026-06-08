@@ -1,19 +1,26 @@
 <script setup>
 /**
  * PersonnelPage.vue — 团队人员管理页
+ * v3.2.0: 双 Tab 布局（研发人员 + 产品经理）
  * v1.6.1: 链接完整显示 + 操作按钮优化 + 数据交接功能
  * v1.6.0: el-table 布局 + 系统级专属链接操作区
  */
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useStaffStore } from '../stores/staff'
+import { usePmStore } from '../stores/pm'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import BackButton from '../components/BackButton.vue'
 import api from '../api'
 import { useAuthStore } from '../stores/auth'
+import Sortable from 'sortablejs'
 
 const staffStore = useStaffStore()
+const pmStore = usePmStore()
 const authStore = useAuthStore()
 const pageLoading = ref(true)
+
+/* ========== Tab 切换 ========== */
+const activeTab = ref('staff')
 
 /** 弹窗状态 */
 const dialogVisible = ref(false)
@@ -49,8 +56,86 @@ const transferTargetOptions = computed(() => {
 
 onMounted(async () => {
   pageLoading.value = true
-  await staffStore.fetchAll()
+  await Promise.all([staffStore.fetchAll(), pmStore.fetchAll()])
   pageLoading.value = false
+  await nextTick()
+  initSortable()
+})
+
+/* ========== 拖拽排序 ========== */
+let staffSortable = null
+let pmSortable = null
+
+function initSortable() {
+  // 延迟确保 el-table 渲染完成
+  setTimeout(() => {
+    initTableSortable('staff')
+    initTableSortable('pm')
+  }, 200)
+}
+
+function destroySortable(type) {
+  if (type === 'staff' && staffSortable) { staffSortable.destroy(); staffSortable = null }
+  if (type === 'pm' && pmSortable) { pmSortable.destroy(); pmSortable = null }
+}
+
+function initTableSortable(type) {
+  destroySortable(type)
+  const selector = type === 'staff' ? '.staff-sortable-table' : '.pm-sortable-table'
+  const el = document.querySelector(`${selector} .el-table__body-wrapper tbody`)
+  if (!el) return
+
+  const instance = Sortable.create(el, {
+    animation: 200,
+    handle: '.drag-handle',
+    ghostClass: 'sortable-ghost',
+    chosenClass: 'sortable-chosen',
+    onEnd: async (evt) => {
+      const { oldIndex, newIndex } = evt
+      if (oldIndex === newIndex) return
+
+      // 关键：先还原 DOM 移动，避免与 Vue 虚拟 DOM 冲突
+      const parent = evt.from
+      const children = parent.children
+      if (oldIndex < newIndex) {
+        parent.insertBefore(evt.item, children[oldIndex])
+      } else {
+        parent.insertBefore(evt.item, children[oldIndex + 1])
+      }
+
+      // 在数据层计算新顺序
+      const store = type === 'staff' ? staffStore : pmStore
+      const newList = [...store.list]
+      const [moved] = newList.splice(oldIndex, 1)
+      newList.splice(newIndex, 0, moved)
+      const ids = newList.map(item => item.id)
+
+      // 保存到后端
+      try {
+        const endpoint = type === 'staff' ? '/staff/sort' : '/pm/sort'
+        await api.put(endpoint, { ids })
+        // 从后端重新拉取确保数据一致
+        await store.fetchAll()
+        ElMessage.success('排序已保存')
+      } catch {
+        ElMessage.error('排序保存失败')
+        await store.fetchAll()
+      }
+
+      // 重建 Sortable 实例（因为 el-table 重新渲染了 DOM）
+      await nextTick()
+      setTimeout(() => initTableSortable(type), 150)
+    }
+  })
+
+  if (type === 'staff') staffSortable = instance
+  else pmSortable = instance
+}
+
+// Tab 切换后重新初始化 Sortable
+watch(activeTab, async () => {
+  await nextTick()
+  setTimeout(() => initTableSortable(activeTab.value), 200)
 })
 
 function getFillUrl(token) {
@@ -199,6 +284,128 @@ function openLink(token) {
   if (!url) return ElMessage.warning('该人员暂无专属链接')
   window.open(url, '_blank')
 }
+
+/* ========== 产品经理 Tab ========== */
+const pmDialogVisible = ref(false)
+const pmIsEditing = ref(false)
+const pmEditingId = ref('')
+const pmForm = ref({ name: '' })
+
+/* PM 交接 */
+const pmTransferDialogVisible = ref(false)
+const pmTransferSource = ref(null)
+const pmTransferLoading = ref(false)
+const pmTransferSummary = ref(null)
+const pmTransferTargetId = ref('')
+const pmTransferSubmitting = ref(false)
+
+const pmTransferTargetOptions = computed(() => {
+  if (!pmTransferSource.value) return []
+  return pmStore.list.filter(p => p.id !== pmTransferSource.value.id && p.is_active)
+})
+
+function getPmViewUrl(token) {
+  if (!token) return null
+  const base = import.meta.env.BASE_URL || '/'
+  const normalizedBase = base.endsWith('/') ? base : base + '/'
+  return `${window.location.origin}${normalizedBase}pm/view/${token}`
+}
+
+function openPmCreate() {
+  pmIsEditing.value = false
+  pmEditingId.value = ''
+  pmForm.value = { name: '' }
+  pmDialogVisible.value = true
+}
+
+function openPmEdit(pm) {
+  pmIsEditing.value = true
+  pmEditingId.value = pm.id
+  pmForm.value = { name: pm.name }
+  pmDialogVisible.value = true
+}
+
+async function handlePmSubmit() {
+  if (!pmForm.value.name || pmForm.value.name.trim().length < 2) {
+    ElMessage.warning('姓名长度须为 2-20 个字符')
+    return
+  }
+  try {
+    if (pmIsEditing.value) {
+      await pmStore.update(pmEditingId.value, pmForm.value)
+      ElMessage.success('更新成功（已全局同步）')
+    } else {
+      await pmStore.create(pmForm.value)
+      ElMessage.success('新增成功')
+    }
+    pmDialogVisible.value = false
+    await pmStore.fetchAll()
+  } catch (err) {
+    ElMessage.error(err.response?.data?.message || '操作失败')
+  }
+}
+
+async function handlePmDelete(pm) {
+  try {
+    await ElMessageBox.confirm(`确认删除产品经理「${pm.name}」？`, '删除产品经理', {
+      confirmButtonText: '确认', cancelButtonText: '取消', type: 'warning'
+    })
+    await pmStore.remove(pm.id)
+    ElMessage.success('已删除')
+  } catch (err) {
+    const msg = err.response?.data?.message
+    if (msg) ElMessage.error(msg)
+  }
+}
+
+async function openPmTransfer(pm) {
+  pmTransferSource.value = pm
+  pmTransferTargetId.value = ''
+  pmTransferSummary.value = null
+  pmTransferDialogVisible.value = true
+  pmTransferLoading.value = true
+  try {
+    const res = await api.get(`/pm/${pm.id}/references`)
+    pmTransferSummary.value = res.data
+  } catch {
+    ElMessage.error('加载数据失败')
+    pmTransferDialogVisible.value = false
+  } finally {
+    pmTransferLoading.value = false
+  }
+}
+
+async function handlePmTransfer() {
+  if (!pmTransferTargetId.value) {
+    ElMessage.warning('请选择交接目标产品经理')
+    return
+  }
+  pmTransferSubmitting.value = true
+  try {
+    const res = await api.post(`/pm/${pmTransferSource.value.id}/transfer`, { to_pm_id: pmTransferTargetId.value })
+    ElMessage.success(res.data.message || '交接成功')
+    pmTransferDialogVisible.value = false
+    await pmStore.fetchAll()
+  } catch (err) {
+    ElMessage.error(err.response?.data?.message || '交接失败')
+  } finally {
+    pmTransferSubmitting.value = false
+  }
+}
+
+function copyPmLink(token) {
+  const url = getPmViewUrl(token)
+  if (!url) return ElMessage.warning('该产品经理暂无专属链接')
+  copyToClipboard(url)
+    .then(() => ElMessage.success('链接已复制'))
+    .catch(() => ElMessage.error('复制失败'))
+}
+
+function openPmLink(token) {
+  const url = getPmViewUrl(token)
+  if (!url) return ElMessage.warning('该产品经理暂无专属链接')
+  window.open(url, '_blank')
+}
 </script>
 
 <template>
@@ -214,87 +421,160 @@ function openLink(token) {
       <div class="dt-page-header flex-between">
         <div>
           <h1 class="dt-page-title">团队人员</h1>
-          <p class="dt-page-description">管理研发团队成员名单，及其系统级专属填写链接</p>
+          <p class="dt-page-description">管理研发团队成员与产品经理名单</p>
         </div>
         <div style="display:flex; gap:8px;">
-          <el-button circle @click="staffStore.fetchAll()" title="刷新数据" style="font-size:16px;">🔄</el-button>
-          <el-button v-if="authStore.hasPermission('btn:personnel:create', 'view')" type="primary" @click="openCreate">+ 新增人员</el-button>
+          <el-button circle @click="activeTab === 'staff' ? staffStore.fetchAll() : pmStore.fetchAll()" title="刷新数据" style="font-size:16px;">🔄</el-button>
+          <el-button v-if="activeTab === 'staff' && authStore.hasPermission('btn:personnel:create', 'view')" type="primary" @click="openCreate">+ 新增人员</el-button>
+          <el-button v-if="activeTab === 'pm'" type="primary" @click="openPmCreate">+ 新增产品经理</el-button>
         </div>
       </div>
 
-      <!-- 预设文本区 -->
-      <div class="dt-preset-box">
-        <div class="dt-preset-label">复制带标题链接时使用的预设文本：</div>
-        <el-input v-model="presetText" placeholder="请填写预设文本..." style="max-width:480px;" size="default" />
-        <span class="dt-preset-hint">点击"复制带标题"会发送：姓名同学 + 此文本 + 换行 + 专属链接</span>
-      </div>
+      <!-- 双 Tab 切换 -->
+      <el-tabs v-model="activeTab" type="border-card" style="margin-bottom:20px;">
 
-      <el-skeleton v-if="staffStore.loading" :rows="5" animated />
-      <div v-else-if="staffStore.list.length === 0" class="dt-empty" style="padding:60px;">
-        <div class="dt-empty-icon">👥</div>
-        <p class="dt-empty-text">暂无团队人员，请点击上方按钮添加</p>
-      </div>
+        <!-- ===== Tab 1: 研发人员 ===== -->
+        <el-tab-pane label="研发人员" name="staff">
+          <!-- 预设文本区 -->
+          <div class="dt-preset-box">
+            <div class="dt-preset-label">复制带标题链接时使用的预设文本：</div>
+            <el-input v-model="presetText" placeholder="请填写预设文本..." style="max-width:480px;" size="default" />
+            <span class="dt-preset-hint">点击"复制带标题"会发送：姓名同学 + 此文本 + 换行 + 专属链接</span>
+          </div>
 
-      <!-- 表格列表 -->
-      <div v-else class="dt-data-card">
-        <el-table :data="staffStore.list" style="width:100%;">
-          <el-table-column label="姓名" width="100">
-            <template #default="{ row }">
-              <span style="font-weight:600; color:var(--color-text-1);">{{ row.name }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="手机号码" width="130">
-            <template #default="{ row }">
-              <span>{{ row.phone || '' }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="角色" width="80">
-            <template #default="{ row }">
-              <span class="dt-tag" :class="ROLE_TAG_CLASS[row.role]">{{ ROLE_LABEL[row.role] || '-' }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="状态" width="70">
-            <template #default="{ row }">
-              <span class="dt-badge" :class="row.is_active ? 'dt-badge-active' : 'dt-badge-closed'">
-                {{ row.is_active ? '在职' : '离职' }}
-              </span>
-            </template>
-          </el-table-column>
-          <!-- 专属链接列：完整显示，允许折行 -->
-          <el-table-column label="专属链接" min-width="320">
-            <template #default="{ row }">
-              <a
-                v-if="row.fillToken"
-                class="dt-link-url-full"
-                :href="getFillUrl(row.fillToken)"
-                target="_blank"
-                @click.prevent="openLink(row.fillToken)"
-              >{{ getFillUrl(row.fillToken) }}</a>
-              <span v-else style="color:var(--color-text-4); font-size:13px;">暂无链接</span>
-            </template>
-          </el-table-column>
-          <!-- 链接操作列：加粗加大，横排不换行 -->
-          <el-table-column label="链接操作" width="240" align="center">
-            <template #default="{ row }">
-              <div class="dt-link-ops">
-                <el-button v-if="authStore.hasPermission('btn:personnel:open_link', 'view')" class="dt-link-op-btn" type="primary" link :disabled="!row.fillToken" @click="openLink(row.fillToken)">打开</el-button>
-                <el-button v-if="authStore.hasPermission('btn:personnel:copy_link', 'view')" class="dt-link-op-btn" type="primary" link :disabled="!row.fillToken" @click="copyLink(row.fillToken)">复制</el-button>
-                <el-button v-if="authStore.hasPermission('btn:personnel:copy_link', 'view')" class="dt-link-op-btn" type="primary" link :disabled="!row.fillToken" @click="copyLinkWithTitle(row)">复制带标题</el-button>
-              </div>
-            </template>
-          </el-table-column>
-          <!-- 管理列：编辑 + 交接 + 删除 -->
-          <el-table-column label="管理" width="160" align="center">
-            <template #default="{ row }">
-              <el-button v-if="authStore.hasPermission('btn:personnel:edit', 'view')" type="warning" link size="small" @click="openEdit(row)">编辑</el-button>
-              <el-button v-if="authStore.hasPermission('btn:personnel:transfer', 'view')" type="info" link size="small" @click="openTransfer(row)">交接</el-button>
-              <el-button v-if="authStore.hasPermission('btn:personnel:delete', 'view')" type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </div>
+          <el-skeleton v-if="staffStore.loading" :rows="5" animated />
+          <div v-else-if="staffStore.list.length === 0" class="dt-empty" style="padding:60px;">
+            <div class="dt-empty-icon">👥</div>
+            <p class="dt-empty-text">暂无团队人员，请点击上方按钮添加</p>
+          </div>
 
-      <!-- 新增/编辑弹窗 -->
+          <!-- 表格列表 -->
+          <div v-else class="dt-data-card">
+            <el-table :data="staffStore.list" style="width:100%;" class="staff-sortable-table" row-key="id">
+              <el-table-column width="40" align="center">
+                <template #default>
+                  <span class="drag-handle" style="cursor:grab; font-size:16px; color:var(--color-text-4);" title="拖动排序">☰</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="姓名" width="100">
+                <template #default="{ row }">
+                  <span style="font-weight:600; color:var(--color-text-1);">{{ row.name }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="手机号码" width="130">
+                <template #default="{ row }">
+                  <span>{{ row.phone || '' }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="角色" width="80">
+                <template #default="{ row }">
+                  <span class="dt-tag" :class="ROLE_TAG_CLASS[row.role]">{{ ROLE_LABEL[row.role] || '-' }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="状态" width="70">
+                <template #default="{ row }">
+                  <span class="dt-badge" :class="row.is_active ? 'dt-badge-active' : 'dt-badge-closed'">
+                    {{ row.is_active ? '在职' : '离职' }}
+                  </span>
+                </template>
+              </el-table-column>
+              <!-- 专属链接列：完整显示，允许折行 -->
+              <el-table-column label="专属链接" min-width="320">
+                <template #default="{ row }">
+                  <a
+                    v-if="row.fillToken"
+                    class="dt-link-url-full"
+                    :href="getFillUrl(row.fillToken)"
+                    target="_blank"
+                    @click.prevent="openLink(row.fillToken)"
+                  >{{ getFillUrl(row.fillToken) }}</a>
+                  <span v-else style="color:var(--color-text-4); font-size:13px;">暂无链接</span>
+                </template>
+              </el-table-column>
+              <!-- 链接操作列 -->
+              <el-table-column label="链接操作" width="240" align="center">
+                <template #default="{ row }">
+                  <div class="dt-link-ops">
+                    <el-button v-if="authStore.hasPermission('btn:personnel:open_link', 'view')" class="dt-link-op-btn" type="primary" link :disabled="!row.fillToken" @click="openLink(row.fillToken)">打开</el-button>
+                    <el-button v-if="authStore.hasPermission('btn:personnel:copy_link', 'view')" class="dt-link-op-btn" type="primary" link :disabled="!row.fillToken" @click="copyLink(row.fillToken)">复制</el-button>
+                    <el-button v-if="authStore.hasPermission('btn:personnel:copy_link', 'view')" class="dt-link-op-btn" type="primary" link :disabled="!row.fillToken" @click="copyLinkWithTitle(row)">复制带标题</el-button>
+                  </div>
+                </template>
+              </el-table-column>
+              <!-- 管理列 -->
+              <el-table-column label="管理" width="160" align="center">
+                <template #default="{ row }">
+                  <el-button v-if="authStore.hasPermission('btn:personnel:edit', 'view')" type="warning" link size="small" @click="openEdit(row)">编辑</el-button>
+                  <el-button v-if="authStore.hasPermission('btn:personnel:transfer', 'view')" type="info" link size="small" @click="openTransfer(row)">交接</el-button>
+                  <el-button v-if="authStore.hasPermission('btn:personnel:delete', 'view')" type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </el-tab-pane>
+
+        <!-- ===== Tab 2: 产品经理 ===== -->
+        <el-tab-pane label="产品经理" name="pm">
+          <el-skeleton v-if="pmStore.loading" :rows="5" animated />
+          <div v-else-if="pmStore.list.length === 0" class="dt-empty" style="padding:60px;">
+            <div class="dt-empty-icon">👔</div>
+            <p class="dt-empty-text">暂无产品经理，请点击上方按钮添加</p>
+          </div>
+          <div v-else class="dt-data-card">
+            <el-table :data="pmStore.list" style="width:100%;" class="pm-sortable-table" row-key="id">
+              <el-table-column width="40" align="center">
+                <template #default>
+                  <span class="drag-handle" style="cursor:grab; font-size:16px; color:var(--color-text-4);" title="拖动排序">☰</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="姓名" width="120">
+                <template #default="{ row }">
+                  <span style="font-weight:600; color:var(--color-text-1);">{{ row.name }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="状态" width="70">
+                <template #default="{ row }">
+                  <span class="dt-badge" :class="row.is_active ? 'dt-badge-active' : 'dt-badge-closed'">
+                    {{ row.is_active ? '在职' : '离职' }}
+                  </span>
+                </template>
+              </el-table-column>
+              <!-- PM 专属链接列 -->
+              <el-table-column label="专属查看链接" min-width="350">
+                <template #default="{ row }">
+                  <a
+                    v-if="row.token"
+                    class="dt-link-url-full"
+                    :href="getPmViewUrl(row.token)"
+                    target="_blank"
+                    @click.prevent="openPmLink(row.token)"
+                  >{{ getPmViewUrl(row.token) }}</a>
+                  <span v-else style="color:var(--color-text-4); font-size:13px;">暂无链接</span>
+                </template>
+              </el-table-column>
+              <!-- PM 链接操作列 -->
+              <el-table-column label="链接操作" width="140" align="center">
+                <template #default="{ row }">
+                  <div class="dt-link-ops">
+                    <el-button class="dt-link-op-btn" type="primary" link :disabled="!row.token" @click="openPmLink(row.token)">打开</el-button>
+                    <el-button class="dt-link-op-btn" type="primary" link :disabled="!row.token" @click="copyPmLink(row.token)">复制</el-button>
+                  </div>
+                </template>
+              </el-table-column>
+              <!-- PM 管理列 -->
+              <el-table-column label="管理" width="160" align="center">
+                <template #default="{ row }">
+                  <el-button type="warning" link size="small" @click="openPmEdit(row)">编辑</el-button>
+                  <el-button type="info" link size="small" @click="openPmTransfer(row)">交接</el-button>
+                  <el-button type="danger" link size="small" @click="handlePmDelete(row)">删除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
+
+      <!-- 研发人员 新增/编辑弹窗 -->
       <el-dialog v-model="dialogVisible" :title="isEditing ? '编辑人员' : '新增人员'" width="400px" :close-on-click-modal="false">
         <el-form :model="form" label-width="70px">
           <el-form-item label="姓名">
@@ -315,7 +595,7 @@ function openLink(token) {
         </template>
       </el-dialog>
 
-      <!-- 交接弹窗 -->
+      <!-- 研发人员 交接弹窗 -->
       <el-dialog
         v-model="transferDialogVisible"
         :title="`数据交接 — ${transferSource?.name}`"
@@ -324,7 +604,6 @@ function openLink(token) {
       >
         <el-skeleton v-if="transferLoading" :rows="4" animated />
         <template v-else-if="transferSummary">
-          <!-- 汇总提示 -->
           <el-alert
             v-if="transferSummary.totalRecords === 0"
             type="success"
@@ -337,7 +616,6 @@ function openLink(token) {
             <div class="dt-transfer-tip">
               共有 <strong>{{ transferSummary.totalRecords }}</strong> 条工时记录，涉及以下任务：
             </div>
-            <!-- 任务汇总列表 -->
             <el-table :data="transferSummary.tasks" size="small" border style="margin-bottom:16px;">
               <el-table-column prop="title" label="任务名称" min-width="200">
                 <template #default="{ row }">
@@ -358,36 +636,76 @@ function openLink(token) {
                 <template #default="{ row }"><span style="font-size:12px; font-weight:700; color:var(--color-primary);">{{ row.totalHours }}H</span></template>
               </el-table-column>
             </el-table>
-
-            <!-- 交接目标选择 -->
             <div style="display:flex; align-items:center; gap:12px;">
               <span style="font-size:14px; font-weight:500; white-space:nowrap;">交接给：</span>
-              <el-select
-                v-model="transferTargetId"
-                placeholder="请选择交接目标人员"
-                style="flex:1;"
-                filterable
-              >
-                <el-option
-                  v-for="s in transferTargetOptions"
-                  :key="s.id"
-                  :label="`${s.name}（${ROLE_LABEL[s.role] || s.role}）`"
-                  :value="s.id"
-                />
+              <el-select v-model="transferTargetId" placeholder="请选择交接目标人员" style="flex:1;" filterable>
+                <el-option v-for="s in transferTargetOptions" :key="s.id" :label="`${s.name}（${ROLE_LABEL[s.role] || s.role}）`" :value="s.id" />
               </el-select>
             </div>
           </template>
         </template>
-
         <template #footer>
           <el-button @click="transferDialogVisible = false">取消</el-button>
-          <el-button
-            v-if="transferSummary?.totalRecords > 0"
-            type="primary"
-            :loading="transferSubmitting"
-            :disabled="!transferTargetId"
-            @click="handleTransfer"
-          >确认交接</el-button>
+          <el-button v-if="transferSummary?.totalRecords > 0" type="primary" :loading="transferSubmitting" :disabled="!transferTargetId" @click="handleTransfer">确认交接</el-button>
+        </template>
+      </el-dialog>
+
+      <!-- 产品经理 新增/编辑弹窗 -->
+      <el-dialog v-model="pmDialogVisible" :title="pmIsEditing ? '编辑产品经理' : '新增产品经理'" width="400px" :close-on-click-modal="false">
+        <el-form :model="pmForm" label-width="70px">
+          <el-form-item label="姓名">
+            <el-input v-model="pmForm.name" placeholder="请输入产品经理姓名（2-20字）" maxlength="20" />
+          </el-form-item>
+        </el-form>
+        <template #footer>
+          <el-button @click="pmDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="handlePmSubmit">{{ pmIsEditing ? '保存' : '新增' }}</el-button>
+        </template>
+      </el-dialog>
+
+      <!-- 产品经理 交接弹窗 -->
+      <el-dialog
+        v-model="pmTransferDialogVisible"
+        :title="`PM 数据交接 — ${pmTransferSource?.name}`"
+        width="560px"
+        :close-on-click-modal="false"
+      >
+        <el-skeleton v-if="pmTransferLoading" :rows="4" animated />
+        <template v-else-if="pmTransferSummary">
+          <el-alert
+            v-if="pmTransferSummary.totalRecords === 0"
+            type="success"
+            :closable="false"
+            style="margin-bottom:16px;"
+          >
+            <template #default>「{{ pmTransferSource?.name }}」暂无关联数据，可直接删除。</template>
+          </el-alert>
+          <template v-else>
+            <div class="dt-transfer-tip">
+              共有 <strong>{{ pmTransferSummary.totalRecords }}</strong> 条关联工时记录，涉及以下任务：
+            </div>
+            <el-table :data="pmTransferSummary.tasks" size="small" border style="margin-bottom:16px;">
+              <el-table-column prop="title" label="任务名称" min-width="200">
+                <template #default="{ row }"><span style="font-size:12px;">{{ row.title }}</span></template>
+              </el-table-column>
+              <el-table-column label="记录数" width="70" align="center">
+                <template #default="{ row }"><span style="font-size:12px;">{{ row.recordCount }}</span></template>
+              </el-table-column>
+              <el-table-column label="总工时" width="70" align="center">
+                <template #default="{ row }"><span style="font-size:12px; font-weight:700; color:var(--color-primary);">{{ row.totalHours }}H</span></template>
+              </el-table-column>
+            </el-table>
+            <div style="display:flex; align-items:center; gap:12px;">
+              <span style="font-size:14px; font-weight:500; white-space:nowrap;">交接给：</span>
+              <el-select v-model="pmTransferTargetId" placeholder="请选择目标产品经理" style="flex:1;" filterable>
+                <el-option v-for="p in pmTransferTargetOptions" :key="p.id" :label="p.name" :value="p.id" />
+              </el-select>
+            </div>
+          </template>
+        </template>
+        <template #footer>
+          <el-button @click="pmTransferDialogVisible = false">取消</el-button>
+          <el-button v-if="pmTransferSummary?.totalRecords > 0" type="primary" :loading="pmTransferSubmitting" :disabled="!pmTransferTargetId" @click="handlePmTransfer">确认交接</el-button>
         </template>
       </el-dialog>
     </template>
@@ -457,5 +775,39 @@ function openLink(token) {
   background: rgba(255, 125, 0, 0.06);
   border-radius: 6px;
   border-left: 3px solid #FF7D00;
+}
+
+/* === 拖拽排序 === */
+.drag-handle {
+  cursor: grab !important;
+  user-select: none;
+  opacity: 0.4;
+  transition: opacity 0.2s, color 0.2s;
+}
+.drag-handle:hover {
+  opacity: 1;
+  color: var(--color-primary, #165DFF) !important;
+}
+.drag-handle:active {
+  cursor: grabbing !important;
+}
+
+/* Sortable ghost（拖拽占位） */
+:deep(.sortable-ghost) {
+  background: var(--color-primary-light, #E8F3FF) !important;
+  opacity: 0.6;
+}
+:deep(.sortable-ghost td) {
+  background: var(--color-primary-light, #E8F3FF) !important;
+}
+
+/* Sortable chosen（选中行） */
+:deep(.sortable-chosen) {
+  background: #fff !important;
+  box-shadow: 0 4px 16px rgba(22, 93, 255, 0.15);
+  z-index: 100;
+}
+:deep(.sortable-chosen td) {
+  background: #fff !important;
 }
 </style>

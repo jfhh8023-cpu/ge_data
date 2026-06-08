@@ -15,17 +15,21 @@ export const useStatsStore = defineStore('stats', {
     loading: false,
     /* 个人统计 */
     personalData: null,
-    personalLoading: false
+    personalLoading: false,
+    /* PM 聚焦统计 */
+    pmFocusData: null,
+    pmFocusLoading: false
   }),
   actions: {
     /** 部门统计 */
-    async fetch({ year, quarter, taskId } = {}) {
+    async fetch({ year, quarter, taskId, pmSort } = {}) {
       this.loading = true
       try {
         const params = {}
         if (year) params.year = year
         if (quarter) params.quarter = quarter
         if (taskId) params.taskId = taskId
+        if (pmSort) params.pmSort = pmSort
         const res = await api.get('/stats', { params })
         const data = res.data.data || res.data
         this.tasks = data.tasks || []
@@ -48,6 +52,18 @@ export const useStatsStore = defineStore('stats', {
         const res = await api.get(`/stats/personal/${staffId}`, { params })
         this.personalData = res.data.data || res.data
       } finally { this.personalLoading = false }
+    },
+    /** PM 聚焦统计 */
+    async fetchPmFocus(pmId, { year, quarter, taskId } = {}) {
+      this.pmFocusLoading = true
+      try {
+        const params = {}
+        if (year) params.year = year
+        if (quarter) params.quarter = quarter
+        if (taskId) params.taskId = taskId
+        const res = await api.get(`/stats/pm/${pmId}`, { params })
+        this.pmFocusData = res.data.data || res.data
+      } finally { this.pmFocusLoading = false }
     }
   }
 })

@@ -12,6 +12,7 @@ const AccessLink = require('./AccessLink');
 const LinkPermission = require('./LinkPermission');
 const StaffFillLink = require('./StaffFillLink');
 const ExcelFile = require('./ExcelFile');
+const ProductManager = require('./ProductManager');
 const AutoTaskRule = require('./AutoTaskRule');
 const AutoTaskRunLog = require('./AutoTaskRunLog');
 const AutoTaskMessage = require('./AutoTaskMessage');
@@ -65,6 +66,7 @@ module.exports = {
   LinkPermission,
   StaffFillLink,
   ExcelFile,
+  ProductManager,
   AutoTaskRule,
   AutoTaskRunLog,
   AutoTaskMessage

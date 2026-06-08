@@ -7,6 +7,7 @@ const Staff = sequelize.define('staff', {
   phone:     { type: DataTypes.STRING(30), allowNull: true },
   role:      { type: DataTypes.ENUM('frontend', 'backend', 'test'), allowNull: false },
   is_active: { type: DataTypes.BOOLEAN, defaultValue: true },
+  sort_order:{ type: DataTypes.INTEGER, defaultValue: 0 },
   created_at:{ type: DataTypes.DATE, defaultValue: DataTypes.NOW }
 });
 

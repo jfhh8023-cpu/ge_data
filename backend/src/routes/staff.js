@@ -30,7 +30,7 @@ function normalizePhone(phone) {
 router.get('/', async (req, res, next) => {
   try {
     const list = await Staff.findAll({
-      order: [['role', 'ASC'], ['created_at', 'ASC']],
+      order: [['sort_order', 'ASC'], ['created_at', 'ASC']],
       include: [{ model: StaffFillLink, as: 'fillLink', attributes: ['token'] }]
     });
     const data = list.map(s => ({
@@ -110,6 +110,20 @@ router.post('/:id/transfer', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/* PUT /api/staff/sort — v3.2.0: 批量更新排序（必须在 /:id 前注册） */
+router.put('/sort', async (req, res, next) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ code: 1, message: 'ids 须为非空数组' });
+    }
+    for (let i = 0; i < ids.length; i++) {
+      await Staff.update({ sort_order: i + 1 }, { where: { id: ids[i] } });
+    }
+    res.json({ code: 0, message: '排序已保存' });
+  } catch (err) { next(err); }
+});
+
 /* POST /api/staff */
 router.post('/', async (req, res, next) => {
   try {
@@ -165,5 +179,6 @@ router.delete('/:id', async (req, res, next) => {
     res.json({ code: 0, message: '已删除' });
   } catch (err) { next(err); }
 });
+
 
 module.exports = router;

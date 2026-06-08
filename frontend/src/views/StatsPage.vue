@@ -17,6 +17,7 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useStatsStore } from '../stores/stats'
 import { useTaskStore } from '../stores/task'
+import { usePmStore } from '../stores/pm'
 import api from '../api'
 import { ElMessage } from 'element-plus'
 import { onDataChange, SYNC_EVENTS } from '../utils/sync'
@@ -26,6 +27,7 @@ import { useAuthStore } from '../stores/auth'
 const statsStore = useStatsStore()
 const authStore = useAuthStore()
 const taskStore = useTaskStore()
+const pmStore = usePmStore()
 
 /* ========== 常量 ========== */
 const CURRENT_YEAR = new Date().getFullYear()
@@ -42,10 +44,25 @@ const BAR_KEYS = ['frontend', 'backend', 'test', 'total']
 const ROLE_LABEL = { frontend: '前端', backend: '后端', test: '测试' }
 const ROLE_DOT_COLOR = { frontend: '#165DFF', backend: '#00B42A', test: '#FF7D00' }
 const ROLE_TAG_CLASS = { frontend: 'dt-tag-blue', backend: 'dt-tag-green', test: 'dt-tag-orange' }
+const PM_THEME_COLOR = '#722ED1'
+
+/* ========== 金银铜牌常量 ========== */
+const MEDAL_EMOJI = ['🥇', '🥈', '🥉']
+const MEDAL_CLASS = ['medal-gold', 'medal-silver', 'medal-bronze']
+
+function getMedalRank(records, currentHours) {
+  const uniqueHours = [...new Set(records.map(r => parseFloat(r.hours || 0)))]
+    .sort((a, b) => b - a)
+    .slice(0, 3)
+  const h = parseFloat(currentHours || 0)
+  const idx = uniqueHours.indexOf(h)
+  return idx >= 0 && idx < 3 ? idx : -1
+}
 
 /* ========== Tab 切换 ========== */
 const activeTab = ref('department')
 const pageLoading = ref(true)  // v1.4.3: 页面初始加载状态
+const pmSortOrder = ref('')  // v3.2.0: REQ-33 PM 排序（'' | 'asc' | 'desc'）
 
 /* ========== 筛选状态（共享） ========== */
 const selectedYear = ref(CURRENT_YEAR)
@@ -86,6 +103,7 @@ let cleanupSync = null
 onMounted(async () => {
   pageLoading.value = true
   await taskStore.fetchAll()
+  await pmStore.fetchAll()
   await loadDeptStats()
   // 监听工时变更广播，自动刷新统计
   cleanupSync = onDataChange(SYNC_EVENTS.WORK_RECORD_CHANGED, () => {
@@ -105,7 +123,8 @@ async function loadDeptStats() {
   await statsStore.fetch({
     year: selectedYear.value,
     quarter: selectedQuarter.value,
-    taskId: selectedTaskId.value
+    taskId: selectedTaskId.value,
+    pmSort: pmSortOrder.value || undefined
   })
   await nextTick()
   drawChart()
@@ -138,6 +157,22 @@ watch([selectedYear, selectedQuarter, selectedTaskId], async () => {
       })
     } else if (viewMode.value === 'all') {
       await loadAllPersonalData()
+    }
+  } else if (activeTab.value === 'product') {
+    // 刷新部门统计（保持 taskOptions 同步）
+    await statsStore.fetch({
+      year: selectedYear.value,
+      quarter: selectedQuarter.value,
+      taskId: selectedTaskId.value
+    })
+    if (pmViewMode.value === 'individual' && selectedPmId.value) {
+      await statsStore.fetchPmFocus(selectedPmId.value, {
+        year: selectedYear.value,
+        quarter: selectedQuarter.value,
+        taskId: selectedTaskId.value
+      })
+    } else if (pmViewMode.value === 'all') {
+      await loadAllPmData()
     }
   }
 })
@@ -174,14 +209,20 @@ const flatTableData = computed(() => {
         isTotalRow: false
       })
     } else {
-      // REQ-30: 先按 requirement_title + version 排序，使相同内容相邻
-      const sortedRecs = [...recs].sort((a, b) => {
-        const titleA = a.requirement_title || ''
-        const titleB = b.requirement_title || ''
-        const cmp = titleA.localeCompare(titleB, 'zh-CN')
-        if (cmp !== 0) return cmp
-        return (a.version || '').localeCompare(b.version || '')
-      })
+      // REQ-30: 默认按 requirement_title + version 排序；pmSort 模式下保持后端工时排序
+      let sortedRecs
+      if (pmSortOrder.value) {
+        // 后端已按工时排好序，直接使用
+        sortedRecs = [...recs]
+      } else {
+        sortedRecs = [...recs].sort((a, b) => {
+          const titleA = a.requirement_title || ''
+          const titleB = b.requirement_title || ''
+          const cmp = titleA.localeCompare(titleB, 'zh-CN')
+          if (cmp !== 0) return cmp
+          return (a.version || '').localeCompare(b.version || '')
+        })
+      }
 
       const totalRows = sortedRecs.length + 1  // +1 for total row
 
@@ -242,6 +283,20 @@ const flatTableData = computed(() => {
   }
   return rows
 })
+
+/** 部门全观 — 每个 PM 分组内的工时排名（金银铜） */
+function getDeptMedalRank(row) {
+  if (row.isTotalRow) return -1
+  const pmName = row.pmName
+  const allRows = flatTableData.value.filter(r => r.pmName === pmName && !r.isTotalRow)
+  const uniqueHours = [...new Set(allRows.map(r => parseFloat(r.hours || 0)))]
+    .sort((a, b) => b - a)
+    .slice(0, 3)
+  const h = parseFloat(row.hours || 0)
+  if (h <= 0) return -1
+  const idx = uniqueHours.indexOf(h)
+  return idx >= 0 && idx < 3 ? idx : -1
+}
 
 /** PM 点击选中高亮 */
 const selectedPM = ref('')
@@ -474,6 +529,23 @@ watch(activeTab, async (tab) => {
     } else if (viewMode.value === 'all') {
       await loadAllPersonalData()
     }
+  } else if (tab === 'product') {
+    // 切换到产品聚焦 Tab 时，刷新部门统计 + PM 列表
+    await statsStore.fetch({
+      year: selectedYear.value,
+      quarter: selectedQuarter.value,
+      taskId: selectedTaskId.value
+    })
+    await pmStore.fetchAll()
+    if (pmViewMode.value === 'individual' && selectedPmId.value) {
+      await statsStore.fetchPmFocus(selectedPmId.value, {
+        year: selectedYear.value,
+        quarter: selectedQuarter.value,
+        taskId: selectedTaskId.value
+      })
+    } else if (pmViewMode.value === 'all') {
+      await loadAllPmData()
+    }
   }
 })
 
@@ -527,6 +599,129 @@ function toggleAllTask(staffId, taskId) {
 }
 function isAllExpanded(staffId, taskId) {
   return !!allExpandedMap.value[`${staffId}_${taskId}`]
+}
+
+/* ========== Tab 3: 产品聚焦 ========== */
+const selectedPmId = ref('')
+const pmViewMode = ref('individual')  // 'individual' | 'all'
+const allPmFocusData = ref([])
+const pmExpandedTaskIds = ref([])
+const pmAllExpandedMap = ref({})
+
+/** PM 聚焦信息 */
+const pmFocusInfo = computed(() => statsStore.pmFocusData)
+
+/** PM 列表（来自 PM store） */
+const pmList = computed(() => pmStore.activePms)
+
+/** 选择产品经理 */
+async function selectPm(pmId) {
+  selectedPmId.value = pmId
+  pmExpandedTaskIds.value = []
+  await statsStore.fetchPmFocus(pmId, {
+    year: selectedYear.value,
+    quarter: selectedQuarter.value,
+    taskId: selectedTaskId.value
+  })
+  // 默认展开最近一个周期（按 start_date 最新）
+  const tasks = statsStore.pmFocusData?.tasks || []
+  const tasksWithRecords = tasks.filter(t => t.records?.length > 0)
+  if (tasksWithRecords.length > 0) {
+    const latest = tasksWithRecords.reduce((a, b) => new Date(a.start_date) > new Date(b.start_date) ? a : b)
+    pmExpandedTaskIds.value = [latest.id]
+  }
+}
+
+/** 切换 PM 查看模式 */
+async function switchPmViewMode(mode) {
+  pmViewMode.value = mode
+  if (mode === 'all') {
+    await loadAllPmData()
+  }
+}
+
+/** 加载所有 PM 的聚焦数据 */
+async function loadAllPmData() {
+  const results = []
+  for (const pm of pmStore.activePms) {
+    try {
+      const res = await api.get(`/stats/pm/${pm.id}`, {
+        params: { year: selectedYear.value, quarter: selectedQuarter.value, taskId: selectedTaskId.value }
+      })
+      const data = res.data.data || res.data || {}
+      // 周期倒序（最新在前）
+      if (data.tasks?.length) {
+        data.tasks.sort((a, b) => new Date(b.start_date) - new Date(a.start_date))
+      }
+      results.push(data)
+    } catch { /* skip */ }
+  }
+  allPmFocusData.value = results
+  // 默认展开每个 PM 最近一个有记录的周期
+  const newMap = {}
+  for (const pmData of results) {
+    const pmId = pmData.pm?.id
+    if (!pmId) continue
+    const tasksWithRecords = (pmData.tasks || []).filter(t => t.records?.length > 0)
+    if (tasksWithRecords.length > 0) {
+      const latest = tasksWithRecords[0]  // 已经按 start_date 倒序，第一个就是最新
+      newMap[`${pmId}_${latest.id}`] = true
+    }
+  }
+  pmAllExpandedMap.value = newMap
+}
+
+/** 获取 PM 的 token（用于跳转专属链接） */
+function getPmToken(pmId) {
+  const pm = pmStore.list.find(p => p.id === pmId)
+  return pm?.token || ''
+}
+
+/** PM 手风琴面板展开/收起 */
+function togglePmTask(taskId) {
+  const idx = pmExpandedTaskIds.value.indexOf(taskId)
+  if (idx === -1) {
+    pmExpandedTaskIds.value.push(taskId)
+  } else {
+    pmExpandedTaskIds.value.splice(idx, 1)
+  }
+}
+
+/** PM 一起查看折叠管理 */
+function togglePmAllTask(pmId, taskId) {
+  const key = `${pmId}_${taskId}`
+  pmAllExpandedMap.value[key] = !pmAllExpandedMap.value[key]
+}
+function isPmAllExpanded(pmId, taskId) {
+  return !!pmAllExpandedMap.value[`${pmId}_${taskId}`]
+}
+
+/** PM 一起查看 — 展开/收起全部周期 */
+const pmAllShowAll = ref({})
+
+function isPmAllShowingAll(pmId) {
+  return !!pmAllShowAll.value[pmId]
+}
+
+function togglePmAllShowAll(pmId) {
+  pmAllShowAll.value[pmId] = !pmAllShowAll.value[pmId]
+}
+
+/** 获取 PM 在一起查看中的可见任务列表 */
+function getVisiblePmTasks(pmData) {
+  const pmId = pmData.pm?.id
+  const tasks = pmData.tasks || []
+  if (!pmId || tasks.length <= 1 || isPmAllShowingAll(pmId)) {
+    return tasks
+  }
+  // 只显示第一个有记录的（已默认展开的最新周期）
+  const expandedKey = Object.keys(pmAllExpandedMap.value).find(k => k.startsWith(`${pmId}_`) && pmAllExpandedMap.value[k])
+  if (expandedKey) {
+    const expandedTaskId = expandedKey.split('_')[1]
+    const found = tasks.find(t => String(t.id) === expandedTaskId)
+    return found ? [found] : [tasks[0]]
+  }
+  return [tasks[0]]
 }
 
 /** 个人信息 */
@@ -723,6 +918,15 @@ function exportStatsData() {
 
         <!-- 明细表（REQ-13：PM 合并单元格） -->
         <div class="dt-data-card">
+          <!-- v3.2.0: PM 排序控件 -->
+          <div v-if="flatTableData.length > 0" style="display:flex; justify-content:space-between; align-items:center; padding:12px 16px; border-bottom:1px solid var(--color-border-light, #F2F3F5);">
+            <span style="font-size:13px; font-weight:500; color:var(--color-text-2);">PM内数据排序：</span>
+            <el-radio-group v-model="pmSortOrder" size="small" @change="loadDeptStats">
+              <el-radio-button value="">默认</el-radio-button>
+              <el-radio-button value="desc">工时降序 ↓</el-radio-button>
+              <el-radio-button value="asc">工时升序 ↑</el-radio-button>
+            </el-radio-group>
+          </div>
           <el-skeleton v-if="statsStore.loading" :rows="4" animated />
           <div v-else-if="flatTableData.length === 0" class="dt-empty" style="padding:40px;">
             <div class="dt-empty-icon">📈</div>
@@ -782,9 +986,19 @@ function exportStatsData() {
                 <span v-else style="color:var(--color-text-4);">-</span>
               </template>
             </el-table-column>
-            <el-table-column label="工时/小时" width="100" align="center">
+            <el-table-column label="工时/小时" width="120" align="center">
               <template #default="{ row }">
-                <span style="font-weight:700; color:var(--color-primary);">{{ row.hours }}</span>
+                <template v-if="row.isTotalRow">
+                  <span style="font-weight:700; color:var(--color-primary);">{{ row.hours }}</span>
+                </template>
+                <template v-else>
+                  <div class="hours-cell" :class="MEDAL_CLASS[getDeptMedalRank(row)] || ''">
+                    <span class="hours-val">{{ row.hours }}</span>
+                    <span v-if="getDeptMedalRank(row) >= 0" class="medal-badge">
+                      {{ MEDAL_EMOJI[getDeptMedalRank(row)] }}
+                    </span>
+                  </div>
+                </template>
               </template>
             </el-table-column>
           </el-table>
@@ -1016,7 +1230,270 @@ function exportStatsData() {
           </div>
         </template>
       </el-tab-pane>
+
+      <!-- ===== Tab 3: 产品聚焦 ===== -->
+      <el-tab-pane label="产品聚焦" name="product">
+        <!-- 模式切换按钮 -->
+        <div style="display:flex; gap:8px; margin-bottom:16px;">
+          <button
+            :class="['dt-btn', 'dt-btn-sm', pmViewMode === 'individual' ? 'dt-btn-pm-active' : 'dt-btn-outline']"
+            @click="switchPmViewMode('individual')"
+          >单独查看</button>
+          <button
+            :class="['dt-btn', 'dt-btn-sm', pmViewMode === 'all' ? 'dt-btn-pm-active' : 'dt-btn-outline']"
+            @click="switchPmViewMode('all')"
+          >一起查看</button>
+        </div>
+
+        <!-- ====== 单独查看模式 ====== -->
+        <template v-if="pmViewMode === 'individual'">
+          <!-- PM 选择器 -->
+          <div class="dt-staff-selector">
+            <span
+              v-for="pm in pmList"
+              :key="pm.id"
+              class="dt-pm-chip"
+              :class="{ 'dt-pm-chip-active': selectedPmId === pm.id }"
+              @click="selectPm(pm.id)"
+            >
+              <span class="dt-pm-dot"></span>
+              {{ pm.name }}
+            </span>
+            <span v-if="!pmList.length" style="font-size:13px; color:var(--color-text-3);">
+              暂无产品经理数据
+            </span>
+          </div>
+
+          <!-- 未选择 PM -->
+          <div v-if="!selectedPmId" class="dt-empty" style="padding:60px;">
+            <div class="dt-empty-icon">📦</div>
+            <p class="dt-empty-text">请选择一位产品经理查看聚焦统计</p>
+          </div>
+
+          <!-- 加载中 -->
+          <el-skeleton v-else-if="statsStore.pmFocusLoading" :rows="6" animated />
+
+          <!-- PM 数据 -->
+          <template v-else-if="pmFocusInfo">
+            <!-- PM 概要卡片 -->
+            <div class="dt-personal-header dt-pm-header" style="margin-top:8px;">
+              <div class="dt-personal-avatar" :style="{ background: PM_THEME_COLOR }">
+                {{ getInitial(pmFocusInfo.pm?.name) }}
+              </div>
+              <div class="dt-personal-info">
+                <div class="dt-personal-name">
+                  {{ pmFocusInfo.pm?.name }}
+                  <span class="dt-tag dt-tag-purple">产品经理</span>
+                </div>
+                <div class="dt-personal-meta">
+                  <span class="dt-personal-meta-item">
+                    <strong>{{ pmFocusInfo.totalHours?.toFixed(1) || '0' }}</strong> 总工时/小时
+                  </span>
+                  <span class="dt-personal-meta-divider">|</span>
+                  <span class="dt-personal-meta-item">
+                    <strong>{{ pmFocusInfo.recordCount || 0 }}</strong> 提交记录
+                  </span>
+                  <span class="dt-personal-meta-divider">|</span>
+                  <span class="dt-personal-meta-item">
+                    <strong>{{ pmFocusInfo.taskCount || 0 }}</strong> 参与周期
+                  </span>
+                </div>
+                <!-- 角色工时分布 -->
+                <div v-if="pmFocusInfo.roleSummary" style="margin-top:8px; display:flex; gap:16px; font-size:12px;">
+                  <span style="color:#165DFF;">前端 <strong>{{ pmFocusInfo.roleSummary.frontend?.toFixed(1) || '0' }}</strong>H</span>
+                  <span style="color:#00B42A;">后端 <strong>{{ pmFocusInfo.roleSummary.backend?.toFixed(1) || '0' }}</strong>H</span>
+                  <span style="color:#FF7D00;">测试 <strong>{{ pmFocusInfo.roleSummary.test?.toFixed(1) || '0' }}</strong>H</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 参与任务列表（手风琴） -->
+            <div v-if="pmFocusInfo.tasks && pmFocusInfo.tasks.length > 0" class="dt-accordion-list">
+              <div
+                v-for="task in pmFocusInfo.tasks"
+                :key="task.id"
+                class="dt-accordion-item"
+              >
+                <div class="dt-accordion-header" @click="togglePmTask(task.id)" :style="{ opacity: task.records.length === 0 ? 0.5 : 1 }">
+                  <span class="dt-accordion-arrow" :class="{ 'dt-accordion-arrow-open': pmExpandedTaskIds.includes(task.id) }">▶</span>
+                  <span style="font-weight:500; flex:1;">{{ task.title }}</span>
+                  <span style="font-size:12px; color:var(--color-text-3); margin-right:12px;">
+                    {{ task.start_date }} — {{ task.end_date }}
+                  </span>
+                  <span class="dt-tag dt-tag-gray" style="font-size:11px;">
+                    {{ task.records.length > 0 ? task.records.length + ' 条记录' : '暂无记录' }}
+                  </span>
+                </div>
+                <transition name="accordion">
+                  <div v-if="pmExpandedTaskIds.includes(task.id)" class="dt-accordion-body">
+                    <div v-if="task.records.length === 0" style="padding:16px; text-align:center; color:var(--color-text-3); font-size:13px;">该周期暂无提交记录</div>
+                    <el-table v-else :data="task.records" border size="small" style="width:100%;" table-layout="fixed"
+                      :default-sort="{ prop: 'hours', order: 'descending' }"
+                    >
+                      <el-table-column type="index" label="#" width="45" align="center" />
+                      <el-table-column prop="version" label="版本号" width="100" sortable>
+                        <template #default="{ row }">
+                          <span style="font-family:var(--font-mono);">{{ row.version || '-' }}</span>
+                        </template>
+                      </el-table-column>
+                      <el-table-column prop="requirement_title" label="需求标题" min-width="180" show-overflow-tooltip sortable />
+                      <el-table-column prop="staffName" label="人员" width="100" align="center" sortable />
+                      <el-table-column prop="role" label="角色" width="80" align="center" sortable>
+                        <template #default="{ row }">
+                          <span v-if="row.role && row.role !== '-'"
+                            :style="{
+                              display: 'inline-block',
+                              padding: '2px 10px',
+                              borderRadius: '9999px',
+                              fontSize: '11px',
+                              fontWeight: '500',
+                              background: row.role === 'frontend' ? '#E8F3FF' : row.role === 'backend' ? '#E8FFEA' : row.role === 'test' ? '#FFF7E8' : '#F2F3F5',
+                              color: row.role === 'frontend' ? '#165DFF' : row.role === 'backend' ? '#00B42A' : row.role === 'test' ? '#FF7D00' : '#86909C'
+                            }"
+                          >{{ ROLE_LABEL[row.role] || row.role }}</span>
+                          <span v-else style="color:var(--color-text-4);">-</span>
+                        </template>
+                      </el-table-column>
+                      <el-table-column prop="hours" label="工时(小时)" width="120" align="center" sortable
+                        :sort-method="(a, b) => parseFloat(a.hours||0) - parseFloat(b.hours||0)"
+                      >
+                        <template #default="{ row }">
+                          <div class="hours-cell" :class="MEDAL_CLASS[getMedalRank(task.records, row.hours)] || ''">
+                            <span class="hours-val">{{ parseFloat(row.hours || 0).toFixed(1) }}</span>
+                            <span v-if="getMedalRank(task.records, row.hours) >= 0" class="medal-badge">
+                              {{ MEDAL_EMOJI[getMedalRank(task.records, row.hours)] }}
+                            </span>
+                          </div>
+                        </template>
+                      </el-table-column>
+                    </el-table>
+                  </div>
+                </transition>
+              </div>
+            </div>
+
+            <div v-else class="dt-empty" style="padding:40px;">
+              <div class="dt-empty-icon">📊</div>
+              <p class="dt-empty-text">该产品经理在所选周期暂无相关工时记录</p>
+            </div>
+          </template>
+        </template>
+
+        <!-- ====== 一起查看模式 ====== -->
+        <template v-else>
+          <div v-if="allPmFocusData.length === 0" class="dt-empty" style="padding:60px;">
+            <div class="dt-empty-icon">📦</div>
+            <p class="dt-empty-text">暂无产品经理数据</p>
+          </div>
+          <div v-else class="dt-pm-all-grid">
+            <div
+              v-for="pmData in allPmFocusData"
+              :key="pmData.pm?.id"
+              class="dt-pm-all-card"
+            >
+              <!-- PM 头部 -->
+              <div class="dt-pm-all-card-header">
+                <div style="width:32px; height:32px; border-radius:50%; background:#722ED1; color:#fff; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:600;">{{ getInitial(pmData.pm?.name) }}</div>
+                <div style="flex:1; min-width:0;">
+                  <div style="display:flex; align-items:center; gap:6px;">
+                    <span style="font-weight:600; font-size:14px;">{{ pmData.pm?.name }}</span>
+                    <span style="font-weight:700; color:#722ED1; font-size:14px;">{{ pmData.totalHours?.toFixed(1) || 0 }}H</span>
+                    <span style="font-size:11px; color:var(--color-text-3);">{{ pmData.recordCount || 0 }}条</span>
+                  </div>
+                  <div v-if="pmData.roleSummary" style="display:flex; gap:10px; font-size:11px; margin-top:2px;">
+                    <span style="color:#165DFF;">前端 <strong>{{ pmData.roleSummary.frontend?.toFixed(1) || '0' }}</strong>H</span>
+                    <span style="color:#00B42A;">后端 <strong>{{ pmData.roleSummary.backend?.toFixed(1) || '0' }}</strong>H</span>
+                    <span style="color:#FF7D00;">测试 <strong>{{ pmData.roleSummary.test?.toFixed(1) || '0' }}</strong>H</span>
+                  </div>
+                </div>
+                <router-link
+                  v-if="getPmToken(pmData.pm?.id)"
+                  :to="{ path: `/pm/view/${getPmToken(pmData.pm?.id)}`, query: { year: selectedYear, quarter: 0, month: 0 } }"
+                  target="_blank"
+                  class="dt-pm-view-all-btn"
+                >查看全部 →</router-link>
+              </div>
+              <!-- 任务周期列表 -->
+              <div v-if="pmData.tasks?.length" class="dt-pm-all-card-body">
+                <div v-for="task in getVisiblePmTasks(pmData)" :key="task.id" style="margin-bottom:2px;">
+                  <div
+                    class="dt-pm-all-task-header"
+                    @click="togglePmAllTask(pmData.pm?.id, task.id)"
+                  >
+                    <span style="color:var(--color-text-2); display:flex; align-items:center; gap:4px; flex:1; min-width:0;">
+                      <span :style="{ transform: isPmAllExpanded(pmData.pm?.id, task.id) ? 'rotate(90deg)' : 'rotate(0)', transition: 'transform 0.2s', fontSize: '10px', color: 'var(--color-text-4)' }">▶</span>
+                      <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ task.title.replace('语音业务线-2026年', '') }}</span>
+                    </span>
+                    <span style="font-weight:700; color:#722ED1; font-size:12px; flex-shrink:0;">{{ task.records.reduce((s,r) => s + parseFloat(r.hours || 0), 0).toFixed(1) }}H</span>
+                  </div>
+                  <!-- 展开后用表格展示，含金银铜 -->
+                  <div v-if="isPmAllExpanded(pmData.pm?.id, task.id)" style="padding:0 4px 8px;">
+                    <el-table
+                      :data="task.records"
+                      border size="small"
+                      style="width:100%;"
+                      table-layout="fixed"
+                      :default-sort="{ prop: 'hours', order: 'descending' }"
+                    >
+                      <el-table-column type="index" label="#" width="32" align="center" />
+                      <el-table-column prop="version" label="版本" width="65" sortable>
+                        <template #default="{ row }">
+                          <span style="font-family:monospace; font-size:11px; white-space:nowrap;">{{ row.version || '-' }}</span>
+                        </template>
+                      </el-table-column>
+                      <el-table-column prop="requirement_title" label="需求标题" min-width="140" show-overflow-tooltip sortable />
+                      <el-table-column prop="staffName" label="人员" width="65" align="center" sortable />
+                      <el-table-column prop="role" label="角色" width="55" align="center" sortable>
+                        <template #default="{ row }">
+                          <span v-if="row.role && row.role !== '-'"
+                            :style="{
+                              display:'inline-block', padding:'1px 5px', borderRadius:'9999px',
+                              fontSize:'10px', fontWeight:'500',
+                              background: row.role === 'frontend' ? '#E8F3FF' : row.role === 'backend' ? '#E8FFEA' : row.role === 'test' ? '#FFF7E8' : '#F2F3F5',
+                              color: row.role === 'frontend' ? '#165DFF' : row.role === 'backend' ? '#00B42A' : row.role === 'test' ? '#FF7D00' : '#86909C'
+                            }"
+                          >{{ ROLE_LABEL[row.role] || row.role }}</span>
+                          <span v-else style="color:#C9CDD4;">-</span>
+                        </template>
+                      </el-table-column>
+                      <el-table-column prop="hours" label="工时" width="80" align="center" sortable
+                        :sort-method="(a, b) => parseFloat(a.hours||0) - parseFloat(b.hours||0)"
+                      >
+                        <template #default="{ row }">
+                          <div class="hours-cell" :class="MEDAL_CLASS[getMedalRank(task.records, row.hours)] || ''">
+                            <span class="hours-val">{{ parseFloat(row.hours || 0).toFixed(1) }}</span>
+                            <span v-if="getMedalRank(task.records, row.hours) >= 0" class="medal-badge">
+                              {{ MEDAL_EMOJI[getMedalRank(task.records, row.hours)] }}
+                            </span>
+                          </div>
+                        </template>
+                      </el-table-column>
+                    </el-table>
+                  </div>
+                </div>
+                <!-- 展开全部周期 / 收起 按钮 -->
+                <div
+                  v-if="pmData.tasks.length > 1 && !isPmAllShowingAll(pmData.pm?.id)"
+                  class="dt-pm-expand-bar"
+                  @click="togglePmAllShowAll(pmData.pm?.id)"
+                >
+                  <span>展开全部周期（{{ pmData.tasks.length }}个）▼</span>
+                </div>
+                <div
+                  v-if="pmData.tasks.length > 1 && isPmAllShowingAll(pmData.pm?.id)"
+                  class="dt-pm-collapse-bar"
+                  @click="togglePmAllShowAll(pmData.pm?.id)"
+                >
+                  <span>▲ 收起</span>
+                </div>
+              </div>
+              <div v-else style="font-size:12px; color:var(--color-text-4); padding:12px; text-align:center;">暂无数据</div>
+            </div>
+          </div>
+        </template>
+      </el-tab-pane>
     </el-tabs>
+
     </template>
   </div>
 </template>
@@ -1200,5 +1677,251 @@ function exportStatsData() {
 .accordion-leave-from {
   opacity: 1;
   max-height: 500px;
+}
+
+/* === PM 聚焦专属样式 === */
+.dt-pm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-2, #4E5969);
+  background: var(--color-bg-2, #F7F8FA);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.34, 0.69, 0.1, 1);
+}
+
+.dt-pm-chip:hover {
+  background: #F9F0FF;
+  color: #722ED1;
+  border-color: #722ED1;
+}
+
+.dt-pm-chip-active {
+  background: #722ED1;
+  color: #fff;
+  border-color: #722ED1;
+  box-shadow: 0 2px 8px rgba(114, 46, 209, 0.25);
+}
+
+.dt-pm-chip-active:hover {
+  background: #9254DE;
+  color: #fff;
+}
+
+.dt-pm-chip-active .dt-pm-dot {
+  background-color: #fff !important;
+}
+
+.dt-pm-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #722ED1;
+  flex-shrink: 0;
+}
+
+.dt-tag-purple {
+  background: #F9F0FF;
+  color: #722ED1;
+}
+
+.dt-pm-header {
+  border-left: 4px solid #722ED1;
+}
+
+.dt-btn-pm-active {
+  background: #722ED1;
+  color: #fff;
+  border-color: #722ED1;
+}
+
+.dt-btn-pm-active:hover {
+  background: #9254DE;
+  border-color: #9254DE;
+}
+
+/* === 一起查看三列网格 === */
+.dt-pm-all-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+@media (max-width: 1200px) { .dt-pm-all-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 800px) { .dt-pm-all-grid { grid-template-columns: 1fr; } }
+
+.dt-pm-all-card {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+  overflow: hidden;
+  border: 1px solid #F2F3F5;
+}
+
+.dt-pm-all-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: linear-gradient(135deg, #F9F0FF 0%, #EDE7F6 100%);
+  border-bottom: 1px solid #F2F3F5;
+}
+
+.dt-pm-all-card-body {
+  padding: 4px 6px;
+}
+
+.dt-pm-all-task-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 4px;
+  cursor: pointer;
+  font-size: 12px;
+  border-bottom: 1px solid var(--color-border-light, #F2F3F5);
+  transition: background 0.2s;
+}
+
+.dt-pm-all-task-header:hover {
+  background: #F9F0FF;
+}
+
+/* === 查看全部按钮 === */
+.dt-pm-view-all-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #722ED1;
+  background: #F9F0FF;
+  border: 1px solid #D3ADF7;
+  border-radius: 6px;
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.dt-pm-view-all-btn:hover {
+  background: #722ED1;
+  color: #fff;
+  border-color: #722ED1;
+}
+
+/* ===== 金银铜牌角标 ===== */
+.hours-cell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  transition: all 0.3s;
+}
+.hours-val {
+  font-weight: 700; font-size: 12px; color: #165DFF;
+}
+
+.medal-badge {
+  position: absolute;
+  top: -8px; right: -10px;
+  font-size: 14px;
+  animation: medalPulse 2s ease-in-out infinite;
+  filter: drop-shadow(0 0 4px rgba(255, 215, 0, 0.6));
+  z-index: 2;
+}
+
+/* 金牌 */
+.medal-gold {
+  background: linear-gradient(135deg, #FFF8E1 0%, #FFE082 50%, #FFF8E1 100%);
+  background-size: 200% 200%;
+  animation: goldShimmer 3s ease-in-out infinite;
+  box-shadow: 0 0 8px rgba(255, 193, 7, 0.4), inset 0 0 4px rgba(255, 215, 0, 0.2);
+}
+.medal-gold .hours-val { color: #B7791F; font-weight: 800; }
+.medal-gold .medal-badge { filter: drop-shadow(0 0 6px rgba(255, 215, 0, 0.8)); }
+
+/* 银牌 */
+.medal-silver {
+  background: linear-gradient(135deg, #F5F5F5 0%, #E0E0E0 50%, #F5F5F5 100%);
+  background-size: 200% 200%;
+  animation: silverShimmer 3s ease-in-out infinite;
+  box-shadow: 0 0 6px rgba(158, 158, 158, 0.3), inset 0 0 3px rgba(192, 192, 192, 0.3);
+}
+.medal-silver .hours-val { color: #546E7A; font-weight: 800; }
+.medal-silver .medal-badge { filter: drop-shadow(0 0 4px rgba(192, 192, 192, 0.8)); }
+
+/* 铜牌 */
+.medal-bronze {
+  background: linear-gradient(135deg, #FFF3E0 0%, #FFCC80 50%, #FFF3E0 100%);
+  background-size: 200% 200%;
+  animation: bronzeShimmer 3s ease-in-out infinite;
+  box-shadow: 0 0 6px rgba(255, 152, 0, 0.3), inset 0 0 3px rgba(205, 127, 50, 0.2);
+}
+.medal-bronze .hours-val { color: #8D5524; font-weight: 800; }
+.medal-bronze .medal-badge { filter: drop-shadow(0 0 4px rgba(205, 127, 50, 0.8)); }
+
+/* 动画 */
+@keyframes goldShimmer {
+  0%, 100% { background-position: 0% 50%; box-shadow: 0 0 8px rgba(255, 193, 7, 0.3); }
+  50% { background-position: 100% 50%; box-shadow: 0 0 16px rgba(255, 193, 7, 0.6), 0 0 24px rgba(255, 215, 0, 0.2); }
+}
+@keyframes silverShimmer {
+  0%, 100% { background-position: 0% 50%; box-shadow: 0 0 6px rgba(158, 158, 158, 0.2); }
+  50% { background-position: 100% 50%; box-shadow: 0 0 12px rgba(158, 158, 158, 0.4), 0 0 20px rgba(192, 192, 192, 0.15); }
+}
+@keyframes bronzeShimmer {
+  0%, 100% { background-position: 0% 50%; box-shadow: 0 0 6px rgba(255, 152, 0, 0.2); }
+  50% { background-position: 100% 50%; box-shadow: 0 0 12px rgba(255, 152, 0, 0.4), 0 0 20px rgba(205, 127, 50, 0.15); }
+}
+@keyframes medalPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+
+/* === 展开全部周期 / 收起 === */
+.dt-pm-expand-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  margin: 4px 0 0;
+  background: linear-gradient(135deg, #F9F0FF 0%, #EDE7F6 100%);
+  border: 1px dashed #D3ADF7;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #722ED1;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.dt-pm-expand-bar:hover {
+  background: #722ED1;
+  color: #fff;
+  border-color: #722ED1;
+}
+
+.dt-pm-collapse-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: #86909C;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.dt-pm-collapse-bar:hover {
+  color: #722ED1;
 }
 </style>

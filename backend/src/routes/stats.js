@@ -126,7 +126,34 @@ router.get('/', async (req, res, next) => {
         staffName: r.staff?.name || '-'
       });
     }
+
+    // v3.2.0: PM 行顺序按 product_managers 表的 sort_order 排序
+    const { ProductManager } = require('../models');
+    const pmSortOrders = await ProductManager.findAll({
+      attributes: ['name', 'sort_order'],
+      order: [['sort_order', 'ASC']]
+    });
+    const pmOrderMap = new Map();
+    pmSortOrders.forEach((pm, idx) => { pmOrderMap.set(pm.name, pm.sort_order || idx); });
+
     const pmDistribution = Object.values(pmMap);
+    pmDistribution.sort((a, b) => {
+      const orderA = pmOrderMap.has(a.name) ? pmOrderMap.get(a.name) : 99999;
+      const orderB = pmOrderMap.has(b.name) ? pmOrderMap.get(b.name) : 99999;
+      return orderA - orderB;
+    });
+
+    // REQ-33: pmSort 控制每个 PM 内部的 records 按工时排序（PM 行位置不变）
+    const pmSort = req.query.pmSort;
+    if (pmSort === 'asc' || pmSort === 'desc') {
+      for (const pm of pmDistribution) {
+        pm.records.sort((a, b) => {
+          const ha = parseFloat(a.hours || 0);
+          const hb = parseFloat(b.hours || 0);
+          return pmSort === 'asc' ? ha - hb : hb - ha;
+        });
+      }
+    }
 
     res.json({
       code: 0,
@@ -238,6 +265,108 @@ router.get('/personal/:staffId', async (req, res, next) => {
         totalHours,
         recordCount: records.length,
         taskCount: tasksWithRecords.length,
+        tasks: allTasks
+      }
+    });
+  } catch (err) { next(err); }
+});
+
+/* GET /api/stats/pm/:pmId — 产品经理聚焦统计 */
+router.get('/pm/:pmId', async (req, res, next) => {
+  try {
+    const { pmId } = req.params;
+    const { year, quarter, taskId } = req.query;
+    const yearNum = parseInt(year) || new Date().getFullYear();
+    const { startFrom, startTo } = getDateRange(yearNum, quarter);
+
+    // 获取 PM 信息
+    const { ProductManager } = require('../models');
+    const pm = await ProductManager.findByPk(pmId);
+    if (!pm) return res.status(404).json({ code: 1, message: '产品经理不存在' });
+
+    // 获取时间范围内的任务
+    const tasks = await CollectionTask.findAll({
+      where: {
+        year: yearNum,
+        end_date: { [Op.between]: [startFrom, startTo] }
+      }
+    });
+    let taskIds = tasks.map(t => t.id);
+    if (taskId && taskId !== 'all') {
+      if (!taskIds.includes(taskId)) {
+        return res.json({
+          code: 0,
+          data: { pm: { id: pm.id, name: pm.name }, totalHours: 0, recordCount: 0, taskCount: 0, tasks: [] }
+        });
+      }
+      taskIds = [taskId];
+    }
+
+    if (taskIds.length === 0) {
+      return res.json({
+        code: 0,
+        data: { pm: { id: pm.id, name: pm.name }, totalHours: 0, recordCount: 0, taskCount: 0, tasks: [] }
+      });
+    }
+
+    // 获取这些任务下的全部工时记录（关联 Staff 信息）
+    const allRecords = await WorkRecord.findAll({
+      where: { task_id: { [Op.in]: taskIds } },
+      include: [{ model: Staff, as: 'staff', attributes: ['id', 'name', 'role'] }],
+      order: [['created_at', 'DESC']]
+    });
+
+    // 过滤出包含该 PM 名称的记录
+    const pmRecords = allRecords.filter(r => {
+      const pms = safeParseJsonArray(r.product_managers);
+      return pms.includes(pm.name);
+    });
+
+    // 按任务分组
+    const taskMap = {};
+    for (const t of tasks) {
+      if (!taskIds.includes(t.id)) continue;
+      taskMap[t.id] = { ...t.toJSON(), records: [] };
+    }
+    for (const r of pmRecords) {
+      if (taskMap[r.task_id]) {
+        const plain = r.toJSON();
+        plain.product_managers = safeParseJsonArray(plain.product_managers);
+        taskMap[r.task_id].records.push({
+          id: plain.id,
+          requirement_title: plain.requirement_title,
+          version: plain.version,
+          hours: plain.hours,
+          staffName: r.staff?.name || '-',
+          role: r.staff?.role || '-',
+          product_managers: plain.product_managers
+        });
+      }
+    }
+
+    // 展示所有任务周期（含无记录的），按 start_date 倒序
+    const allTasks = Object.values(taskMap)
+      .sort((a, b) => new Date(b.start_date) - new Date(a.start_date));
+    const tasksWithRecords = allTasks.filter(t => t.records.length > 0);
+    const totalHours = pmRecords.reduce((s, r) => s + parseFloat(r.hours || 0), 0);
+
+    // 按角色汇总
+    const roleSummary = { frontend: 0, backend: 0, test: 0 };
+    for (const r of pmRecords) {
+      const role = r.staff?.role;
+      if (role && roleSummary[role] !== undefined) {
+        roleSummary[role] += parseFloat(r.hours || 0);
+      }
+    }
+
+    res.json({
+      code: 0,
+      data: {
+        pm: { id: pm.id, name: pm.name },
+        totalHours,
+        recordCount: pmRecords.length,
+        taskCount: tasksWithRecords.length,
+        roleSummary,
         tasks: allTasks
       }
     });

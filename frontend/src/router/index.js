@@ -72,6 +72,12 @@ const routes = [
     meta: { title: '设置', showBack: true }
   },
   {
+    path: '/pm/view/:token',
+    name: 'PmView',
+    component: () => import('../views/PmViewPage.vue'),
+    meta: { title: '产品经理数据', layout: 'pm-view' }
+  },
+  {
     path: '/fill/:token',
     name: 'Fill',
     component: () => import('../views/FillPage.vue'),
@@ -94,8 +100,8 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   document.title = `${to.meta.title || 'DevTracker'} - DevTracker`
 
-  // 填写页和 403 页不做权限校验
-  if (to.name === 'Fill' || to.name === 'Forbidden') return
+  // 填写页、403 页和 PM 查看页不做权限校验
+  if (to.name === 'Fill' || to.name === 'Forbidden' || to.name === 'PmView') return
 
   // 动态导入 auth store（避免循环依赖）
   const { useAuthStore } = await import('../stores/auth')
