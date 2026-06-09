@@ -21,8 +21,8 @@ const savingDraft = ref(false)
 const fillData = ref(null)
 const error = ref('')
 
-/** 产品经理选项列表 */
-const PM_OPTIONS = ['钟冠', '吴浩鑫', '杨瑞', '罗晓璇', '其他-昆仑', '其他-短信', '其他-架构', '不在上述']
+/** 产品经理选项列表（从 API 动态获取） */
+const pmOptions = ref([])
 
 /** 角色标签 */
 const ROLE_LABEL = { frontend: '前端', backend: '后端', test: '测试' }
@@ -59,15 +59,22 @@ function createEmptyRow() {
 
 onMounted(async () => {
   try {
-    const res = await api.get(`/fill/${route.params.token}`)
-    fillData.value = res.data
+    // 并行加载填写数据和 PM 列表
+    const [fillRes, pmRes] = await Promise.all([
+      api.get(`/fill/${route.params.token}`),
+      api.get('/pm').catch(() => ({ data: [] }))
+    ])
+    fillData.value = fillRes.data
+    // 初始化 PM 选项（仅活跃的 PM）
+    const pmList = Array.isArray(pmRes.data) ? pmRes.data : []
+    pmOptions.value = pmList.filter(p => p.is_active).map(p => p.name)
     if (fillData.value?.task) {
       // 有首选任务时，尝试恢复草稿或已提交记录
-      if (Array.isArray(res.data.draft_records) && res.data.draft_records.length > 0) {
-        rows.value = normalizeRows(res.data.draft_records)
+      if (Array.isArray(fillRes.data.draft_records) && fillRes.data.draft_records.length > 0) {
+        rows.value = normalizeRows(fillRes.data.draft_records)
         ElMessage.success('已恢复上次暂存的草稿')
-      } else if (res.data.records?.length > 0) {
-        rows.value = normalizeRows(res.data.records)
+      } else if (fillRes.data.records?.length > 0) {
+        rows.value = normalizeRows(fillRes.data.records)
       } else {
         rows.value = [createEmptyRow()]
       }
@@ -244,7 +251,7 @@ const HOURS_MAX = 60
 
 function matchPM(text) {
   let remaining = text; const matched = []
-  for (const pmName of PM_OPTIONS) {
+  for (const pmName of pmOptions.value) {
     if (remaining.includes(pmName)) { matched.push(pmName); remaining = remaining.replace(pmName, '').trim() }
   }
   if (matched.length === 0) {
@@ -292,7 +299,7 @@ function parseRecognizeText() {
         const t = tokens[i]
         if (hours === null) { const { hours: h } = parseHoursFromText(t); if (h !== null) { hours = h; tokens.splice(i, 1); continue } }
         if (!version) { const vm = t.match(/^(V?\d+\.\d+(?:\.\d+)?)$/i); if (vm) { version = vm[1]; tokens.splice(i, 1); continue } }
-        if (PM_OPTIONS.includes(t)) { pm.push(t); tokens.splice(i, 1); continue }
+        if (pmOptions.value.includes(t)) { pm.push(t); tokens.splice(i, 1); continue }
       }
       const leftover = tokens.join(' ').trim()
       if (pm.length === 0 && leftover) { const { matched, remaining: cleanTitle } = matchPM(leftover); pm = matched; const title = cleanTitle.replace(/^[\s|,，、]+/, '').replace(/[\s|,，、]+$/, '').trim(); if (title || hours) parsed.push({ requirement_title: title, version, product_managers: pm, hours }) }
@@ -591,7 +598,7 @@ function exportHistory() {
                   <template #default="{ row }">
                     <el-select v-model="row.product_managers" multiple collapse-tags collapse-tags-tooltip
                       placeholder="选PM" size="small" style="width:100%;" :disabled="!isEditable">
-                      <el-option v-for="pm in PM_OPTIONS" :key="pm" :label="pm" :value="pm" />
+                      <el-option v-for="pm in pmOptions" :key="pm" :label="pm" :value="pm" />
                     </el-select>
                   </template>
                 </el-table-column>

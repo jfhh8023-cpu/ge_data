@@ -89,25 +89,31 @@ router.get('/:id/records-summary', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-/* POST /api/staff/:id/transfer — v1.6.1: 将工时数据交接给指定人员 */
+/* POST /api/staff/:id/transfer — v1.6.1: 将工时数据交接给指定人员（事务保护） */
 router.post('/:id/transfer', async (req, res, next) => {
+  const sequelize = require('../config/database');
+  const t = await sequelize.transaction();
   try {
     const { to_staff_id } = req.body;
-    if (!to_staff_id) return res.status(400).json({ code: 1, message: 'to_staff_id 为必填项' });
-    if (to_staff_id === req.params.id) return res.status(400).json({ code: 1, message: '不能交接给自己' });
+    if (!to_staff_id) { await t.rollback(); return res.status(400).json({ code: 1, message: 'to_staff_id 为必填项' }); }
+    if (to_staff_id === req.params.id) { await t.rollback(); return res.status(400).json({ code: 1, message: '不能交接给自己' }); }
 
-    const fromStaff = await Staff.findByPk(req.params.id);
-    const toStaff = await Staff.findByPk(to_staff_id);
-    if (!fromStaff) return res.status(404).json({ code: 1, message: '被交接人员不存在' });
-    if (!toStaff) return res.status(404).json({ code: 1, message: '目标人员不存在' });
+    const fromStaff = await Staff.findByPk(req.params.id, { transaction: t });
+    const toStaff = await Staff.findByPk(to_staff_id, { transaction: t });
+    if (!fromStaff) { await t.rollback(); return res.status(404).json({ code: 1, message: '被交接人员不存在' }); }
+    if (!toStaff) { await t.rollback(); return res.status(404).json({ code: 1, message: '目标人员不存在' }); }
 
     const [affectedRows] = await WorkRecord.update(
       { staff_id: to_staff_id },
-      { where: { staff_id: req.params.id } }
+      { where: { staff_id: req.params.id }, transaction: t }
     );
 
+    await t.commit();
     res.json({ code: 0, data: { affectedRows }, message: `已将 ${affectedRows} 条工时记录交接给「${toStaff.name}」` });
-  } catch (err) { next(err); }
+  } catch (err) {
+    await t.rollback();
+    next(err);
+  }
 });
 
 /* PUT /api/staff/sort — v3.2.0: 批量更新排序（必须在 /:id 前注册） */

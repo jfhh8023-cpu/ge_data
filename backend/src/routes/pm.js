@@ -169,28 +169,33 @@ router.get('/:id/references', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-/* ========== POST /api/pm/:id/transfer — PM 数据交接 ========== */
+/* ========== POST /api/pm/:id/transfer — PM 数据交接（事务保护） ========== */
 router.post('/:id/transfer', async (req, res, next) => {
+  const t = await sequelize.transaction();
   try {
     const { to_pm_id } = req.body;
-    if (!to_pm_id) return res.status(400).json({ code: 1, message: 'to_pm_id 为必填项' });
-    if (to_pm_id === req.params.id) return res.status(400).json({ code: 1, message: '不能交接给自己' });
+    if (!to_pm_id) { await t.rollback(); return res.status(400).json({ code: 1, message: 'to_pm_id 为必填项' }); }
+    if (to_pm_id === req.params.id) { await t.rollback(); return res.status(400).json({ code: 1, message: '不能交接给自己' }); }
 
-    const fromPm = await ProductManager.findByPk(req.params.id);
-    const toPm = await ProductManager.findByPk(to_pm_id);
-    if (!fromPm) return res.status(404).json({ code: 1, message: '被交接的产品经理不存在' });
-    if (!toPm) return res.status(404).json({ code: 1, message: '目标产品经理不存在' });
+    const fromPm = await ProductManager.findByPk(req.params.id, { transaction: t });
+    const toPm = await ProductManager.findByPk(to_pm_id, { transaction: t });
+    if (!fromPm) { await t.rollback(); return res.status(404).json({ code: 1, message: '被交接的产品经理不存在' }); }
+    if (!toPm) { await t.rollback(); return res.status(404).json({ code: 1, message: '目标产品经理不存在' }); }
 
-    // 全局替换：work_records + match_groups 中的 PM 名称
-    const wrCount = await syncPmNameInJsonColumn('work_records', 'product_managers', fromPm.name, toPm.name);
-    const mgCount = await syncPmNameInJsonColumn('match_groups', 'product_managers', fromPm.name, toPm.name);
+    // 全局替换：work_records + match_groups 中的 PM 名称（事务内执行）
+    const wrCount = await syncPmNameInJsonColumn('work_records', 'product_managers', fromPm.name, toPm.name, t);
+    const mgCount = await syncPmNameInJsonColumn('match_groups', 'product_managers', fromPm.name, toPm.name, t);
 
+    await t.commit();
     res.json({
       code: 0,
       data: { workRecords: wrCount, matchGroups: mgCount },
       message: `已将数据从「${fromPm.name}」交接给「${toPm.name}」`
     });
-  } catch (err) { next(err); }
+  } catch (err) {
+    await t.rollback();
+    next(err);
+  }
 });
 
 
@@ -301,9 +306,14 @@ router.get('/view/:token', async (req, res, next) => {
 /**
  * 在 JSON 数组列中全局替换 PM 名称（安全版 v2）
  * 同时处理正常 JSON 数组和双重转义的 JSON 字符串
+ * @param {string} tableName  表名
+ * @param {string} columnName 列名
+ * @param {string} oldName    旧 PM 名
+ * @param {string} newName    新 PM 名
+ * @param {object} [transaction] 可选事务对象
  * @returns {number} 受影响的行数
  */
-async function syncPmNameInJsonColumn(tableName, columnName, oldName, newName) {
+async function syncPmNameInJsonColumn(tableName, columnName, oldName, newName, transaction) {
   // 安全校验：仅允许操作已知的表和列
   const ALLOWED_TABLES = ['work_records', 'match_groups'];
   const ALLOWED_COLUMNS = ['product_managers'];
@@ -311,13 +321,16 @@ async function syncPmNameInJsonColumn(tableName, columnName, oldName, newName) {
     throw new Error(`不允许操作表 ${tableName}.${columnName}`);
   }
 
+  const queryOpts = { replacements: { oldName, likePattern: `%${oldName}%` } };
+  if (transaction) queryOpts.transaction = transaction;
+
   // 查找包含 oldName 的记录（兼容 JSON ARRAY 和双重转义 STRING）
   const [rows] = await sequelize.query(
     `SELECT id, \`${columnName}\` AS col_val FROM \`${tableName}\`
      WHERE \`${columnName}\` IS NOT NULL
        AND (JSON_CONTAINS(\`${columnName}\`, JSON_QUOTE(:oldName))
             OR \`${columnName}\` LIKE :likePattern)`,
-    { replacements: { oldName, likePattern: `%${oldName}%` } }
+    queryOpts
   );
 
   if (!rows || rows.length === 0) return 0;
@@ -357,9 +370,12 @@ async function syncPmNameInJsonColumn(tableName, columnName, oldName, newName) {
       ? `\`${columnName}\` = :newVal, updated_at = NOW()`
       : `\`${columnName}\` = :newVal`;
 
+    const updateOpts = { replacements: { newVal: JSON.stringify(newArr), id: row.id } };
+    if (transaction) updateOpts.transaction = transaction;
+
     await sequelize.query(
       `UPDATE \`${tableName}\` SET ${setClause} WHERE id = :id`,
-      { replacements: { newVal: JSON.stringify(newArr), id: row.id } }
+      updateOpts
     );
     affected++;
   }
