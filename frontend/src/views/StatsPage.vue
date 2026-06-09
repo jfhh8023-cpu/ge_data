@@ -491,7 +491,7 @@ function drawChart() {
     })
 
     // X 轴标签（PM 名称）— v3.2.1: 可点击样式
-    ctx.fillStyle = '#165DFF'
+    ctx.fillStyle = '#1D2129'
     ctx.font = '13px "Inter", "Microsoft YaHei", sans-serif'
     ctx.textAlign = 'center'
     const labelX = groupX + barWidth * 2
