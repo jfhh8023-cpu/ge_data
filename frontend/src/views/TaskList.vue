@@ -84,23 +84,31 @@ const quarterCounts = computed(() => {
   return counts
 })
 
-/* ========== REQ-17: 实时活动状态轮询 ========== */
-const POLL_INTERVAL_MS = 5000
+/* ========== REQ-17: 实时活动状态轮询（v3.2.0: 优化防风暴） ========== */
+const POLL_INTERVAL_MS = 15000  // 15秒轮询间隔
 let pollTimer = null
+let polling = false  // 防重入锁
 const activityMap = ref({}) // { taskId: { editing: [], submitted: [] } }
 
-/** 轮询所有任务的活动状态 */
+/** 轮询当前可见任务的活动状态 */
 async function pollActivity() {
-  const tasks = taskStore.list || []
-  for (const task of tasks) {
-    try {
-      const res = await api.get(`/tasks/${task.id}/activity`)
-      const data = res.data.data || res.data || {}
-      activityMap.value[task.id] = data
-    } catch {
-      // 静默失败
+  if (polling) return  // 上一轮还没结束，跳过
+  polling = true
+  try {
+    const visibleTasks = filteredTasks.value || []
+    if (visibleTasks.length === 0) return
+    // 并行请求，最多 10 个
+    const batch = visibleTasks.slice(0, 10)
+    const results = await Promise.allSettled(
+      batch.map(task => api.get(`/tasks/${task.id}/activity`).then(res => ({ id: task.id, data: res.data.data || res.data || {} })))
+    )
+    for (const r of results) {
+      if (r.status === 'fulfilled') {
+        activityMap.value[r.value.id] = r.value.data
+      }
     }
-  }
+  } catch { /* 静默 */ }
+  finally { polling = false }
 }
 
 function startPolling() {
