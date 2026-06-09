@@ -10,6 +10,7 @@ import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useTaskStore } from '../stores/task'
 import { useRecordStore } from '../stores/record'
+import { usePmStore } from '../stores/pm'
 
 import { ElMessage, ElMessageBox } from 'element-plus'
 import BackButton from '../components/BackButton.vue'
@@ -22,6 +23,7 @@ const route = useRoute()
 const taskStore = useTaskStore()
 const recordStore = useRecordStore()
 const authStore = useAuthStore()
+const pmStore = usePmStore()
 
 
 const activeTab = ref('records')
@@ -37,7 +39,10 @@ async function loadTaskData() {
   try {
     const res = await taskStore.fetchDetail(taskId.value)
     taskDetail.value = res
-    await recordStore.fetchByTask(taskId.value)
+    await Promise.all([
+      recordStore.fetchByTask(taskId.value),
+      pmStore.fetchAll()
+    ])
   } finally {
     loading.value = false
   }
@@ -120,7 +125,7 @@ function parsePM(val) {
 const editForm = ref({
   requirement_title: '',
   version: '',
-  product_managers: '',
+  product_managers: [],
   hours: 0
 })
 
@@ -129,7 +134,7 @@ function startEdit(row) {
   editForm.value = {
     requirement_title: row.requirement_title,
     version: row.version || '',
-    product_managers: Array.isArray(row.product_managers) ? row.product_managers.join(', ') : '',
+    product_managers: parsePM(row.product_managers),
     hours: parseFloat(row.hours)
   }
 }
@@ -140,13 +145,10 @@ function cancelEdit() {
 
 async function saveEdit(row) {
   try {
-    const pmArray = editForm.value.product_managers
-      ? editForm.value.product_managers.split(/[,，]/).map(s => s.trim()).filter(Boolean)
-      : []
     await recordStore.update(row.id, {
       requirement_title: editForm.value.requirement_title,
       version: editForm.value.version,
-      product_managers: pmArray,
+      product_managers: editForm.value.product_managers,
       hours: editForm.value.hours
     })
     editingRowId.value = ''
@@ -322,10 +324,13 @@ function handleDownloadTemplate() {
               </template>
             </el-table-column>
 
-            <el-table-column prop="product_managers" label="产品经理" width="120">
+            <el-table-column prop="product_managers" label="产品经理" width="160">
               <template #default="{ row }">
                 <template v-if="editingRowId === row.id">
-                  <el-input v-model="editForm.product_managers" size="small" placeholder="逗号分隔" />
+                  <el-select v-model="editForm.product_managers" multiple collapse-tags
+                    collapse-tags-tooltip placeholder="选PM" size="small" style="width:100%;">
+                    <el-option v-for="pm in pmStore.nameList" :key="pm" :label="pm" :value="pm" />
+                  </el-select>
                 </template>
                 <span v-else>
                   {{ parsePM(row.product_managers).join(', ') || '-' }}
