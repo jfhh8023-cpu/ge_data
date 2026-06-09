@@ -103,11 +103,23 @@ router.get('/', async (req, res, next) => {
     }
 
     // === 按 PM 分组统计（REQ-13） ===
-    // 每条 WorkRecord 有 product_managers 字段（JSON 数组），按第一个 PM 分组
+    // v3.2.1: 先从 product_managers 表预初始化所有活跃 PM（确保柱状图/明细表包含全部活跃产品经理）
+    const { ProductManager } = require('../models');
+    const activePms = await ProductManager.findAll({
+      where: { is_active: true },
+      attributes: ['name', 'sort_order'],
+      order: [['sort_order', 'ASC']]
+    });
     const pmMap = {};
+    for (const pm of activePms) {
+      pmMap[pm.name] = { name: pm.name, frontend: 0, backend: 0, test: 0, total: 0, records: [] };
+    }
+
+    // 每条 WorkRecord 有 product_managers 字段（JSON 数组），按第一个 PM 分组
+    const PM_DEFAULT_NAME = '不在上述';
     for (const r of records) {
       const pms = safeParseJsonArray(r.product_managers);
-      const pmName = pms.length > 0 ? pms[0] : '未分配';
+      const pmName = pms.length > 0 ? pms[0] : PM_DEFAULT_NAME;
       if (!pmMap[pmName]) {
         pmMap[pmName] = { name: pmName, frontend: 0, backend: 0, test: 0, total: 0, records: [] };
       }
@@ -127,14 +139,9 @@ router.get('/', async (req, res, next) => {
       });
     }
 
-    // v3.2.0: PM 行顺序按 product_managers 表的 sort_order 排序
-    const { ProductManager } = require('../models');
-    const pmSortOrders = await ProductManager.findAll({
-      attributes: ['name', 'sort_order'],
-      order: [['sort_order', 'ASC']]
-    });
+    // v3.2.1: PM 排序（复用 activePms 查询结果，避免重复查库）
     const pmOrderMap = new Map();
-    pmSortOrders.forEach((pm, idx) => { pmOrderMap.set(pm.name, pm.sort_order || idx); });
+    activePms.forEach((pm, idx) => { pmOrderMap.set(pm.name, pm.sort_order || idx); });
 
     const pmDistribution = Object.values(pmMap);
     pmDistribution.sort((a, b) => {
