@@ -299,8 +299,8 @@ router.get('/view/:token', async (req, res, next) => {
 /* ========== 工具函数 ========== */
 
 /**
- * 在 JSON 数组列中全局替换 PM 名称（安全版）
- * 逐条读取记录，精确替换数组中的目标值，避免字符串子串误替换
+ * 在 JSON 数组列中全局替换 PM 名称（安全版 v2）
+ * 同时处理正常 JSON 数组和双重转义的 JSON 字符串
  * @returns {number} 受影响的行数
  */
 async function syncPmNameInJsonColumn(tableName, columnName, oldName, newName) {
@@ -311,12 +311,13 @@ async function syncPmNameInJsonColumn(tableName, columnName, oldName, newName) {
     throw new Error(`不允许操作表 ${tableName}.${columnName}`);
   }
 
-  // 查找包含 oldName 的记录
+  // 查找包含 oldName 的记录（兼容 JSON ARRAY 和双重转义 STRING）
   const [rows] = await sequelize.query(
     `SELECT id, \`${columnName}\` AS col_val FROM \`${tableName}\`
      WHERE \`${columnName}\` IS NOT NULL
-       AND JSON_CONTAINS(\`${columnName}\`, JSON_QUOTE(:oldName))`,
-    { replacements: { oldName } }
+       AND (JSON_CONTAINS(\`${columnName}\`, JSON_QUOTE(:oldName))
+            OR \`${columnName}\` LIKE :likePattern)`,
+    { replacements: { oldName, likePattern: `%${oldName}%` } }
   );
 
   if (!rows || rows.length === 0) return 0;
@@ -325,9 +326,25 @@ async function syncPmNameInJsonColumn(tableName, columnName, oldName, newName) {
   for (const row of rows) {
     let arr;
     try {
-      arr = typeof row.col_val === 'string' ? JSON.parse(row.col_val) : row.col_val;
+      let val = row.col_val;
+      // 解析值：可能是 Array、String（需二次解析）、或已是对象
+      if (typeof val === 'string') {
+        let parsed = JSON.parse(val);
+        // 如果解析出来还是字符串（双重转义），再解析一层
+        if (typeof parsed === 'string') {
+          parsed = JSON.parse(parsed);
+        }
+        arr = parsed;
+      } else if (Array.isArray(val)) {
+        arr = val;
+      } else {
+        continue;
+      }
       if (!Array.isArray(arr)) continue;
     } catch { continue; }
+
+    // 检查数组中是否包含 oldName
+    if (!arr.includes(oldName)) continue;
 
     // 精确替换：将 oldName 替换为 newName，然后去重
     const newArr = [...new Set(arr.map(v => v === oldName ? newName : v))];
