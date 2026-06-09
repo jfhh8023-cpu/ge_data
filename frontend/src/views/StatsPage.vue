@@ -15,6 +15,7 @@
  *   - S4-5: 个人聚焦自动展开最近周期（REQ-15）
  */
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import { useStatsStore } from '../stores/stats'
 import { useTaskStore } from '../stores/task'
 import { usePmStore } from '../stores/pm'
@@ -28,6 +29,7 @@ const statsStore = useStatsStore()
 const authStore = useAuthStore()
 const taskStore = useTaskStore()
 const pmStore = usePmStore()
+const router = useRouter()
 
 /* ========== 常量 ========== */
 const CURRENT_YEAR = new Date().getFullYear()
@@ -62,7 +64,11 @@ function getMedalRank(records, currentHours) {
 /* ========== Tab 切换 ========== */
 const activeTab = ref('department')
 const pageLoading = ref(true)  // v1.4.3: 页面初始加载状态
-const pmSortOrder = ref('')  // v3.2.0: REQ-33 PM 排序（'' | 'asc' | 'desc'）
+const pmSortOrder = ref('desc')  // v3.2.1: 默认工时降序（'' | 'asc' | 'desc'）
+
+/* ========== 弹窗状态 ========== */
+const reqStatsDialogVisible = ref(false)
+const staffDialogVisible = ref(false)
 
 /* ========== 筛选状态（共享） ========== */
 const selectedYear = ref(CURRENT_YEAR)
@@ -185,6 +191,40 @@ const roleTotals = computed(() => {
 /* ========== 柱状图数据（基于后端 pmDistribution，REQ-13） ========== */
 const chartData = computed(() => {
   return statsStore.pmDistribution || []
+})
+
+/* ========== v3.2.1: 需求总数统计（从 pmDistribution 计算） ========== */
+const reqStats = computed(() => {
+  const pmDist = statsStore.pmDistribution || []
+  const allVersions = new Set()
+  let noVersionCount = 0
+  const perPm = []
+
+  for (const pm of pmDist) {
+    const recs = pm.records || []
+    const pmVersions = new Set()
+    let pmNoVersion = 0
+    for (const r of recs) {
+      const v = r.version || ''
+      if (v && v !== '-' && v.trim() !== '') {
+        allVersions.add(v)
+        pmVersions.add(v)
+      } else {
+        noVersionCount++
+        pmNoVersion++
+      }
+    }
+    if (pmVersions.size > 0 || pmNoVersion > 0) {
+      perPm.push({ name: pm.name, versionCount: pmVersions.size, noVersionCount: pmNoVersion })
+    }
+  }
+
+  return {
+    totalVersions: allVersions.size,
+    totalNoVersion: noVersionCount,
+    total: allVersions.size + noVersionCount,
+    perPm
+  }
 })
 
 /* ========== 明细表：按 PM 分组的扁平数据 + 合并单元格（REQ-13 + REQ-30 需求合并） ========== */
@@ -351,6 +391,7 @@ function pmSpanMethod({ row, rowIndex, columnIndex }) {
 
 /* ========== Canvas 绘制（REQ-11 图表清晰度改善） ========== */
 const chartRef = ref(null)
+const pmLabelAreas = ref([])  // v3.2.1: 存储 PM 标签点击区域
 
 function drawChart() {
   const canvas = chartRef.value
@@ -385,6 +426,7 @@ function drawChart() {
   ctx.clearRect(0, 0, W, H)
 
   // 计算最大值
+  const areas = []  // v3.2.1: PM 标签点击区域收集
   const maxVal = Math.max(...data.map(d => d.total), 1)
   const yScale = chartH / (maxVal * 1.2)
 
@@ -448,14 +490,19 @@ function drawChart() {
       ctx.fillText(labelText, x + barWidth / 2, val > 0 ? y - 4 : padding.top + chartH - 8)
     })
 
-    // X 轴标签（PM 名称）
-    ctx.fillStyle = '#4E5969'
+    // X 轴标签（PM 名称）— v3.2.1: 可点击样式
+    ctx.fillStyle = '#165DFF'
     ctx.font = '13px "Inter", "Microsoft YaHei", sans-serif'
     ctx.textAlign = 'center'
     const labelX = groupX + barWidth * 2
     const displayName = d.name.length > 5 ? d.name.substring(0, 5) + '...' : d.name
-    ctx.fillText(displayName, labelX, padding.top + chartH + 22)
+    const labelW = ctx.measureText(displayName).width
+    const labelY = padding.top + chartH + 22
+    ctx.fillText(displayName, labelX, labelY)
+    // 存储标签点击区域
+    areas.push({ name: d.name, x: labelX - labelW / 2, y: labelY - 13, width: labelW, height: 16 })
   })
+  pmLabelAreas.value = areas
 
   // 图例
   const legendY = 18
@@ -469,6 +516,42 @@ function drawChart() {
     ctx.fillText(BAR_LABELS[i], legendX + 16, legendY + 3)
     legendX += 70
   })
+}
+
+/* v3.2.1: Canvas 点击/悬停事件 — PM 标签跳转 */
+function onChartClick(event) {
+  const canvas = chartRef.value
+  if (!canvas) return
+  const rect = canvas.getBoundingClientRect()
+  const dpr = window.devicePixelRatio || 1
+  const x = (event.clientX - rect.left)
+  const y = (event.clientY - rect.top)
+  for (const area of pmLabelAreas.value) {
+    if (x >= area.x && x <= area.x + area.width && y >= area.y && y <= area.y + area.height) {
+      const pm = pmStore.list.find(p => p.name === area.name)
+      if (pm?.token) {
+        const routeData = router.resolve({ path: `/pm/view/${pm.token}`, query: { year: selectedYear.value, quarter: 0, month: 0 } })
+        window.open(routeData.href, '_blank')
+      }
+      return
+    }
+  }
+}
+
+function onChartMouseMove(event) {
+  const canvas = chartRef.value
+  if (!canvas) return
+  const rect = canvas.getBoundingClientRect()
+  const x = (event.clientX - rect.left)
+  const y = (event.clientY - rect.top)
+  let isOverLabel = false
+  for (const area of pmLabelAreas.value) {
+    if (x >= area.x && x <= area.x + area.width && y >= area.y && y <= area.y + area.height) {
+      isOverLabel = true
+      break
+    }
+  }
+  canvas.style.cursor = isOverLabel ? 'pointer' : 'default'
 }
 
 /* ========== Tab 2: 个人聚焦 ========== */
@@ -898,12 +981,16 @@ function exportStatsData() {
             <div class="dt-stat-card-label">{{ filterLabel }} 提交记录数</div>
             <div class="dt-stat-card-value">{{ statsStore.summary.recordCount || 0 }}</div>
           </div>
+          <div class="dt-stat-card dt-stat-card-clickable" @click="reqStatsDialogVisible = true">
+            <div class="dt-stat-card-label">{{ filterLabel }} 统计需求总数 <span style="font-size:11px; color:var(--color-primary);">ⓘ</span></div>
+            <div class="dt-stat-card-value">{{ reqStats.total }}</div>
+          </div>
           <div class="dt-stat-card">
             <div class="dt-stat-card-label">{{ filterLabel }} 收集任务数</div>
             <div class="dt-stat-card-value">{{ statsStore.summary.taskCount || 0 }}</div>
           </div>
-          <div class="dt-stat-card">
-            <div class="dt-stat-card-label">{{ filterLabel }} 研发人员人数</div>
+          <div class="dt-stat-card dt-stat-card-clickable" @click="staffDialogVisible = true">
+            <div class="dt-stat-card-label">{{ filterLabel }} 研发人员人数 <span style="font-size:11px; color:var(--color-primary);">ⓘ</span></div>
             <div class="dt-stat-card-value">{{ statsStore.summary.staffCount || 0 }}</div>
           </div>
         </div>
@@ -913,7 +1000,7 @@ function exportStatsData() {
           <h3 style="font-size:15px; font-weight:600; color:var(--color-text-1); margin-bottom:16px;">
             按产品经理工时分布 — {{ filterLabel }}
           </h3>
-          <canvas ref="chartRef" :height="CANVAS_HEIGHT"></canvas>
+          <canvas ref="chartRef" :height="CANVAS_HEIGHT" @click="onChartClick" @mousemove="onChartMouseMove"></canvas>
         </div>
 
         <!-- 明细表（REQ-13：PM 合并单元格） -->
@@ -922,7 +1009,7 @@ function exportStatsData() {
           <div v-if="flatTableData.length > 0" style="display:flex; justify-content:space-between; align-items:center; padding:12px 16px; border-bottom:1px solid var(--color-border-light, #F2F3F5);">
             <span style="font-size:13px; font-weight:500; color:var(--color-text-2);">PM内数据排序：</span>
             <el-radio-group v-model="pmSortOrder" size="small" @change="loadDeptStats">
-              <el-radio-button value="">默认</el-radio-button>
+              <el-radio-button value="">按新增顺序</el-radio-button>
               <el-radio-button value="desc">工时降序 ↓</el-radio-button>
               <el-radio-button value="asc">工时升序 ↑</el-radio-button>
             </el-radio-group>
@@ -1494,6 +1581,57 @@ function exportStatsData() {
       </el-tab-pane>
     </el-tabs>
 
+    <!-- v3.2.1: 需求总数统计弹窗 -->
+    <el-dialog v-model="reqStatsDialogVisible" title="需求总数统计明细" width="520px">
+      <div style="margin-bottom:16px;">
+        <div style="display:flex; gap:24px; margin-bottom:16px;">
+          <div style="flex:1; padding:16px; background:#E8F3FF; border-radius:8px; text-align:center;">
+            <div style="font-size:12px; color:#4E5969; margin-bottom:4px;">按版本号去重总数</div>
+            <div style="font-size:24px; font-weight:700; color:#165DFF;">{{ reqStats.totalVersions }}</div>
+          </div>
+          <div style="flex:1; padding:16px; background:#FFF7E8; border-radius:8px; text-align:center;">
+            <div style="font-size:12px; color:#4E5969; margin-bottom:4px;">无版本号需求总数</div>
+            <div style="font-size:24px; font-weight:700; color:#FF7D00;">{{ reqStats.totalNoVersion }}</div>
+          </div>
+        </div>
+        <div style="font-size:13px; font-weight:600; color:var(--color-text-1); margin-bottom:8px;">按产品经理分组：</div>
+        <el-table :data="reqStats.perPm" border size="small" style="width:100%;">
+          <el-table-column prop="name" label="产品经理" width="130" />
+          <el-table-column prop="versionCount" label="去重版本数" width="120" align="center" />
+          <el-table-column prop="noVersionCount" label="无版本号数" width="120" align="center" />
+          <el-table-column label="小计" width="100" align="center">
+            <template #default="{ row }">
+              <span style="font-weight:700; color:var(--color-primary);">{{ row.versionCount + row.noVersionCount }}</span>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+    </el-dialog>
+
+    <!-- v3.2.1: 研发人员明细弹窗 -->
+    <el-dialog v-model="staffDialogVisible" title="研发人员明细" width="420px">
+      <el-table :data="statsStore.staff" border size="small" style="width:100%;">
+        <el-table-column type="index" label="#" width="45" align="center" />
+        <el-table-column prop="name" label="姓名" width="100">
+          <template #default="{ row }">
+            <span style="font-weight:600;">{{ row.name }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="role" label="岗位" width="100" align="center">
+          <template #default="{ row }">
+            <span
+              :style="{
+                display: 'inline-block', padding: '2px 10px', borderRadius: '9999px',
+                fontSize: '12px', fontWeight: '500',
+                background: row.role === 'frontend' ? '#E8F3FF' : row.role === 'backend' ? '#E8FFEA' : '#FFF7E8',
+                color: row.role === 'frontend' ? '#165DFF' : row.role === 'backend' ? '#00B42A' : '#FF7D00'
+              }"
+            >{{ ROLE_LABEL[row.role] || row.role }}</span>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-dialog>
+
     </template>
   </div>
 </template>
@@ -1923,5 +2061,16 @@ function exportStatsData() {
 
 .dt-pm-collapse-bar:hover {
   color: #722ED1;
+}
+
+/* v3.2.1: 可点击卡片 */
+.dt-stat-card-clickable {
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.25s cubic-bezier(0.34, 0.69, 0.1, 1);
+}
+.dt-stat-card-clickable:hover {
+  border-color: var(--color-primary, #165DFF);
+  box-shadow: 0 4px 16px rgba(22, 93, 255, 0.15);
 }
 </style>
