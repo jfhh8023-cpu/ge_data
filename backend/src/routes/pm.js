@@ -299,8 +299,8 @@ router.get('/view/:token', async (req, res, next) => {
 /* ========== 工具函数 ========== */
 
 /**
- * 在 JSON 数组列中全局替换 PM 名称
- * 使用原生 SQL 的 JSON_REPLACE + JSON_SEARCH 组合
+ * 在 JSON 数组列中全局替换 PM 名称（安全版）
+ * 逐条读取记录，精确替换数组中的目标值，避免字符串子串误替换
  * @returns {number} 受影响的行数
  */
 async function syncPmNameInJsonColumn(tableName, columnName, oldName, newName) {
@@ -311,26 +311,42 @@ async function syncPmNameInJsonColumn(tableName, columnName, oldName, newName) {
     throw new Error(`不允许操作表 ${tableName}.${columnName}`);
   }
 
-  // match_groups 没有 updated_at 列
-  const hasUpdatedAt = tableName === 'work_records';
-  const setClause = hasUpdatedAt
-    ? `\`${columnName}\` = REPLACE(\`${columnName}\`, :oldVal, :newVal), updated_at = NOW()`
-    : `\`${columnName}\` = REPLACE(\`${columnName}\`, :oldVal, :newVal)`;
-
-  const [results] = await sequelize.query(
-    `UPDATE \`${tableName}\`
-     SET ${setClause}
+  // 查找包含 oldName 的记录
+  const [rows] = await sequelize.query(
+    `SELECT id, \`${columnName}\` AS col_val FROM \`${tableName}\`
      WHERE \`${columnName}\` IS NOT NULL
        AND JSON_CONTAINS(\`${columnName}\`, JSON_QUOTE(:oldName))`,
-    {
-      replacements: {
-        oldVal: JSON.stringify(oldName),
-        newVal: JSON.stringify(newName),
-        oldName: oldName
-      }
-    }
+    { replacements: { oldName } }
   );
-  return results?.affectedRows || 0;
+
+  if (!rows || rows.length === 0) return 0;
+
+  let affected = 0;
+  for (const row of rows) {
+    let arr;
+    try {
+      arr = typeof row.col_val === 'string' ? JSON.parse(row.col_val) : row.col_val;
+      if (!Array.isArray(arr)) continue;
+    } catch { continue; }
+
+    // 精确替换：将 oldName 替换为 newName，然后去重
+    const newArr = [...new Set(arr.map(v => v === oldName ? newName : v))];
+
+    // 只在确实有变化时更新
+    if (JSON.stringify(arr) === JSON.stringify(newArr)) continue;
+
+    const hasUpdatedAt = tableName === 'work_records';
+    const setClause = hasUpdatedAt
+      ? `\`${columnName}\` = :newVal, updated_at = NOW()`
+      : `\`${columnName}\` = :newVal`;
+
+    await sequelize.query(
+      `UPDATE \`${tableName}\` SET ${setClause} WHERE id = :id`,
+      { replacements: { newVal: JSON.stringify(newArr), id: row.id } }
+    );
+    affected++;
+  }
+  return affected;
 }
 
 /**
