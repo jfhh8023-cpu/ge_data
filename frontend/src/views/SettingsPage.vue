@@ -60,6 +60,23 @@ let countdownTimer = null
 let dueRefreshRunning = false
 let lastDueRefreshAt = 0
 
+/* ========== v3.3.0 名句搭配 ========== */
+// 每条规则的名句配置：{ ruleId: { enabled, no_repeat_count, candidate_queue: [{id, content}], used_history: [...] } }
+const quoteConfigs = ref({})
+const quoteConfigLoading = ref({})
+const quoteConfigSaving = ref({})
+const quoteAllDialogVisible = ref(false)
+const quoteAllDialogRuleId = ref('')
+const allQuotes = ref([])
+const allQuotesLoading = ref(false)
+const allQuotesNextUsedId = ref('')
+const allQuotesSelected = ref(new Set())
+const allQuotesEditingId = ref('')
+const allQuotesEditingContent = ref('')
+const allQuotesAddVisible = ref(false)
+const allQuotesAddText = ref('')
+const allQuotesAddSaving = ref(false)
+
 const CURRENT_YEAR = new Date().getFullYear()
 const OLD_SKIP_MESSAGE = '本周任务已存在，若需新增，请手动处理'
 const NEW_SKIP_MESSAGE = '该任务已存在或无法新增超过下一周的新收集任务，若仍需新增，请手动处理'
@@ -545,6 +562,9 @@ async function persistRule(rule, index, options = {}, successMessage = '编辑�
     rules.value[index] = normalizeRule(res.data)
     ElMessage.success(successMessage)
     await loadSettings()
+    if (isDutyRule(rules.value[index])) {
+      await loadQuoteConfig(rules.value[index])
+    }
     return true
   } catch {
     ElMessage.error(errorMessage)
@@ -1095,7 +1115,11 @@ function dutyPreviewLines(rule) {
   if (!key) return []
   const item = next?.item || getDutyItem(rule, key)
   const date = next?.date || dutyDateFromKey(rule, key)
-  return dutyPreviewEntries(item, date).map(entry => {
+  // v3.3.0 名句搭配：开启时为每条预览拼接候选队列中的下一句（start->queue[0], end->queue[1]）
+  const quoteCfg = rule ? getQuoteConfig(rule) : null
+  const quoteQueue = (quoteCfg && quoteCfg.enabled) ? (quoteCfg.candidate_queue || []) : []
+  const quoteEmptyHint = '【名句搭配已开启，候选队列为空】'
+  return dutyPreviewEntries(item, date).map((entry, idx) => {
     const isPending = entry.scheduledAt.getTime() > nowTs.value
     const isNext = Boolean(
       next &&
@@ -1103,9 +1127,15 @@ function dutyPreviewLines(rule) {
       next.event.kind === entry.kind &&
       next.event.scheduledAt.getTime() === entry.scheduledAt.getTime()
     )
+    const baseText = `${dutyKeyLabel(rule, key)} ${entry.label} ${entry.time.slice(0, 5)} ${staffNames(item.staff_ids)} ${entry.message}`
+    let text = baseText
+    if (quoteCfg && quoteCfg.enabled) {
+      const quote = quoteQueue[idx]?.content || quoteQueue[0]?.content || quoteEmptyHint
+      text = `${dutyKeyLabel(rule, key)} ${entry.label} ${entry.time.slice(0, 5)} ${quote} ${staffNames(item.staff_ids)} ${entry.message}`
+    }
     return {
       id: `${key}-${entry.kind}`,
-      text: `${dutyKeyLabel(rule, key)} ${entry.label} ${entry.time.slice(0, 5)} ${staffNames(item.staff_ids)} ${entry.message}`,
+      text,
       item,
       message: entry.message,
       status: isPending ? 'pending' : 'done',
@@ -1336,9 +1366,19 @@ async function saveDutyBulkContent() {
 function dutyDetailPreview() {
   const names = staffNames(dutyDetailForm.value.staff_ids)
   const atText = dutyDetailForm.value.staff_ids.length ? `@${names.replaceAll('、', ' @')}` : '未选择接收人'
-  const start = `开始 ${dutyDetailForm.value.start_time.slice(0, 5)}\n${atText} ${dutyDetailForm.value.start_message}`
+
+  // v3.3.0 名句搭配：开启时在每段消息前追加一条名句（与后端 AutoTaskService.executeDutyEvent 注入格式一致）
+  const quoteCfg = dutyDetailRule.value ? getQuoteConfig(dutyDetailRule.value) : null
+  const queue = (quoteCfg && quoteCfg.enabled) ? (quoteCfg.candidate_queue || []) : []
+  const emptyHint = '【名句搭配已开启，但候选队列为空，请到「查看全部句子」添加】'
+  const startQuote = (quoteCfg && quoteCfg.enabled) ? ((queue[0] && queue[0].content) || emptyHint) : ''
+  const endQuote   = (quoteCfg && quoteCfg.enabled) ? ((queue[1] && queue[1].content) || (queue[0] && queue[0].content) || emptyHint) : ''
+  const startPrefix = startQuote ? `${startQuote}\n` : ''
+  const endPrefix   = endQuote ? `${endQuote}\n` : ''
+
+  const start = `开始 ${dutyDetailForm.value.start_time.slice(0, 5)}\n${startPrefix}${atText} ${dutyDetailForm.value.start_message}`
   if (dutyDetailForm.value.send_mode !== DUTY_SEND_MODE_BOTH) return start
-  return `${start}\n\n结束 ${dutyDetailForm.value.end_time.slice(0, 5)}\n${atText} ${dutyDetailForm.value.end_message}`
+  return `${start}\n\n结束 ${dutyDetailForm.value.end_time.slice(0, 5)}\n${endPrefix}${atText} ${dutyDetailForm.value.end_message}`
 }
 
 function dutyDetailLabel() {
@@ -1631,9 +1671,246 @@ async function downloadBackup() {
   }
 }
 
+/* ========== v3.3.0 名句搭配方法 ========== */
+
+function defaultQuoteConfig() {
+  return { enabled: false, no_repeat_count: 20, candidate_queue: [], used_history: [] }
+}
+
+function getQuoteConfig(rule) {
+  const key = rule.id || rule.localKey
+  return quoteConfigs.value[key] || defaultQuoteConfig()
+}
+
+async function loadQuoteConfig(rule) {
+  if (!rule || !rule.id) return
+  const key = rule.id
+  quoteConfigLoading.value[key] = true
+  try {
+    const res = await api.get(`/quotes/config/${key}`)
+    quoteConfigs.value[key] = res.data || defaultQuoteConfig()
+  } catch (err) {
+    console.warn('[quotes] 加载名句配置失败', err?.message || err)
+    quoteConfigs.value[key] = defaultQuoteConfig()
+  } finally {
+    quoteConfigLoading.value[key] = false
+  }
+}
+
+async function loadAllDutyQuoteConfigs() {
+  const dutyRules = rules.value.filter(r => isDutyRule(r) && r.id)
+  await Promise.all(dutyRules.map(rule => loadQuoteConfig(rule)))
+}
+
+async function saveQuoteConfigField(rule, patch) {
+  if (!rule || !rule.id) {
+    ElMessage.warning('请先保存自动任务规则')
+    return
+  }
+  const key = rule.id
+  quoteConfigSaving.value[key] = true
+  try {
+    const res = await api.put(`/quotes/config/${key}`, patch)
+    quoteConfigs.value[key] = res.data
+  } catch (err) {
+    ElMessage.error(`保存名句配置失败：${err?.response?.data?.message || err.message}`)
+  } finally {
+    quoteConfigSaving.value[key] = false
+  }
+}
+
+function onQuoteEnabledChange(rule, val) {
+  saveQuoteConfigField(rule, { enabled: !!val })
+}
+
+function onQuoteNoRepeatChange(rule, val) {
+  const n = Number(val)
+  if (!Number.isFinite(n) || n < 0) return
+  saveQuoteConfigField(rule, { no_repeat_count: n })
+}
+
+async function refreshQuoteBatch(rule) {
+  if (!rule || !rule.id) return
+  const key = rule.id
+  quoteConfigSaving.value[key] = true
+  try {
+    const res = await api.post(`/quotes/config/${key}/refresh`)
+    quoteConfigs.value[key] = res.data
+    ElMessage.success('已更换一批候选句子')
+  } catch (err) {
+    ElMessage.error(`更换失败：${err?.response?.data?.message || err.message}`)
+  } finally {
+    quoteConfigSaving.value[key] = false
+  }
+}
+
+async function skipQuoteNext(rule) {
+  if (!rule || !rule.id) return
+  const key = rule.id
+  quoteConfigSaving.value[key] = true
+  try {
+    const res = await api.post(`/quotes/config/${key}/skip`)
+    quoteConfigs.value[key] = res.data
+    ElMessage.success('已使用下一句')
+  } catch (err) {
+    ElMessage.error(`操作失败：${err?.response?.data?.message || err.message}`)
+  } finally {
+    quoteConfigSaving.value[key] = false
+  }
+}
+
+async function openAllQuotesDialog(rule) {
+  quoteAllDialogRuleId.value = rule?.id || ''
+  quoteAllDialogVisible.value = true
+  allQuotesSelected.value = new Set()
+  allQuotesEditingId.value = ''
+  allQuotesAddVisible.value = false
+  allQuotesAddText.value = ''
+  await fetchAllQuotes()
+}
+
+async function fetchAllQuotes() {
+  allQuotesLoading.value = true
+  try {
+    const params = { with_usage: true }
+    if (quoteAllDialogRuleId.value) params.rule_id = quoteAllDialogRuleId.value
+    const res = await api.get('/quotes', { params })
+    allQuotes.value = res.data || []
+    allQuotesNextUsedId.value = allQuotes.value.find(q => q.is_next)?.id || ''
+  } catch (err) {
+    ElMessage.error(`加载句子库失败：${err?.response?.data?.message || err.message}`)
+  } finally {
+    allQuotesLoading.value = false
+  }
+}
+
+function toggleQuoteSelected(id, checked) {
+  const set = new Set(allQuotesSelected.value)
+  if (checked) set.add(id); else set.delete(id)
+  allQuotesSelected.value = set
+}
+
+function toggleAllQuotesSelected(checked) {
+  if (checked) {
+    allQuotesSelected.value = new Set(allQuotes.value.map(q => q.id))
+  } else {
+    allQuotesSelected.value = new Set()
+  }
+}
+
+function isQuoteSelected(id) {
+  return allQuotesSelected.value.has(id)
+}
+
+const allQuotesAllSelected = computed(() =>
+  allQuotes.value.length > 0 && allQuotesSelected.value.size === allQuotes.value.length
+)
+
+function startEditQuote(quote) {
+  allQuotesEditingId.value = quote.id
+  allQuotesEditingContent.value = quote.content
+}
+
+function cancelEditQuote() {
+  allQuotesEditingId.value = ''
+  allQuotesEditingContent.value = ''
+}
+
+async function saveEditQuote(quote) {
+  const content = String(allQuotesEditingContent.value || '').trim()
+  if (!content) {
+    ElMessage.warning('请输入句子内容')
+    return
+  }
+  try {
+    await api.put(`/quotes/${quote.id}`, { content })
+    ElMessage.success('已更新')
+    cancelEditQuote()
+    await fetchAllQuotes()
+  } catch (err) {
+    ElMessage.error(`保存失败：${err?.response?.data?.message || err.message}`)
+  }
+}
+
+async function deleteSingleQuote(quote) {
+  try {
+    await ElMessageBox.confirm(`确认删除「${quote.content.slice(0, 30)}...」？`, '删除句子', {
+      type: 'warning'
+    })
+  } catch { return }
+  try {
+    await api.delete('/quotes', { data: { ids: [quote.id] } })
+    ElMessage.success('已删除')
+    await fetchAllQuotes()
+    // 重新加载当前规则的配置（因为候选队列可能受影响）
+    if (quoteAllDialogRuleId.value) {
+      await loadQuoteConfig({ id: quoteAllDialogRuleId.value })
+    }
+  } catch (err) {
+    ElMessage.error(`删除失败：${err?.response?.data?.message || err.message}`)
+  }
+}
+
+async function batchDeleteQuotes() {
+  const ids = [...allQuotesSelected.value]
+  if (ids.length === 0) {
+    ElMessage.warning('请先勾选要删除的句子')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(`确认删除选中的 ${ids.length} 条句子？`, '批量删除', {
+      type: 'warning'
+    })
+  } catch { return }
+  try {
+    await api.delete('/quotes', { data: { ids } })
+    ElMessage.success(`已删除 ${ids.length} 条`)
+    allQuotesSelected.value = new Set()
+    await fetchAllQuotes()
+    if (quoteAllDialogRuleId.value) {
+      await loadQuoteConfig({ id: quoteAllDialogRuleId.value })
+    }
+  } catch (err) {
+    ElMessage.error(`删除失败：${err?.response?.data?.message || err.message}`)
+  }
+}
+
+async function submitAddQuote() {
+  const text = String(allQuotesAddText.value || '').trim()
+  if (!text) {
+    ElMessage.warning('请输入句子内容')
+    return
+  }
+  // 支持多句：按中文句号分割
+  const contents = text
+    .split(/。\s*/)
+    .map(s => s.trim())
+    .filter(Boolean)
+    .map(s => s.endsWith('。') ? s : s + '。')
+  allQuotesAddSaving.value = true
+  try {
+    if (contents.length === 1) {
+      await api.post('/quotes', { content: contents[0] })
+    } else {
+      await api.post('/quotes', { contents })
+    }
+    ElMessage.success(`已添加 ${contents.length} 条`)
+    allQuotesAddText.value = ''
+    allQuotesAddVisible.value = false
+    await fetchAllQuotes()
+  } catch (err) {
+    ElMessage.error(`添加失败：${err?.response?.data?.message || err.message}`)
+  } finally {
+    allQuotesAddSaving.value = false
+  }
+}
+
 onMounted(async () => {
   await loadSettings()
-  if (rules.value.some(isDutyRule)) await ensureStaffList()
+  if (rules.value.some(isDutyRule)) {
+    await ensureStaffList()
+    await loadAllDutyQuoteConfigs()
+  }
   countdownTimer = setInterval(handleCountdownTick, 1000)
 })
 
@@ -1906,37 +2183,39 @@ onUnmounted(() => {
               </div>
 
               <div class="dt-duty-layout">
-                <div class="dt-webhook-list">
-                  <div v-for="(webhook, webhookIndex) in rule.dingtalk_webhooks" :key="webhookIndex" class="dt-webhook-row">
-                    <el-input
-                      v-model="webhook.name"
-                      size="small"
-                      :placeholder="defaultWebhookName(webhookIndex)"
-                      :disabled="!canEditAutoTasks"
-                    />
-                    <el-input
-                      v-model="webhook.url"
-                      size="small"
-                      :placeholder="`机器人 ${webhookIndex + 1} webhook`"
-                      :disabled="!canEditAutoTasks"
-                    />
-                    <el-button
-                      size="small"
-                      plain
-                      :icon="Plus"
-                      title="添加机器人"
-                      :disabled="!canEditAutoTasks"
-                      @click="addWebhook(rule)"
-                    />
-                    <el-button
-                      size="small"
-                      plain
-                      type="danger"
-                      :icon="Delete"
-                      title="删除机器人"
-                      :disabled="!canEditAutoTasks"
-                      @click="removeWebhook(rule, webhookIndex)"
-                    />
+                <div class="dt-duty-left">
+                  <div class="dt-webhook-list">
+                    <div v-for="(webhook, webhookIndex) in rule.dingtalk_webhooks" :key="webhookIndex" class="dt-webhook-row">
+                      <el-input
+                        v-model="webhook.name"
+                        size="small"
+                        :placeholder="defaultWebhookName(webhookIndex)"
+                        :disabled="!canEditAutoTasks"
+                      />
+                      <el-input
+                        v-model="webhook.url"
+                        size="small"
+                        :placeholder="`机器人 ${webhookIndex + 1} webhook`"
+                        :disabled="!canEditAutoTasks"
+                      />
+                      <el-button
+                        size="small"
+                        plain
+                        :icon="Plus"
+                        title="添加机器人"
+                        :disabled="!canEditAutoTasks"
+                        @click="addWebhook(rule)"
+                      />
+                      <el-button
+                        size="small"
+                        plain
+                        type="danger"
+                        :icon="Delete"
+                        title="删除机器人"
+                        :disabled="!canEditAutoTasks"
+                        @click="removeWebhook(rule, webhookIndex)"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -1989,7 +2268,7 @@ onUnmounted(() => {
                         class="dt-duty-preview-line"
                         :class="{ 'is-next': line.isNext }"
                       >
-                        <span class="dt-duty-preview-text">{{ line.text }}</span>
+                        <span class="dt-duty-preview-text" :title="line.text">{{ line.text }}</span>
                         <span class="dt-duty-preview-status" :class="`is-${line.status}`">{{ line.statusText }}</span>
                         <el-button
                           size="small"
@@ -2076,7 +2355,7 @@ onUnmounted(() => {
 
       <el-dialog
         v-model="dutyDetailDialogVisible"
-        width="920px"
+        width="1220px"
         :close-on-click-modal="false"
         class="dt-duty-dialog"
       >
@@ -2107,6 +2386,99 @@ onUnmounted(() => {
               </label>
             </div>
             <p class="dt-duty-dialog-tip">勾选人员会在 webhook 消息中按手机号 @，姓名和手机号完整才可勾选。</p>
+
+            <!-- v3.3.0 名句搭配面板（位于值班对象卡片下方；配置以当前规则为粒度，所有星期/日期共享） -->
+            <div
+              v-if="dutyDetailRule"
+              class="dt-quote-panel dt-quote-panel-inline"
+              v-loading="quoteConfigLoading[dutyDetailRule.id]"
+            >
+              <div class="dt-quote-panel-head">
+                <div class="dt-quote-panel-title">
+                  <strong>名句搭配</strong>
+                  <span>开启后，本规则所有日子的值班通知都会在开头自动追加一句精选短语,每次都不一样。</span>
+                </div>
+                <div class="dt-quote-panel-switch">
+                  <el-tooltip
+                    :content="dutyDetailRule.id ? '' : '请先保存规则后再开启名句搭配'"
+                    :disabled="!!dutyDetailRule.id"
+                    placement="top"
+                  >
+                    <el-switch
+                      :model-value="getQuoteConfig(dutyDetailRule).enabled"
+                      :disabled="!canEditAutoTasks || !dutyDetailRule.id || quoteConfigSaving[dutyDetailRule.id]"
+                      active-text="开启"
+                      inactive-text="关闭"
+                      @change="val => onQuoteEnabledChange(dutyDetailRule, val)"
+                    />
+                  </el-tooltip>
+                </div>
+              </div>
+
+              <div v-if="getQuoteConfig(dutyDetailRule).enabled" class="dt-quote-panel-body">
+                <div class="dt-quote-row">
+                  <label>近</label>
+                  <el-input-number
+                    :model-value="getQuoteConfig(dutyDetailRule).no_repeat_count"
+                    :min="0"
+                    :max="500"
+                    :step="1"
+                    size="small"
+                    :disabled="!canEditAutoTasks || quoteConfigSaving[dutyDetailRule.id]"
+                    @change="val => onQuoteNoRepeatChange(dutyDetailRule, val)"
+                  />
+                  <label>次内不重复</label>
+                </div>
+
+                <div class="dt-quote-queue-title">
+                  <strong>接下来 {{ (getQuoteConfig(dutyDetailRule).candidate_queue || []).length }} 次候选:</strong>
+                </div>
+
+                <div v-if="(getQuoteConfig(dutyDetailRule).candidate_queue || []).length === 0" class="dt-quote-empty">
+                  暂无候选句子。请先到「查看全部句子」中添加，或点击下方「更换一批」。
+                </div>
+                <ol v-else class="dt-quote-queue">
+                  <li
+                    v-for="(item, idx) in getQuoteConfig(dutyDetailRule).candidate_queue"
+                    :key="item.id"
+                    class="dt-quote-queue-item"
+                    :class="{ 'is-next': idx === 0 }"
+                  >
+                    <span class="dt-quote-queue-index">{{ idx + 1 }}.</span>
+                    <span class="dt-quote-queue-text">{{ item.content }}</span>
+                    <span v-if="idx === 0" class="dt-quote-queue-badge">最近一次</span>
+                  </li>
+                </ol>
+
+                <div class="dt-quote-actions">
+                  <el-button
+                    size="small"
+                    plain
+                    :loading="quoteConfigSaving[dutyDetailRule.id]"
+                    :disabled="!canEditAutoTasks"
+                    @click="refreshQuoteBatch(dutyDetailRule)"
+                  >
+                    更换一批
+                  </el-button>
+                  <el-button
+                    size="small"
+                    plain
+                    :loading="quoteConfigSaving[dutyDetailRule.id]"
+                    :disabled="!canEditAutoTasks || (getQuoteConfig(dutyDetailRule).candidate_queue || []).length === 0"
+                    @click="skipQuoteNext(dutyDetailRule)"
+                  >
+                    使用下一句
+                  </el-button>
+                  <el-button size="small" type="primary" plain @click="openAllQuotesDialog(dutyDetailRule)">
+                    查看全部句子
+                  </el-button>
+                </div>
+              </div>
+
+              <div v-else class="dt-quote-panel-off">
+                <el-button size="small" plain @click="openAllQuotesDialog(dutyDetailRule)">查看/管理名句库</el-button>
+              </div>
+            </div>
           </div>
 
           <div class="dt-duty-dialog-card">
@@ -2384,6 +2756,92 @@ onUnmounted(() => {
         <template #footer>
           <el-button @click="recipientDialogVisible = false">退出</el-button>
           <el-button type="primary" :loading="recipientSaving" @click="saveRecipients">保存编辑</el-button>
+        </template>
+      </el-dialog>
+
+      <!-- v3.3.0 名句库管理大弹窗 -->
+      <el-dialog
+        v-model="quoteAllDialogVisible"
+        :title="`名句库管理（共 ${allQuotes.length} 条）`"
+        width="900px"
+        top="6vh"
+        :close-on-click-modal="false"
+        class="dt-quote-dialog"
+      >
+        <div class="dt-quote-dialog-toolbar">
+          <el-button type="primary" :icon="Plus" size="small" @click="allQuotesAddVisible = !allQuotesAddVisible">
+            添加句子
+          </el-button>
+          <el-checkbox
+            :model-value="allQuotesAllSelected"
+            :indeterminate="allQuotesSelected.size > 0 && !allQuotesAllSelected"
+            @change="toggleAllQuotesSelected"
+          >
+            全选
+          </el-checkbox>
+          <el-button
+            type="danger"
+            plain
+            size="small"
+            :icon="Delete"
+            :disabled="allQuotesSelected.size === 0"
+            @click="batchDeleteQuotes"
+          >
+            批量删除已选 ({{ allQuotesSelected.size }})
+          </el-button>
+          <span class="dt-quote-dialog-hint">最近一次要被使用的句子用边框高亮</span>
+        </div>
+
+        <div v-if="allQuotesAddVisible" class="dt-quote-add-row">
+          <el-input
+            v-model="allQuotesAddText"
+            type="textarea"
+            :rows="3"
+            placeholder="输入单条句子，或粘贴多条以中文句号「。」分隔的句子"
+          />
+          <div class="dt-quote-add-actions">
+            <el-button size="small" @click="allQuotesAddVisible = false; allQuotesAddText = ''">取消</el-button>
+            <el-button type="primary" size="small" :loading="allQuotesAddSaving" @click="submitAddQuote">保存</el-button>
+          </div>
+        </div>
+
+        <div v-loading="allQuotesLoading" class="dt-quote-dialog-list">
+          <div v-if="allQuotes.length === 0 && !allQuotesLoading" class="dt-quote-empty">
+            暂无句子，点击「添加句子」开始建立你的名句库。
+          </div>
+          <div
+            v-for="q in allQuotes"
+            :key="q.id"
+            class="dt-quote-dialog-item"
+            :class="{ 'is-next': q.is_next }"
+          >
+            <el-checkbox
+              :model-value="isQuoteSelected(q.id)"
+              @change="checked => toggleQuoteSelected(q.id, checked)"
+            />
+            <span class="dt-quote-dialog-index">{{ q.order_no }}.</span>
+            <template v-if="allQuotesEditingId === q.id">
+              <el-input
+                v-model="allQuotesEditingContent"
+                size="small"
+                type="textarea"
+                :rows="2"
+                class="dt-quote-edit-input"
+              />
+              <el-button size="small" type="primary" @click="saveEditQuote(q)">保存</el-button>
+              <el-button size="small" @click="cancelEditQuote">取消</el-button>
+            </template>
+            <template v-else>
+              <span class="dt-quote-dialog-text">{{ q.content }}</span>
+              <span v-if="q.is_next" class="dt-quote-queue-badge">最近一次</span>
+              <el-button size="small" plain @click="startEditQuote(q)">编辑</el-button>
+              <el-button size="small" plain type="danger" @click="deleteSingleQuote(q)">删除</el-button>
+            </template>
+          </div>
+        </div>
+
+        <template #footer>
+          <el-button @click="quoteAllDialogVisible = false">关闭</el-button>
         </template>
       </el-dialog>
 
@@ -2725,6 +3183,214 @@ onUnmounted(() => {
   align-items: flex-start;
 }
 
+.dt-duty-left {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ========== v3.3.0 名句搭配面板 ========== */
+.dt-quote-panel {
+  border: 1px solid #d6e3ff;
+  border-radius: 8px;
+  background: #f5f8ff;
+  padding: 12px 14px;
+}
+
+/* 嵌入到「每周/每月值班配置」弹窗左侧值班对象卡片下方时的变体 */
+.dt-quote-panel-inline {
+  margin-top: 14px;
+}
+
+.dt-quote-panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.dt-quote-panel-title strong {
+  display: block;
+  font-size: 14px;
+  color: var(--color-text-1, #1d2129);
+  margin-bottom: 2px;
+}
+
+.dt-quote-panel-title span {
+  font-size: 12px;
+  color: var(--color-text-3, #86909c);
+}
+
+.dt-quote-panel-switch {
+  flex-shrink: 0;
+}
+
+.dt-quote-panel-body {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dt-quote-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-text-2, #4e5969);
+}
+
+.dt-quote-queue-title strong {
+  font-size: 13px;
+  color: var(--color-text-1, #1d2129);
+}
+
+.dt-quote-queue {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.dt-quote-queue-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  background: var(--color-bg-white, #fff);
+  border: 1px solid transparent;
+  color: var(--color-text-2, #4e5969);
+}
+
+.dt-quote-queue-item.is-next {
+  border-color: #f5a623;
+  background: #fff8e8;
+  color: var(--color-text-1, #1d2129);
+  font-weight: 500;
+}
+
+.dt-quote-queue-index {
+  flex-shrink: 0;
+  color: var(--color-text-3, #86909c);
+}
+
+.dt-quote-queue-text {
+  flex: 1;
+  word-break: break-all;
+}
+
+.dt-quote-queue-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #f5a623;
+  color: #fff;
+}
+
+.dt-quote-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.dt-quote-empty {
+  font-size: 12px;
+  color: var(--color-text-3, #86909c);
+  padding: 12px;
+  text-align: center;
+  background: var(--color-bg-white, #fff);
+  border-radius: 6px;
+  border: 1px dashed var(--color-border, #e5e6eb);
+}
+
+.dt-quote-panel-off {
+  margin-top: 8px;
+}
+
+/* ========== v3.3.0 名句库弹窗 ========== */
+.dt-quote-dialog .dt-quote-dialog-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.dt-quote-dialog-hint {
+  font-size: 12px;
+  color: var(--color-text-3, #86909c);
+  margin-left: auto;
+}
+
+.dt-quote-add-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  background: #f5f8ff;
+  border: 1px dashed #d6e3ff;
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+
+.dt-quote-add-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.dt-quote-dialog-list {
+  max-height: 60vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dt-quote-dialog-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: var(--color-bg-white, #fff);
+  font-size: 13px;
+}
+
+.dt-quote-dialog-item:hover {
+  background: #f7f8fa;
+}
+
+.dt-quote-dialog-item.is-next {
+  border-color: #f5a623;
+  background: #fff8e8;
+}
+
+.dt-quote-dialog-index {
+  flex-shrink: 0;
+  color: var(--color-text-3, #86909c);
+  width: 36px;
+  text-align: right;
+}
+
+.dt-quote-dialog-text {
+  flex: 1;
+  word-break: break-all;
+}
+
+.dt-quote-edit-input {
+  flex: 1;
+}
+
 .dt-duty-card {
   border: 1px solid #fde7c4;
   border-radius: 8px;
@@ -2927,7 +3593,15 @@ onUnmounted(() => {
   gap: 6px;
 }
 
-.dt-duty-preview-text,
+.dt-duty-preview-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  line-height: 1.5;
+}
+
 .dt-duty-preview-empty {
   flex: 1 1 auto;
   overflow: visible;

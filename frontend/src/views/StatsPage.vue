@@ -419,7 +419,7 @@ function drawChart() {
 
   const W = containerWidth
   const H = CANVAS_HEIGHT
-  const padding = { top: 45, right: 30, bottom: 55, left: 55 }
+  const padding = { top: 60, right: 30, bottom: 55, left: 55 }
   const chartW = W - padding.left - padding.right
   const chartH = H - padding.top - padding.bottom
 
@@ -482,12 +482,14 @@ function drawChart() {
       ctx.closePath()
       ctx.fill()
 
-      // 柱顶标签 — 角色名 + 数值（REQ-23）
+      // 柱顶标签 — 纵排：上方角色名 / 下方数值（v3.3.0 防遮挡）
       ctx.fillStyle = '#1D2129'
       ctx.font = 'bold 10px "Inter", "Microsoft YaHei", sans-serif'
-      ctx.textAlign = 'center'
-      const labelText = `${BAR_LABELS[bi]} ${val.toFixed(0)}`
-      ctx.fillText(labelText, x + barWidth / 2, val > 0 ? y - 4 : padding.top + chartH - 8)
+      ctx.textAlign = 'left'
+      const labelBottomY = val > 0 ? y - 4 : padding.top + chartH - 8
+      const labelTopY = labelBottomY - 12
+      ctx.fillText(BAR_LABELS[bi], x, labelTopY)
+      ctx.fillText(val.toFixed(0), x, labelBottomY)
     })
 
     // X 轴标签（PM 名称）— v3.2.1: 可点击样式

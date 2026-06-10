@@ -28,6 +28,7 @@ app.use('/api/permissions', require('./routes/permissions'));
 app.use('/api/excel',       require('./routes/excel'));
 app.use('/api/settings',    require('./routes/settings'));
 app.use('/api/pm',          require('./routes/pm'));
+app.use('/api/quotes',      require('./routes/quotes'));
 
 /* 健康检查 */
 app.get('/api/health', (req, res) => {

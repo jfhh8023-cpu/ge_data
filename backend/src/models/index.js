@@ -16,6 +16,8 @@ const ProductManager = require('./ProductManager');
 const AutoTaskRule = require('./AutoTaskRule');
 const AutoTaskRunLog = require('./AutoTaskRunLog');
 const AutoTaskMessage = require('./AutoTaskMessage');
+const Quote = require('./Quote');
+const QuoteConfig = require('./QuoteConfig');
 
 /* ========== 关联定义 ========== */
 
@@ -55,6 +57,10 @@ AutoTaskRunLog.belongsTo(AutoTaskRule, { foreignKey: 'rule_id', as: 'rule' });
 AutoTaskRule.hasMany(AutoTaskMessage, { foreignKey: 'rule_id', as: 'messages' });
 AutoTaskMessage.belongsTo(AutoTaskRule, { foreignKey: 'rule_id', as: 'rule' });
 
+// AutoTaskRule 1:1 QuoteConfig（v3.3.0 名句搭配）
+AutoTaskRule.hasOne(QuoteConfig, { foreignKey: 'rule_id', as: 'quoteConfig' });
+QuoteConfig.belongsTo(AutoTaskRule, { foreignKey: 'rule_id', as: 'rule' });
+
 module.exports = {
   sequelize,
   CollectionTask,
@@ -69,5 +75,7 @@ module.exports = {
   ProductManager,
   AutoTaskRule,
   AutoTaskRunLog,
-  AutoTaskMessage
+  AutoTaskMessage,
+  Quote,
+  QuoteConfig
 };

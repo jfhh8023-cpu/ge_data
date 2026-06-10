@@ -90,6 +90,10 @@ async function ensureAutoTaskTables() {
   await ensureColumn('auto_task_rules', 'dingtalk_recipients', { type: DataTypes.TEXT, allowNull: true });
   await ensureColumn('auto_task_rules', 'duty_config', { type: DataTypes.TEXT, allowNull: true });
   await ensureRunLogEventIndex();
+  // v3.3.0 名句搭配
+  const { Quote, QuoteConfig } = require('../models');
+  await Quote.sync();
+  await QuoteConfig.sync();
 }
 
 function toIntList(value, min, max) {
@@ -841,8 +845,20 @@ async function executeDutyEvent(rule, event) {
   );
   if (!log) return null;
 
+  // v3.3.0 名句搭配：发送前消费一句名句并拼接到 message 前方
+  let finalEvent = event;
   try {
-    await sendDutyWebhook(rule, event);
+    const { consumeQuotes } = require('./QuoteService');
+    const quotes = await consumeQuotes(rule.id, 1);
+    if (quotes.length && quotes[0]) {
+      finalEvent = { ...event, message: `${quotes[0]}\n${event.message || ''}` };
+    }
+  } catch (quoteErr) {
+    console.warn(`[duty-quote] 规则 ${rule.id} 名句注入失败：${quoteErr.message}`);
+  }
+
+  try {
+    await sendDutyWebhook(rule, finalEvent);
     await log.update({
       status: 'success',
       message: `${actionLabel}发送成功`,

@@ -196,7 +196,7 @@ router.post('/auto-tasks/:id/test-run', async (req, res, next) => {
 router.post('/auto-tasks/test-notify', async (req, res, next) => {
   try {
     const webhooks = normalizeWebhookList(req.body.dingtalk_webhooks ?? req.body.dingtalk_webhook);
-    const message = String(req.body.dingtalk_message || '').trim();
+    let message = String(req.body.dingtalk_message || '').trim();
     const ruleId = req.body.rule_id;
     if (webhooks.length === 0) {
       await createRuleMessage(ruleId, 'warning', 'validate', '请至少配置一个钉钉 webhook');
@@ -206,6 +206,26 @@ router.post('/auto-tasks/test-notify', async (req, res, next) => {
       await createRuleMessage(ruleId, 'warning', 'validate', '请填写通知内容');
       return res.status(400).json({ code: 1, message: '请填写通知内容' });
     }
+
+    // v3.3.0 名句搭配：值班通知场景（"测试发送 webhook"/"单条值班通知发送"）也注入名句，
+    // 与定时调度 executeDutyEvent 行为一致，共享同一个候选队列与去重历史。
+    const isDutyContext =
+      ruleId &&
+      String(req.body.task_type || '') === 'duty_notify' &&
+      (req.body.test_source === 'duty_today_test' || req.body.test_source === 'duty_preview_line');
+    if (isDutyContext) {
+      try {
+        const { consumeQuotes } = require('../services/AutoTaskService').__internals || {};
+        const consume = consumeQuotes || require('../services/QuoteService').consumeQuotes;
+        const quotes = await consume(ruleId, 1);
+        if (quotes.length && quotes[0]) {
+          message = `${quotes[0]}\n${message}`;
+        }
+      } catch (quoteErr) {
+        console.warn(`[duty-quote] /test-notify 规则 ${ruleId} 名句注入失败：${quoteErr.message}`);
+      }
+    }
+
     const result = await sendDingTalkWebhook({
       task_type: req.body.task_type,
       dingtalk_webhooks: req.body.dingtalk_webhooks ?? req.body.dingtalk_webhook,
