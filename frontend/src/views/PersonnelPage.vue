@@ -13,6 +13,7 @@ import BackButton from '../components/BackButton.vue'
 import api from '../api'
 import { useAuthStore } from '../stores/auth'
 import Sortable from 'sortablejs'
+import { buildAppUrl, copyToClipboard } from '../utils/url'
 
 const staffStore = useStaffStore()
 const pmStore = usePmStore()
@@ -140,10 +141,7 @@ watch(activeTab, async () => {
 
 function getFillUrl(token) {
   if (!token) return null
-  // 生产环境 base = '/devtracker/'，开发环境 base = '/'
-  const base = import.meta.env.BASE_URL || '/'
-  const normalizedBase = base.endsWith('/') ? base : base + '/'
-  return `${window.location.origin}${normalizedBase}fill/${token}`
+  return buildAppUrl(`fill/${token}`)
 }
 
 function openCreate() {
@@ -235,28 +233,6 @@ async function handleTransfer() {
   }
 }
 
-/**
- * 兼容 HTTP/HTTPS 的复制工具函数
- * - HTTPS / localhost: 优先使用 Clipboard API
- * - HTTP（生产 HTTP）: 降级为 execCommand('copy') textarea 方案
- */
-async function copyToClipboard(text) {
-  if (navigator.clipboard && window.isSecureContext) {
-    await navigator.clipboard.writeText(text)
-    return
-  }
-  // HTTP 降级方案
-  const ta = document.createElement('textarea')
-  ta.value = text
-  ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;'
-  document.body.appendChild(ta)
-  ta.focus()
-  ta.select()
-  const ok = document.execCommand('copy')
-  document.body.removeChild(ta)
-  if (!ok) throw new Error('execCommand copy failed')
-}
-
 /** 复制纯链接 */
 async function copyLink(token) {
   const url = getFillUrl(token)
@@ -306,9 +282,7 @@ const pmTransferTargetOptions = computed(() => {
 
 function getPmViewUrl(token) {
   if (!token) return null
-  const base = import.meta.env.BASE_URL || '/'
-  const normalizedBase = base.endsWith('/') ? base : base + '/'
-  return `${window.location.origin}${normalizedBase}pm/view/${token}`
+  return buildAppUrl(`pm/view/${token}`)
 }
 
 function openPmCreate() {

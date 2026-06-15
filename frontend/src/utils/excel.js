@@ -5,6 +5,7 @@
 import * as XLSX from 'xlsx'
 import { saveAs } from 'file-saver'
 import api from '../api'
+import { getApiBasePath } from './url'
 
 /**
  * 解析上传的 Excel 文件
@@ -113,7 +114,7 @@ export async function uploadExcelToServer(file, meta) {
   if (meta.staff_id) formData.append('staff_id', meta.staff_id)
 
   // 直接用 axios 实例（需要覆盖 Content-Type）
-  const baseURL = import.meta.env.MODE === 'production' ? '/devtracker/api' : '/api'
+  const baseURL = getApiBasePath()
   const res = await fetch(`${baseURL}/excel/upload`, {
     method: 'POST',
     body: formData
@@ -126,7 +127,7 @@ export async function uploadExcelToServer(file, meta) {
  * @param {string} page - 'fill' | 'task-detail' | 'report'
  */
 export function downloadTemplate(page) {
-  const baseURL = import.meta.env.MODE === 'production' ? '/devtracker/api' : '/api'
+  const baseURL = getApiBasePath()
   window.open(`${baseURL}/excel/template/${page}`, '_blank')
 }
 

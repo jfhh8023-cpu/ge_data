@@ -1,11 +1,8 @@
 import axios from 'axios'
-
-const baseURL = import.meta.env.MODE === 'production'
-  ? '/devtracker/api'
-  : '/api'
+import { getApiBasePath } from '../utils/url'
 
 const api = axios.create({
-  baseURL,
+  baseURL: getApiBasePath(),
   timeout: 10000,
   headers: { 'Content-Type': 'application/json' }
 })

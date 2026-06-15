@@ -8,6 +8,7 @@ import { usePermissionStore } from '../stores/permission'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import BackButton from '../components/BackButton.vue'
 import { useAuthStore } from '../stores/auth'
+import { buildAppUrl, copyToClipboard } from '../utils/url'
 
 const permStore = usePermissionStore()
 const authStore = useAuthStore()
@@ -241,19 +242,18 @@ async function toggleAll(link) {
 
 /** 构建访问链接基础URL（适配生产子路径） */
 function buildAccessUrl(token) {
-  const base = import.meta.env.BASE_URL || '/'
-  const normalizedBase = base.endsWith('/') ? base : base + '/'
-  return `${window.location.origin}${normalizedBase}access?token=${token}`
+  return buildAppUrl('access', { token })
 }
 
 /** 复制链接（适配生产子路径） */
-function copyLink(token) {
+async function copyLink(token) {
   const url = buildAccessUrl(token)
-  navigator.clipboard.writeText(url).then(() => {
+  try {
+    await copyToClipboard(url)
     ElMessage.success('链接已复制到剪贴板')
-  }).catch(() => {
+  } catch {
     ElMessage.info(`访问地址：${url}`)
-  })
+  }
 }
 
 /** 获取完整访问链接 */

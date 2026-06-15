@@ -80,6 +80,14 @@ graph TB
 - 二级页面（任务详情 `#/task/:id`、团队人员 `#/personnel`）显示 **返回按钮**
 - 页面标题：`研发效能度量 - DevTracker`
 
+### 2.2 全系统链接协议兼容（REQ-039）
+
+- 生产环境必须同时支持 `http://jfzhu8023.cloud/devtracker/` 与 `https://jfzhu8023.cloud/devtracker/`。
+- 所有 Vue History 模式路由深链必须在 HTTP/HTTPS 下直接访问：`/tasks`、`/tasks/:id`、`/report`、`/stats`、`/personnel`、`/permissions`、`/settings`、`/fill/:token`、`/pm/view/:token`、`/access?token=...`、`/403`。
+- `/devtracker` 无尾斜杠访问必须重定向到 `/devtracker/`，并保留原 query 参数。
+- 前端生成、复制、打开的所有系统链接必须按当前页面协议生成：HTTP 页面生成 HTTP 链接，HTTPS 页面生成 HTTPS 链接。
+- `/devtracker/api/*` 在 HTTP/HTTPS 下都必须代理到 DevTracker 后端 `/api/*`，不得被其他项目的 catch-all 路由拦截。
+
 ---
 
 ## 三、功能模块详细设计
@@ -678,6 +686,7 @@ App
 | v0.3.0 | 2026-04-13 | 全量 Demo UI 重构（东方高定风格） |
 | v0.4.0 | 2026-04-14 | 29 项增量变更（CHG-001~029） |
 | **v0.5.0** | **2026-04-15** | **文档融合 + 导航重命名（任务清单/周期统计）+ 导航重排序 + 团队徽章 + 返回按钮 + 8项功能GAP修复** |
+| v0.5.1 | 2026-06-15 | 新增 REQ-039：全系统链接、跳转、复制地址、API 深链必须同时支持 HTTP/HTTPS。 |
 
 ---
 
@@ -698,6 +707,7 @@ App
 | REQ-015 | 一键识别需求文本引擎 | ✅ |
 | REQ-016 | 汇总报表独立页签（排序+分页+备注+总计+手动添加） | 🔧 |
 | REQ-028 | 统计大盘柱状图 | ✅ |
+| REQ-039 | 全系统链接 HTTP/HTTPS 兼容 | ✅ |
 | NAV-001 | 导航重命名（任务清单/周期统计）+ 重排序 | ✅ |
 | NAV-002 | 团队徽章入口 | ✅ |
 | NAV-003 | 二级页面返回按钮 | ✅ |
