@@ -74,16 +74,17 @@ router.get('/', async (req, res, next) => {
     });
 
     let taskIds = tasks.map(t => t.id);
-    if (taskId && taskId !== 'all') taskIds = [taskId];
+    const taskIdOutOfRange = taskId && taskId !== 'all' && !taskIds.includes(taskId);
+    if (taskId && taskId !== 'all' && !taskIdOutOfRange) taskIds = [taskId];
 
     const staff = await Staff.findAll({ where: { is_active: true } });
 
     // 空数组保护
-    if (taskIds.length === 0) {
+    if (taskIds.length === 0 || taskIdOutOfRange) {
       return res.json({
         code: 0,
         data: {
-          tasks: [], records: [], matchGroups: [], staff,
+          tasks, records: [], matchGroups: [], staff,
           summary: { totalHours: 0, recordCount: 0, staffCount: staff.length, taskCount: 0 },
           roleSummary: { frontend: 0, backend: 0, test: 0 },
           pmDistribution: []

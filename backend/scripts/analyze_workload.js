@@ -325,6 +325,9 @@ function simpleBarChart(rows, title, options = {}) {
   const data = rows.filter(r => Number(r.total) > 0).slice(0, options.limit || 999);
   const max = Math.max(...data.map(r => Number(r.total || 0)), 1);
   const metaField = options.metaField;
+  const titleHelp = options.tip
+    ? `<button type="button" class="notice-help" aria-label="${escapeHtml(title)}说明" data-tip="${escapeHtml(options.tip)}">?</button>`
+    : '';
   const rowsHtml = data.map(row => {
     const label = chartLabel(row);
     const meta = metaField ? String(row[metaField] || '——') : '';
@@ -341,7 +344,7 @@ function simpleBarChart(rows, title, options = {}) {
   }).join('');
   return `
     <section class="panel">
-      <div class="section-head"><h2>${escapeHtml(title)}</h2></div>
+      <div class="section-head"><h2>${escapeHtml(title)}${titleHelp}</h2></div>
       <div class="bar-list">${rowsHtml || '<p class="muted">无数据</p>'}</div>
     </section>
   `;
@@ -851,6 +854,7 @@ function buildPeriodReports(data, baseReport) {
     return {
       year: task ? String(task.year) : key.slice(0, 4),
       week: task ? String(task.week_number || '') : '',
+      quarter: task ? quarterOf(task.end_date).split('-')[1] : '',
       taskId: task?.id || '',
       taskTitle: task?.title || key
     };
@@ -923,6 +927,14 @@ function scriptJson(value) {
     .replace(/&/g, '\\u0026');
 }
 
+function trendAxisLabel(row, options = {}) {
+  const raw = String(row.name || '');
+  const monthMatch = raw.match(/^(\d{4})-(\d{2})$/);
+  if (monthMatch && options.compactYearMonth) return `${monthMatch[1].slice(2)}${monthMatch[2]}`;
+  if (monthMatch) return monthMatch[2];
+  return raw.replace(/^\d{4}-/, '');
+}
+
 function lineChart(rows, title, options = {}) {
   const data = rows
     .filter(row => Number(row.total || 0) > 0)
@@ -955,7 +967,7 @@ function lineChart(rows, title, options = {}) {
   }).join('');
   const labels = data.map((row, index) => {
     if (index % labelStep !== 0 && index !== data.length - 1) return '';
-    return `<text x="${x(index)}" y="${height - 22}" class="axis-label" text-anchor="middle">${escapeHtml(row.name.replace(/^2026-/, ''))}</text>`;
+    return `<text x="${x(index)}" y="${height - 22}" class="axis-label" text-anchor="middle">${escapeHtml(trendAxisLabel(row, options))}</text>`;
   }).join('');
   return `
     <section class="panel chart-panel">
@@ -972,6 +984,50 @@ function lineChart(rows, title, options = {}) {
       ${options.note ? `<p class="muted small-note">${escapeHtml(options.note)}</p>` : ''}
     </section>
   `;
+}
+
+function roleValueBarChart(row, title, options = {}) {
+  const source = row || {};
+  const data = [
+    { key: 'total', label: '总计', color: '#111827', value: Number(source.total || 0) },
+    { key: 'frontend', label: '前端', color: ROLE_COLORS.frontend, value: Number(source.frontend || 0) },
+    { key: 'backend', label: '后端', color: ROLE_COLORS.backend, value: Number(source.backend || 0) },
+    { key: 'test', label: '测试', color: ROLE_COLORS.test, value: Number(source.test || 0) }
+  ];
+  const max = Math.max(...data.map(item => item.value), 1);
+  return `
+    <section class="panel chart-panel">
+      <div class="section-head">
+        <h2>${escapeHtml(title)}</h2>
+        <div class="legend">${data.map(item => `<span><i class="dot" style="background:${item.color}"></i>${item.label}</span>`).join('')}</div>
+      </div>
+      <div class="role-bar-chart" aria-label="${escapeHtml(title)}">
+        ${data.map(item => `
+          <div class="role-bar-row">
+            <div class="role-bar-label">${escapeHtml(item.label)}</div>
+            <div class="role-bar-track">
+              <div class="role-bar-fill" style="width:${Math.max(1, pct(item.value, max))}%; background:${item.color}"></div>
+            </div>
+            <div class="role-bar-value">${fmt(item.value)}h</div>
+          </div>
+        `).join('')}
+      </div>
+      ${source.name ? `<p class="muted small-note">${escapeHtml(source.name)}：${escapeHtml(options.note || '当前周不同数据维度工时对比。')}</p>` : ''}
+    </section>
+  `;
+}
+
+function trendChart(report, rows, title, options = {}) {
+  if (report.dataset.periodGrain === 'week') {
+    const weekTitle = options.weekTitle || (title.includes('月份') ? '当前周维度对比' : title.replace('趋势：总工时与三端变化', '周维度对比：总计与三端'));
+    return roleValueBarChart(report.weeks[0] || rows[0], weekTitle, { note: '当前周不同数据维度工时对比。' });
+  }
+  const startYear = String(report.dataset.dateStart || '').slice(0, 4);
+  const endYear = String(report.dataset.dateEnd || '').slice(0, 4);
+  return lineChart(rows, title, {
+    ...options,
+    compactYearMonth: options.compactYearMonth || ((!report.dataset.periodGrain || report.dataset.periodGrain === 'all') && startYear && endYear && startYear !== endYear)
+  });
 }
 
 function pieChart(rows, title, options = {}) {
@@ -1164,7 +1220,7 @@ function renderHtml(report, options = {}) {
     <div class="period-switcher" aria-label="周期切换">
       <label>
         <span>粒度</span>
-        <select data-period-grain>
+        <select data-period-grain disabled>
           <option value="all">全部</option>
           <option value="year">年度</option>
           <option value="quarter">季度</option>
@@ -1174,7 +1230,9 @@ function renderHtml(report, options = {}) {
       </label>
       <label>
         <span>周期</span>
-        <select data-period-key></select>
+        <select data-period-key disabled>
+          <option value="">数据加载中...</option>
+        </select>
       </label>
     </div>
   ` : '';
@@ -1205,6 +1263,41 @@ function renderHtml(report, options = {}) {
       color: var(--text);
       background: var(--bg);
       line-height: 1.55;
+    }
+    .report-loading-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(248, 250, 252, 0.86);
+      backdrop-filter: blur(2px);
+    }
+    body.report-ready .report-loading-overlay { display: none; }
+    .report-loading-box {
+      display: grid;
+      justify-items: center;
+      gap: 12px;
+      min-width: 180px;
+      padding: 22px 26px;
+      border: 1px solid #d8e0eb;
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 18px 48px rgba(15, 23, 42, 0.18);
+      color: #111827;
+      font-weight: 700;
+    }
+    .report-spinner {
+      width: 42px;
+      height: 42px;
+      border: 4px solid #dbeafe;
+      border-top-color: #2563eb;
+      border-radius: 50%;
+      animation: reportSpin 0.9s linear infinite;
+    }
+    @keyframes reportSpin {
+      to { transform: rotate(360deg); }
     }
     header {
       padding: 16px 28px 14px;
@@ -1367,6 +1460,12 @@ function renderHtml(report, options = {}) {
     .segment-pill.be { border-color: rgba(22, 163, 74, 0.25); background: rgba(22, 163, 74, 0.08); color: #15803d; }
     .segment-pill.qa { border-color: rgba(249, 115, 22, 0.28); background: rgba(249, 115, 22, 0.1); color: #c2410c; }
     .line-svg { display: block; width: 100%; height: auto; min-height: 250px; }
+    .role-bar-chart { display: grid; gap: 16px; padding: 20px 6px 8px; }
+    .role-bar-row { display: grid; grid-template-columns: 54px minmax(180px, 1fr) 82px; gap: 12px; align-items: center; }
+    .role-bar-label { color: #344054; font-size: 13px; text-align: right; }
+    .role-bar-track { height: 28px; background: #eef2f7; border: 1px solid #e4e9f2; border-radius: 5px; overflow: hidden; }
+    .role-bar-fill { height: 100%; min-width: 2px; border-radius: 5px; }
+    .role-bar-value { font-weight: 800; font-variant-numeric: tabular-nums; font-size: 13px; }
     .grid-line { stroke: #e8edf5; stroke-width: 1; }
     .axis-line { stroke: #b9c4d3; stroke-width: 1; }
     .axis-label { fill: #667085; font-size: 12px; }
@@ -1430,6 +1529,12 @@ function renderHtml(report, options = {}) {
   </style>
 </head>
 <body>
+  <div class="report-loading-overlay" id="report-loading-overlay" role="status" aria-live="polite">
+    <div class="report-loading-box">
+      <div class="report-spinner" aria-hidden="true"></div>
+      <div>正在加载。。。。。。</div>
+    </div>
+  </div>
   <header>
     <div class="report-header-row">
       <div class="report-header-title">
@@ -1470,7 +1575,7 @@ function renderHtml(report, options = {}) {
         ${insightCard({ tab: 'requirements', title: '协作形态最高', value: roleCombos[0]?.combo || '-', detail: `${fmt(roleCombos[0]?.total || 0)}h · ${fmt(roleCombos[0]?.requirementCount || 0)} 个需求` })}
       </section>
       <section class="chart-grid">
-        ${lineChart(report.months.length > 1 ? report.months : report.weeks, '主页趋势：总工时与三端变化')}
+        ${trendChart(report, report.months.length > 1 ? report.months : report.weeks, '主页趋势：总工时与三端变化')}
         ${pieChart(rolePieRows, '主页构成：三端工时占比')}
       </section>
       <section class="summary">
@@ -1489,7 +1594,7 @@ function renderHtml(report, options = {}) {
 
     <section class="tab-panel" id="tab-trend">
       <section class="chart-grid">
-        ${lineChart(report.months, '月份折线趋势', { note: '折线同时展示总计、前端、后端、测试；季度报告中月线更适合看结构变化。' })}
+        ${trendChart(report, report.months, '月份折线趋势', { note: '折线同时展示总计、前端、后端、测试；季度报告中月线更适合看结构变化。' })}
         ${pieChart(report.quarters, '季度总工时占比')}
       </section>
       ${stackedBarChart(report.weeks, '按周期堆叠趋势：三端工时')}
@@ -1544,7 +1649,10 @@ function renderHtml(report, options = {}) {
 
     <section class="tab-panel" id="tab-requirements">
       <section class="chart-grid">
-        ${simpleBarChart(topRequirements, '需求投入 Top 20', { limit: 20 })}
+        ${simpleBarChart(topRequirements, '需求投入 Top 20', {
+          limit: 20,
+          tip: '统计的是需求在单个填写周期内，即某一周内的工时占用总量排行；存在一个需求三端写作总计时间较大，或者单个需求出现不同次数，不是重复，而是多个周期内不同的填写内容；'
+        })}
         ${pieChart(roleCombos.map(row => ({ name: row.combo, total: row.total })), '需求协作形态占比', { limit: 8 })}
       </section>
       <section class="panel">
@@ -1634,20 +1742,28 @@ function renderHtml(report, options = {}) {
       return (window.__PERIOD_REPORTS__ || []).find(item => item.key === key);
     }
 
+    function hideReportLoading() {
+      document.body.classList.add('report-ready');
+    }
+
     function reportByQuery() {
       const reports = window.__PERIOD_REPORTS__ || [];
       const params = new URLSearchParams(window.location.search);
       const period = params.get('period');
       if (period && reportByKey(period)) return period;
-      const taskId = params.get('taskId');
-      if (taskId && taskId !== 'all') {
-        const byTask = reports.find(item => item.taskId === taskId);
-        if (byTask) return byTask.key;
-      }
       const year = params.get('year');
       const quarter = params.get('quarter');
       const month = params.get('month');
       const week = params.get('week');
+      const taskId = params.get('taskId');
+      if (taskId && taskId !== 'all') {
+        const byTask = reports.find(item =>
+          item.taskId === taskId
+          && (!year || item.year === year)
+          && (!quarter || item.quarter === quarter)
+        );
+        if (byTask) return byTask.key;
+      }
       if (week) {
         const found = reports.find(item => item.grain === 'week' && item.week === week && (!year || item.year === year));
         if (found) return found.key;
@@ -1699,11 +1815,16 @@ function renderHtml(report, options = {}) {
 
     function initPeriodSwitcher() {
       const reports = window.__PERIOD_REPORTS__ || [];
-      if (!reports.length) return;
+      if (!reports.length) {
+        hideReportLoading();
+        return;
+      }
       const selectedKey = reportByQuery();
       const selected = reportByKey(selectedKey) || reports[0];
       const grainSelect = document.querySelector('[data-period-grain]');
       const periodSelect = document.querySelector('[data-period-key]');
+      if (grainSelect) grainSelect.disabled = false;
+      if (periodSelect) periodSelect.disabled = false;
       if (grainSelect) {
         grainSelect.addEventListener('change', () => {
           const first = reports.find(item => item.grain === grainSelect.value);
@@ -1714,6 +1835,7 @@ function renderHtml(report, options = {}) {
         periodSelect.addEventListener('change', () => setPeriod(periodSelect.value, true));
       }
       setPeriod(selected.key, false);
+      hideReportLoading();
     }
 
     function setChip(tab, value) {

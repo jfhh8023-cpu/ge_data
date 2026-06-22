@@ -177,7 +177,11 @@ watch(activeTab, async (tab) => {
   }
 })
 
-watch([selectedYear, selectedQuarter, selectedTaskId], async () => {
+watch([selectedYear, selectedQuarter, selectedTaskId], async ([year, quarter], [oldYear, oldQuarter]) => {
+  if ((year !== oldYear || quarter !== oldQuarter) && selectedTaskId.value !== 'all') {
+    selectedTaskId.value = 'all'
+    return
+  }
   if (activeTab.value === 'department') {
     loadDeptStats()
   } else if (activeTab.value === 'personal') {
@@ -483,7 +487,11 @@ function workloadReportUrl(extra = {}) {
   const params = new URLSearchParams()
   params.set('year', String(selectedYear.value))
   params.set('quarter', selectedQuarter.value)
-  params.set('taskId', selectedTaskId.value)
+  if (selectedTaskId.value !== 'all') {
+    params.set('taskId', selectedTaskId.value)
+  } else {
+    params.set('period', `quarter:${selectedYear.value}-${selectedQuarter.value}`)
+  }
   if (extra.dimension) params.set('dimension', extra.dimension)
   const base = import.meta.env.BASE_URL || '/'
   return `${base}${WORKLOAD_REPORT_PATH}?${params.toString()}`
