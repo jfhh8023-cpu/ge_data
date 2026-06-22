@@ -712,6 +712,46 @@ function reportRangeText(report) {
     : '未识别时间范围';
 }
 
+function reportYearRangeText(report) {
+  const startYear = String(report.dataset.dateStart || '').slice(0, 4);
+  const endYear = String(report.dataset.dateEnd || '').slice(0, 4);
+  if (startYear && endYear && startYear !== endYear) return `${startYear}-${endYear}年`;
+  if (startYear || endYear) return `${startYear || endYear}年`;
+  return '未识别时间范围';
+}
+
+function quarterTitleText(year, quarter) {
+  const quarterNumber = String(quarter || '').replace(/^Q/i, '');
+  if (!year || !quarterNumber) return '';
+  return `${year}年第${Number(quarterNumber)}季度`;
+}
+
+function reportTitleScopeText(report) {
+  const dataset = report.dataset || {};
+  const grain = dataset.periodGrain || '';
+  if (grain === 'week') {
+    const week = String(dataset.week || '').padStart(2, '0');
+    const labelWeek = String(dataset.periodLabel || '').match(/第(\d+)周/);
+    return week && week !== '00' ? `第${week}周` : (labelWeek ? `第${labelWeek[1].padStart(2, '0')}周` : reportYearRangeText(report));
+  }
+  if (grain === 'quarter') {
+    return quarterTitleText(dataset.year, dataset.quarter) || reportYearRangeText(report);
+  }
+  if (grain === 'month') {
+    const month = String(dataset.month || '');
+    const match = month.match(/^(\d{4})-(\d{2})$/);
+    return match ? `${match[1]}年${match[2]}月` : reportYearRangeText(report);
+  }
+  if (grain === 'year') {
+    return dataset.year ? `${dataset.year}年` : reportYearRangeText(report);
+  }
+  const quarterFromScope = String(dataset.scope || '').match(/(\d{4})\s*\/\s*Q([1-4])/i);
+  if (quarterFromScope) return quarterTitleText(quarterFromScope[1], `Q${quarterFromScope[2]}`);
+  const yearFromScope = String(dataset.scope || '').match(/^(\d{4})年?$|^(\d{4})\s*(?:\/|$)/);
+  if (yearFromScope) return `${yearFromScope[1] || yearFromScope[2]}年`;
+  return reportYearRangeText(report);
+}
+
 function weekPeriodName(row) {
   const year = row.year || dateStr(row.end_date).slice(0, 4) || dateStr(row.start_date).slice(0, 4);
   const week = String(row.week_number || '').padStart(2, '0');
@@ -821,6 +861,7 @@ function buildPeriodReports(data, baseReport) {
     grain: item.grain,
     label: item.label,
     range: item.range,
+    titleScope: reportTitleScopeText(item.report),
     scope: item.scope,
     year: item.report.dataset.year || '',
     quarter: item.report.dataset.quarter || '',
@@ -1114,9 +1155,9 @@ function renderHtml(report, options = {}) {
     .join('');
 
   const rolePieRows = ROLE_KEYS.map(role => ({ name: ROLE_TEXT[role], total: report.summary[role] }));
-  const periodRangeText = report.dataset.dateStart && report.dataset.dateEnd
-    ? `${report.dataset.dateStart} 至 ${report.dataset.dateEnd}`
-    : '未识别时间范围';
+  const titleScopeText = reportTitleScopeText(report);
+  const referenceNotice = '注意：当前数据统计依据，为人工每周填写数据所统计，存在一定的统一性偏差，工时填写预估性为主等因素，因此数据仅供参考；详细可查看~';
+  const referenceTip = '1，需求存在如：工单需求，有多个产品负责，单个开发负责开发，单个测试负责测试，最后填写工时只选择了其中一个产品人员，因此存在偏差；\n2，工时都是人工自己预估，存在不绝对准确的情况，因此不具备绝对工时参考，仅做相对数据参考；';
 
   const periodReports = Array.isArray(options.periodReports) ? options.periodReports : null;
   const periodSwitcher = periodReports ? `
@@ -1166,16 +1207,17 @@ function renderHtml(report, options = {}) {
       line-height: 1.55;
     }
     header {
-      padding: 26px 34px 20px;
+      padding: 16px 28px 14px;
       background: #111827;
       color: #fff;
     }
-    .report-header-row { display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; }
-    .period-switcher { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: flex-end; min-width: 360px; }
-    .period-switcher label { display: grid; gap: 5px; color: #d1d5db; font-size: 12px; }
+    .report-header-row { display: flex; justify-content: space-between; gap: 20px; align-items: center; }
+    .report-header-title { flex: 1; min-width: 0; }
+    .period-switcher { display: flex; gap: 8px; align-items: center; flex-wrap: nowrap; justify-content: flex-end; flex: 0 0 auto; }
+    .period-switcher label { display: flex; gap: 6px; align-items: center; color: #d1d5db; font-size: 12px; white-space: nowrap; }
     .period-switcher select {
-      height: 34px;
-      min-width: 118px;
+      height: 30px;
+      min-width: 108px;
       border: 1px solid #475569;
       border-radius: 7px;
       background: #fff;
@@ -1183,8 +1225,52 @@ function renderHtml(report, options = {}) {
       padding: 0 10px;
       font: inherit;
     }
-    header h1 { margin: 0 0 8px; font-size: 28px; letter-spacing: 0; }
-    header p { margin: 3px 0; color: #d1d5db; }
+    header h1 { margin: 0; font-size: 24px; line-height: 1.25; letter-spacing: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .report-note { margin: 4px 0 0; color: #cbd5e1; font-size: 12px; line-height: 1.35; }
+    .notice-help {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      margin-left: 4px;
+      border: 1px solid #93c5fd;
+      border-radius: 50%;
+      background: rgba(59, 130, 246, 0.14);
+      color: #bfdbfe;
+      font-size: 11px;
+      line-height: 1;
+      cursor: help;
+      vertical-align: text-bottom;
+    }
+    .notice-help::after {
+      content: attr(data-tip);
+      position: absolute;
+      left: 50%;
+      top: calc(100% + 8px);
+      z-index: 30;
+      width: min(560px, calc(100vw - 56px));
+      padding: 10px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      background: #fff;
+      color: #111827;
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.22);
+      font-size: 12px;
+      line-height: 1.6;
+      text-align: left;
+      white-space: pre-line;
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, 4px);
+      transition: opacity 0.15s ease, transform 0.15s ease;
+    }
+    .notice-help:hover::after,
+    .notice-help:focus-visible::after {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
     main { padding: 20px 28px 48px; max-width: 1500px; margin: 0 auto; }
     .tabs {
       position: sticky;
@@ -1337,7 +1423,8 @@ function renderHtml(report, options = {}) {
       .bar-row, .bar-row.simple, .bar-row.simple.has-meta { grid-template-columns: minmax(100px, 180px) 1fr 72px; }
       .bar-meta, .segment-breakdown { grid-column: 1 / -1; }
       .report-header-row { display: block; }
-      .period-switcher { justify-content: flex-start; min-width: 0; margin-top: 14px; }
+      header h1 { white-space: normal; }
+      .period-switcher { justify-content: flex-start; flex-wrap: wrap; margin-top: 10px; }
       main { padding: 16px; }
     }
   </style>
@@ -1345,10 +1432,9 @@ function renderHtml(report, options = {}) {
 <body>
   <header>
     <div class="report-header-row">
-      <div>
-    <h1>DevTracker 工时数据分析报告｜${escapeHtml(periodRangeText)}</h1>
-    <p>范围：${escapeHtml(report.dataset.scope)}；统计周期：${escapeHtml(periodRangeText)}；周期口径：按任务结束日期归属；生成时间：${escapeHtml(generatedAt)}</p>
-    <p>数据源：本地数据库，只读取工时、人员、任务和产品经理相关数据。</p>
+      <div class="report-header-title">
+    <h1>DevTracker 工时数据分析报告 | ${escapeHtml(titleScopeText)}</h1>
+    <p class="report-note">${escapeHtml(referenceNotice)}<button type="button" class="notice-help" aria-label="查看数据参考说明" data-tip="${escapeHtml(referenceTip)}">?</button></p>
       </div>
       ${periodSwitcher}
     </div>
@@ -1596,9 +1682,7 @@ function renderHtml(report, options = {}) {
       const body = document.getElementById('report-body');
       if (body && item.html) body.innerHTML = item.html;
       const title = document.querySelector('header h1');
-      if (title) title.textContent = 'DevTracker 工时数据分析报告｜' + item.range;
-      const scope = document.querySelector('header p');
-      if (scope) scope.textContent = '范围：' + item.scope + '；统计周期：' + item.range + '；周期口径：按任务结束日期归属';
+      if (title) title.textContent = 'DevTracker 工时数据分析报告 | ' + (item.titleScope || item.range);
       const grainSelect = document.querySelector('[data-period-grain]');
       if (grainSelect) grainSelect.value = item.grain;
       populatePeriodOptions(item.grain, item.key);
