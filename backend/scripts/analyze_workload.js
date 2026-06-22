@@ -1344,7 +1344,6 @@ function renderHtml(report, options = {}) {
     header h1 { margin: 0; font-size: 24px; line-height: 1.25; letter-spacing: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .report-note { margin: 4px 0 0; color: #cbd5e1; font-size: 12px; line-height: 1.35; }
     .report-note-line { display: grid; grid-template-columns: auto 1fr; column-gap: 0; align-items: baseline; }
-    .report-note-line.with-help { grid-template-columns: auto 1fr auto; }
     .report-note-prefix { white-space: pre; }
     .report-note-spacer { visibility: hidden; }
     .notice-help {
@@ -1567,7 +1566,7 @@ function renderHtml(report, options = {}) {
       <div class="report-header-title">
     <h1>DevTracker 工时数据分析报告 | ${escapeHtml(titleScopeText)}</h1>
     <div class="report-note" aria-label="数据统计注意事项">
-      <div class="report-note-line with-help"><span class="report-note-prefix">注意：</span><span>1，${escapeHtml(referenceNoticeLines[0])}</span><button type="button" class="notice-help" aria-label="查看数据参考说明" data-tip="${escapeHtml(referenceTip)}">?</button></div>
+      <div class="report-note-line"><span class="report-note-prefix">注意：</span><span>1，${escapeHtml(referenceNoticeLines[0])}<button type="button" class="notice-help" aria-label="查看数据参考说明" data-tip="${escapeHtml(referenceTip)}">?</button></span></div>
       <div class="report-note-line"><span class="report-note-prefix report-note-spacer">注意：</span><span>2，${escapeHtml(referenceNoticeLines[1])}</span></div>
     </div>
       </div>
