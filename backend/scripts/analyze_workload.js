@@ -704,11 +704,6 @@ function analyze(data) {
   };
 }
 
-function extractMainHtml(html) {
-  const match = String(html || '').match(/<main id="report-body">([\s\S]*?)<\/main>/);
-  return match ? match[1] : '';
-}
-
 function reportRangeText(report) {
   return report.dataset.dateStart && report.dataset.dateEnd
     ? `${report.dataset.dateStart} 至 ${report.dataset.dateEnd}`
@@ -786,6 +781,9 @@ function buildScopedReport(data, key, grain, label, rows, tasks, scopeText, extr
 function buildPeriodReports(data, baseReport) {
   const rows = data.rows || [];
   const tasks = data.tasks || [];
+  baseReport.dataset.periodKey = 'all';
+  baseReport.dataset.periodGrain = 'all';
+  baseReport.dataset.periodLabel = '全部数据';
   const periods = [{
     key: 'all',
     grain: 'all',
@@ -872,8 +870,30 @@ function buildPeriodReports(data, baseReport) {
     month: item.report.dataset.month || '',
     week: item.report.dataset.week || '',
     taskId: item.report.dataset.taskId || '',
-    html: extractMainHtml(renderHtml(item.report, { periodReports: null }))
+    report: item.report
   }));
+}
+
+function periodFileBase(item) {
+  return `devtracker_workload_period_${safeName(item.key)}_latest`;
+}
+
+function periodMeta(item, allHref) {
+  return {
+    key: item.key,
+    grain: item.grain,
+    label: item.label,
+    range: item.range,
+    titleScope: item.titleScope,
+    scope: item.scope,
+    year: item.year,
+    quarter: item.quarter,
+    month: item.month,
+    week: item.week,
+    taskId: item.taskId,
+    href: item.key === 'all' ? allHref : `${periodFileBase(item)}.html`,
+    jsonHref: item.key === 'all' ? allHref.replace(/\.html$/i, '.json') : `${periodFileBase(item)}.json`
+  };
 }
 
 function formulasHtml() {
@@ -1532,7 +1552,7 @@ function renderHtml(report, options = {}) {
   <div class="report-loading-overlay" id="report-loading-overlay" role="status" aria-live="polite">
     <div class="report-loading-box">
       <div class="report-spinner" aria-hidden="true"></div>
-      <div>正在加载。。。。。。</div>
+      <div>正在加载中，请稍后...</div>
     </div>
   </div>
   <header>
@@ -1746,6 +1766,18 @@ function renderHtml(report, options = {}) {
       document.body.classList.add('report-ready');
     }
 
+    function currentPeriodKey() {
+      return window.__WORKLOAD_REPORT__?.dataset?.periodKey || 'all';
+    }
+
+    function reportHref(item) {
+      if (!item || !item.href) return '';
+      const url = new URL(item.href, window.location.href);
+      url.search = '';
+      url.hash = window.location.hash || '';
+      return url.href;
+    }
+
     function reportByQuery() {
       const reports = window.__PERIOD_REPORTS__ || [];
       const params = new URLSearchParams(window.location.search);
@@ -1781,7 +1813,7 @@ function renderHtml(report, options = {}) {
         const found = reports.find(item => item.grain === 'year' && item.year === year);
         if (found) return found.key;
       }
-      return reports[0]?.key || 'all';
+      return currentPeriodKey() || reports[0]?.key || 'all';
     }
 
     function populatePeriodOptions(grain, selectedKey) {
@@ -1795,8 +1827,14 @@ function renderHtml(report, options = {}) {
     function setPeriod(key, updateUrl = false) {
       const item = reportByKey(key);
       if (!item) return;
-      const body = document.getElementById('report-body');
-      if (body && item.html) body.innerHTML = item.html;
+      if (item.key !== currentPeriodKey() && item.href) {
+        const href = reportHref(item);
+        if (href) {
+          if (updateUrl) window.location.assign(href);
+          else window.location.replace(href);
+          return false;
+        }
+      }
       const title = document.querySelector('header h1');
       if (title) title.textContent = 'DevTracker 工时数据分析报告 | ' + (item.titleScope || item.range);
       const grainSelect = document.querySelector('[data-period-grain]');
@@ -1811,6 +1849,7 @@ function renderHtml(report, options = {}) {
       }
       const initialTab = (window.location.hash || '').replace('#', '') || 'overview';
       if (document.getElementById('tab-' + initialTab)) openTab(initialTab);
+      return true;
     }
 
     function initPeriodSwitcher() {
@@ -1834,7 +1873,7 @@ function renderHtml(report, options = {}) {
       if (periodSelect) {
         periodSelect.addEventListener('change', () => setPeriod(periodSelect.value, true));
       }
-      setPeriod(selected.key, false);
+      if (setPeriod(selected.key, false) === false) return;
       hideReportLoading();
     }
 
@@ -1965,16 +2004,26 @@ async function main() {
   const htmlPath = path.join(outDir, `${base}.html`);
   const latestJsonPath = path.join(outDir, `devtracker_workload_${scopeSlug}_latest.json`);
   const latestHtmlPath = path.join(outDir, `devtracker_workload_${scopeSlug}_latest.html`);
+  const latestHtmlName = path.basename(latestHtmlPath);
+  const periodMetas = periodReports.map(item => periodMeta(item, latestHtmlName));
 
   fs.writeFileSync(jsonPath, JSON.stringify(report, null, 2), 'utf8');
-  fs.writeFileSync(htmlPath, renderHtml(report, { periodReports }), 'utf8');
+  fs.writeFileSync(htmlPath, renderHtml(report, { periodReports: periodMetas }), 'utf8');
   fs.writeFileSync(latestJsonPath, JSON.stringify(report, null, 2), 'utf8');
-  fs.writeFileSync(latestHtmlPath, renderHtml(report, { periodReports }), 'utf8');
+  fs.writeFileSync(latestHtmlPath, renderHtml(report, { periodReports: periodMetas }), 'utf8');
+
+  for (const item of periodReports) {
+    if (item.key === 'all') continue;
+    const periodBase = periodFileBase(item);
+    fs.writeFileSync(path.join(outDir, `${periodBase}.json`), JSON.stringify(item.report, null, 2), 'utf8');
+    fs.writeFileSync(path.join(outDir, `${periodBase}.html`), renderHtml(item.report, { periodReports: periodMetas }), 'utf8');
+  }
 
   console.log(`[OK] HTML 报告: ${htmlPath}`);
   console.log(`[OK] JSON 数据: ${jsonPath}`);
   console.log(`[OK] 最新 HTML: ${latestHtmlPath}`);
   console.log(`[OK] 最新 JSON: ${latestJsonPath}`);
+  console.log(`[OK] 周期页面: ${periodReports.length - 1} 个`);
   console.log(`[OK] 总工时: ${report.summary.total}h；前端: ${report.summary.frontend}h；后端: ${report.summary.backend}h；测试: ${report.summary.test}h`);
 }
 
