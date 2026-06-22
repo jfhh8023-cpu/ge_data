@@ -1680,7 +1680,7 @@ function renderHtml(report, options = {}) {
       <section class="chart-grid">
         ${simpleBarChart(topRequirements, '需求投入 Top 20', {
           limit: 20,
-          tip: '统计的是需求在单个填写周期内，即某一周内的工时占用总量排行；存在一个需求三端写作总计时间较大，或者单个需求出现不同次数，不是重复，而是多个周期内不同的填写内容；'
+          tip: '统计的是需求在单个填写周期内，即某一周内的工时占用总量排行；存在一个需求三端協作总计时间较大，或者单个需求在不同周期都出现，也在列表排行，这是正常的；'
         })}
         ${pieChart(roleCombos.map(row => ({ name: row.combo, total: row.total })), '需求协作形态占比', { limit: 8 })}
       </section>
