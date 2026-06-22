@@ -2021,18 +2021,21 @@ async function main() {
   fs.writeFileSync(latestJsonPath, JSON.stringify(report, null, 2), 'utf8');
   fs.writeFileSync(latestHtmlPath, renderHtml(report, { periodReports: periodMetas }), 'utf8');
 
-  for (const item of periodReports) {
-    if (item.key === 'all') continue;
-    const periodBase = periodFileBase(item);
-    fs.writeFileSync(path.join(outDir, `${periodBase}.json`), JSON.stringify(item.report, null, 2), 'utf8');
-    fs.writeFileSync(path.join(outDir, `${periodBase}.html`), renderHtml(item.report, { periodReports: periodMetas }), 'utf8');
+  const shouldWriteSharedPeriodPages = scopeSlug === 'all';
+  if (shouldWriteSharedPeriodPages) {
+    for (const item of periodReports) {
+      if (item.key === 'all') continue;
+      const periodBase = periodFileBase(item);
+      fs.writeFileSync(path.join(outDir, `${periodBase}.json`), JSON.stringify(item.report, null, 2), 'utf8');
+      fs.writeFileSync(path.join(outDir, `${periodBase}.html`), renderHtml(item.report, { periodReports: periodMetas }), 'utf8');
+    }
   }
 
   console.log(`[OK] HTML 报告: ${htmlPath}`);
   console.log(`[OK] JSON 数据: ${jsonPath}`);
   console.log(`[OK] 最新 HTML: ${latestHtmlPath}`);
   console.log(`[OK] 最新 JSON: ${latestJsonPath}`);
-  console.log(`[OK] 周期页面: ${periodReports.length - 1} 个`);
+  console.log(`[OK] 周期页面: ${shouldWriteSharedPeriodPages ? periodReports.length - 1 : 0} 个${shouldWriteSharedPeriodPages ? '' : '（筛选报告不覆盖共享周期页）'}`);
   console.log(`[OK] 总工时: ${report.summary.total}h；前端: ${report.summary.frontend}h；后端: ${report.summary.backend}h；测试: ${report.summary.test}h`);
 }
 
