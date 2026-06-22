@@ -1193,7 +1193,7 @@ function exportStatsData() {
     <!-- v1.4.3: 页面加载中动画 -->
     <div v-if="pageLoading" class="dt-page-loading">
       <div class="dt-page-spinner"></div>
-      <p style="margin-top:16px; color:var(--color-text-3); font-size:14px;">正在加载中...</p>
+      <p style="margin-top:16px; color:var(--color-text-3); font-size:14px;">正在加载中，请稍后...</p>
     </div>
     <template v-else>
     <div class="dt-page-header flex-between">
@@ -1201,8 +1201,8 @@ function exportStatsData() {
         <h1 class="dt-page-title">周期统计（季度）｜{{ selectedPeriodRangeText }}</h1>
         <p class="dt-page-description">部门工时趋势与个人贡献分析 · 当前范围：{{ statsScopeTitle }}</p>
       </div>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <el-button class="dt-analysis-open-btn" type="primary" size="small" @click="openWorkloadReportPage('total')">📊 周期数据分析</el-button>
+      <div class="dt-stats-actions">
+        <button type="button" class="dt-btn dt-btn-primary dt-btn-sm dt-analysis-open-btn" @click="openWorkloadReportPage('total')">📊 周期数据分析</button>
         <el-button v-if="authStore.hasPermission('btn:stats:export', 'view')" size="small" @click="exportStatsData">📤 导出Excel</el-button>
         <el-button circle @click="loadDeptStats" title="刷新数据" style="font-size:16px;">🔄</el-button>
       </div>
@@ -2098,6 +2098,19 @@ function exportStatsData() {
 </template>
 
 <style scoped>
+.dt-stats-actions {
+  flex: 0 0 auto;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.dt-analysis-open-btn {
+  min-width: 116px;
+}
+
 /* === 本地周期分析弹窗 === */
 .dt-analysis-scope {
   display: flex;
