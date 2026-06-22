@@ -251,12 +251,13 @@ const HOURS_MAX = 60
 
 function matchPM(text) {
   let remaining = text; const matched = []
-  for (const pmName of pmOptions.value) {
+  const availablePms = Array.isArray(pmOptions.value) ? pmOptions.value.filter(Boolean) : []
+  for (const pmName of availablePms) {
     if (remaining.includes(pmName)) { matched.push(pmName); remaining = remaining.replace(pmName, '').trim() }
   }
   if (matched.length === 0) {
     const candidates = []
-    for (const pmName of PM_OPTIONS) {
+    for (const pmName of availablePms) {
       let mc = 0
       for (const char of pmName) { if (remaining.includes(char)) mc++ }
       if (mc > 0) candidates.push({ name: pmName, matchCount: mc, ratio: mc / pmName.length })
