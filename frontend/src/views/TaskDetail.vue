@@ -145,6 +145,10 @@ function cancelEdit() {
 
 async function saveEdit(row) {
   try {
+    if (!Array.isArray(editForm.value.product_managers) || editForm.value.product_managers.length === 0) {
+      ElMessage.warning('请选择产品经理')
+      return
+    }
     await recordStore.update(row.id, {
       requirement_title: editForm.value.requirement_title,
       version: editForm.value.version,
@@ -196,6 +200,11 @@ async function handleImportFile(event) {
 
     if (rows.length === 0) {
       ElMessage.warning('Excel 中无有效数据行')
+      return
+    }
+    const missingPmIndex = rows.findIndex(r => !String(r['产品经理'] || '').trim())
+    if (missingPmIndex >= 0) {
+      ElMessage.warning(`Excel 第 ${missingPmIndex + 2} 行未填写产品经理`)
       return
     }
 

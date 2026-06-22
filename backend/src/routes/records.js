@@ -11,6 +11,33 @@ const { v4: uuidv4 } = require('uuid');
 const { WorkRecord, Staff } = require('../models');
 const { safeParseJsonArray } = require('../utils/parseJson');
 
+function normalizeProductManagers(value) {
+  if (Array.isArray(value)) {
+    return value.map(v => String(v).trim()).filter(Boolean);
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed.map(v => String(v).trim()).filter(Boolean);
+    } catch { /* fall through */ }
+    return trimmed.split(/[,，、\s]+/).map(v => v.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+function requireProductManagers(value, label = '记录') {
+  const productManagers = normalizeProductManagers(value);
+  if (productManagers.length === 0) {
+    const prefix = label ? `${label}：` : '';
+    const err = new Error(`${prefix}请选择产品经理`);
+    err.status = 400;
+    throw err;
+  }
+  return productManagers;
+}
+
 /* GET /api/records?taskId=xxx */
 router.get('/', async (req, res, next) => {
   try {
@@ -38,9 +65,10 @@ router.post('/', async (req, res, next) => {
     if (!task_id || !staff_id || !requirement_title || hours === undefined) {
       return res.status(400).json({ code: 1, message: '必填字段缺失' });
     }
+    const normalizedPms = requireProductManagers(product_managers);
     const record = await WorkRecord.create({
       id: uuidv4(), link_id, task_id, staff_id,
-      requirement_title, version, product_managers, hours
+      requirement_title, version, product_managers: normalizedPms, hours
     });
     res.json({ code: 0, data: record });
   } catch (err) { next(err); }
@@ -51,8 +79,11 @@ router.put('/:id', async (req, res, next) => {
   try {
     const rec = await WorkRecord.findByPk(req.params.id);
     if (!rec) return res.status(404).json({ code: 1, message: '记录不存在' });
-    const fields = ['requirement_title', 'version', 'product_managers', 'hours'];
+    const fields = ['requirement_title', 'version', 'hours'];
     fields.forEach(f => { if (req.body[f] !== undefined) rec[f] = req.body[f]; });
+    if (req.body.product_managers !== undefined) {
+      rec.product_managers = requireProductManagers(req.body.product_managers);
+    }
     rec.updated_at = new Date();
     await rec.save();
     res.json({ code: 0, data: rec });
@@ -77,16 +108,18 @@ router.post('/import', async (req, res, next) => {
     }
 
     const created = [];
-    for (const row of rows) {
+    for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+      const row = rows[rowIndex];
       const staff = staffMap[row.staff_name];
       if (!staff) continue;
+      const productManagers = requireProductManagers(row.product_managers, `第 ${rowIndex + 1} 条记录`);
       const rec = await WorkRecord.create({
         id: uuidv4(),
         task_id,
         staff_id: staff.id,
         requirement_title: row.requirement_title || '',
         version: row.version || '',
-        product_managers: row.product_managers || '',
+        product_managers: productManagers,
         hours: parseFloat(row.hours) || 0,
         submit_count: 1
       });

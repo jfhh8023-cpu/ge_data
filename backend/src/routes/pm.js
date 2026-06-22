@@ -14,6 +14,17 @@ const { safeParseJsonArray } = require('../utils/parseJson');
 /* 常量 */
 const MIN_NAME_LENGTH = 2;
 const MAX_NAME_LENGTH = 20;
+const PM_DEFAULT_NAME = '不在上述';
+
+function recordBelongsToPmName(record, pmName) {
+  const pms = safeParseJsonArray(record.product_managers);
+  return pms.includes(pmName) || (pmName === PM_DEFAULT_NAME && pms.length === 0);
+}
+
+function productManagersForPmResponse(record, pmName) {
+  const pms = safeParseJsonArray(record.product_managers);
+  return pmName === PM_DEFAULT_NAME && pms.length === 0 ? [PM_DEFAULT_NAME] : pms;
+}
 
 /* ========== GET /api/pm — 获取所有 PM 列表 ========== */
 router.get('/', async (req, res, next) => {
@@ -134,10 +145,7 @@ router.get('/:id/references', async (req, res, next) => {
 
     // 查找 work_records 中包含该 PM 名称的记录
     const records = await WorkRecord.findAll();
-    const relatedRecords = records.filter(r => {
-      const pms = safeParseJsonArray(r.product_managers);
-      return pms.includes(pm.name);
-    });
+    const relatedRecords = records.filter(r => recordBelongsToPmName(r, pm.name));
 
     // 按任务分组
     const taskIds = [...new Set(relatedRecords.map(r => r.task_id))];
@@ -248,10 +256,7 @@ router.get('/view/:token', async (req, res, next) => {
     });
 
     // 过滤出包含该 PM 的记录
-    const pmRecords = allRecords.filter(r => {
-      const pms = safeParseJsonArray(r.product_managers);
-      return pms.includes(pm.name);
-    });
+    const pmRecords = allRecords.filter(r => recordBelongsToPmName(r, pm.name));
 
     // 按任务分组
     const taskMap = {};
@@ -267,7 +272,8 @@ router.get('/view/:token', async (req, res, next) => {
           hours: r.hours,
           staffName: r.staff?.name || '-',
           role: r.staff?.role || '-',
-          created_at: r.created_at
+          created_at: r.created_at,
+          product_managers: productManagersForPmResponse(r, pm.name)
         });
       }
     }
@@ -389,8 +395,7 @@ async function countPmReferences(pmName) {
   const records = await WorkRecord.findAll();
   let count = 0;
   for (const r of records) {
-    const pms = safeParseJsonArray(r.product_managers);
-    if (pms.includes(pmName)) count++;
+    if (recordBelongsToPmName(r, pmName)) count++;
   }
   return count;
 }

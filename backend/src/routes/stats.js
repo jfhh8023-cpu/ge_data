@@ -19,6 +19,15 @@ const QUARTER_MONTHS = { Q1: [1,2,3], Q2: [4,5,6], Q3: [7,8,9], Q4: [10,11,12] }
 
 /* 角色常量 */
 const ROLE_KEYS = ['frontend', 'backend', 'test'];
+const PM_DEFAULT_NAME = '不在上述';
+
+function recordBelongsToPm(pms, pmName) {
+  return pms.includes(pmName) || (pmName === PM_DEFAULT_NAME && pms.length === 0);
+}
+
+function productManagersForPmResponse(pms, pmName) {
+  return pmName === PM_DEFAULT_NAME && pms.length === 0 ? [PM_DEFAULT_NAME] : pms;
+}
 
 /**
  * 获取指定月份的最后一天（安全日期计算）
@@ -116,7 +125,6 @@ router.get('/', async (req, res, next) => {
     }
 
     // 每条 WorkRecord 有 product_managers 字段（JSON 数组），按第一个 PM 分组
-    const PM_DEFAULT_NAME = '不在上述';
     for (const r of records) {
       const pms = safeParseJsonArray(r.product_managers);
       const pmName = pms.length > 0 ? pms[0] : PM_DEFAULT_NAME;
@@ -326,7 +334,7 @@ router.get('/pm/:pmId', async (req, res, next) => {
     // 过滤出包含该 PM 名称的记录
     const pmRecords = allRecords.filter(r => {
       const pms = safeParseJsonArray(r.product_managers);
-      return pms.includes(pm.name);
+      return recordBelongsToPm(pms, pm.name);
     });
 
     // 按任务分组
@@ -339,6 +347,7 @@ router.get('/pm/:pmId', async (req, res, next) => {
       if (taskMap[r.task_id]) {
         const plain = r.toJSON();
         plain.product_managers = safeParseJsonArray(plain.product_managers);
+        plain.product_managers = productManagersForPmResponse(plain.product_managers, pm.name);
         taskMap[r.task_id].records.push({
           id: plain.id,
           requirement_title: plain.requirement_title,

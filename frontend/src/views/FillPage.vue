@@ -120,6 +120,11 @@ const totalHours = computed(() =>
   rows.value.reduce((sum, r) => sum + (parseFloat(r.hours) || 0), 0).toFixed(2)
 )
 
+function hasSelectedProductManager(row) {
+  return Array.isArray(row.product_managers)
+    && row.product_managers.some(pm => typeof pm === 'string' && pm.trim())
+}
+
 /* ========== REQ-17 / v1.6.2: 编辑状态通知 ========== */
 let editingTimer = null
 let keepAliveTimer = null  // 定时保持 editing 状态（避免 30s 超时）
@@ -158,15 +163,28 @@ onUnmounted(() => {
 /** 提交工时 */
 async function handleSubmit() {
   if (!currentTask.value) return
-  const validRows = rows.value.filter(r => r.requirement_title && r.hours > 0)
+  const validRows = rows.value
+    .map((row, index) => ({ row, index }))
+    .filter(({ row }) => row.requirement_title && row.hours > 0)
   if (validRows.length === 0) {
     ElMessage.warning('请至少填写一条完整的工时记录')
     return
   }
+  const missingPm = validRows.find(({ row }) => !hasSelectedProductManager(row))
+  if (missingPm) {
+    ElMessage.warning(`第 ${missingPm.index + 1} 行请选择产品经理`)
+    return
+  }
+  const records = validRows.map(({ row }) => ({
+    requirement_title: String(row.requirement_title || '').trim(),
+    version: row.version || '',
+    product_managers: row.product_managers,
+    hours: row.hours
+  }))
 
   submitting.value = true
   try {
-    const payload = { records: validRows }
+    const payload = { records }
     // 新体系必须传 task_id
     if (fillData.value?.linkType === 'system') {
       payload.task_id = currentTask.value.id
@@ -175,8 +193,8 @@ async function handleSubmit() {
 
     const isEdit = !!editingHistoryTask.value
     ElMessage.success(isEdit
-      ? `历史数据编辑完成！共 ${validRows.length} 条记录`
-      : `提交成功！共 ${validRows.length} 条记录，总工时 ${totalHours.value} 小时`
+      ? `历史数据编辑完成！共 ${records.length} 条记录`
+      : `提交成功！共 ${records.length} 条记录，总工时 ${totalHours.value} 小时`
     )
     broadcastDataChange(SYNC_EVENTS.WORK_RECORD_CHANGED, { token: route.params.token })
 
@@ -416,6 +434,12 @@ async function handleFillImport(event) {
     }))
 
     // 追加到当前行（若当前仅一空行则替换）
+    const missingPmIndex = parsed.findIndex(r => r.requirement_title && r.hours > 0 && !hasSelectedProductManager(r))
+    if (missingPmIndex >= 0) {
+      ElMessage.warning(`Excel 第 ${missingPmIndex + 2} 行未填写产品经理`)
+      return
+    }
+
     if (rows.value.length === 1 && !rows.value[0].requirement_title && !rows.value[0].hours) {
       rows.value = parsed
     } else {
@@ -596,9 +620,12 @@ function exportHistory() {
                   </template>
                 </el-table-column>
                 <el-table-column label="产品经理" width="160">
+                  <template #header>
+                    <span>产品经理 <span style="color:#F53F3F;">*</span></span>
+                  </template>
                   <template #default="{ row }">
                     <el-select v-model="row.product_managers" multiple collapse-tags collapse-tags-tooltip
-                      placeholder="选PM" size="small" style="width:100%;" :disabled="!isEditable">
+                      placeholder="必选PM" size="small" style="width:100%;" :disabled="!isEditable">
                       <el-option v-for="pm in pmOptions" :key="pm" :label="pm" :value="pm" />
                     </el-select>
                   </template>

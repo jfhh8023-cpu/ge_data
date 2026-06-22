@@ -18,6 +18,33 @@ const { Op } = require('sequelize');
 
 const EDITING_TIMEOUT_MS = 30000;
 
+function normalizeProductManagers(value) {
+  if (Array.isArray(value)) {
+    return value.map(v => String(v).trim()).filter(Boolean);
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed.map(v => String(v).trim()).filter(Boolean);
+    } catch { /* fall through */ }
+    return trimmed.split(/[,，、\s]+/).map(v => v.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+function validateRequiredProductManagers(records) {
+  for (let i = 0; i < records.length; i++) {
+    const normalizedPms = normalizeProductManagers(records[i]?.product_managers);
+    if (normalizedPms.length === 0) {
+      return `第 ${i + 1} 条记录请选择产品经理`;
+    }
+    records[i].product_managers = normalizedPms;
+  }
+  return '';
+}
+
 /* ======================================================
  * 工具函数：解析 token，返回 { type:'system'|'legacy', sfl?, link? }
  * ====================================================== */
@@ -174,6 +201,8 @@ router.post('/:token/submit', async (req, res, next) => {
 
     const { records, task_id } = req.body || {};
     if (!Array.isArray(records)) return res.status(400).json({ code: 1, message: 'records 须为数组' });
+    const pmValidationError = validateRequiredProductManagers(records);
+    if (pmValidationError) return res.status(400).json({ code: 1, message: pmValidationError });
 
     if (resolved.type === 'system') {
       const { sfl } = resolved;
