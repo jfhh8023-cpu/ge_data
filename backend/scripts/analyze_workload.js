@@ -1232,7 +1232,10 @@ function renderHtml(report, options = {}) {
 
   const rolePieRows = ROLE_KEYS.map(role => ({ name: ROLE_TEXT[role], total: report.summary[role] }));
   const titleScopeText = reportTitleScopeText(report);
-  const referenceNotice = '注意：当前数据统计依据，为人工每周填写数据所统计，存在一定的统一性偏差，工时填写预估性为主等因素，因此数据仅供参考；详细可查看~';
+  const referenceNoticeLines = [
+    '当前数据统计依据，为人工每周填写数据所统计，存在一定的统一性偏差，工时填写预估性为主等因素，因此数据仅供参考；详细可查看~',
+    'AI Agent需求对应开发测试工时在AI组占相当一部分未被统计进当前数据分析；'
+  ];
   const referenceTip = '1，需求存在如：工单需求，有多个产品负责，单个开发负责开发，单个测试负责测试，最后填写工时只选择了其中一个产品人员，因此存在偏差；\n2，工时都是人工自己预估，存在不绝对准确的情况，因此不具备绝对工时参考，仅做相对数据参考；';
 
   const periodReports = Array.isArray(options.periodReports) ? options.periodReports : null;
@@ -1340,6 +1343,10 @@ function renderHtml(report, options = {}) {
     }
     header h1 { margin: 0; font-size: 24px; line-height: 1.25; letter-spacing: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .report-note { margin: 4px 0 0; color: #cbd5e1; font-size: 12px; line-height: 1.35; }
+    .report-note-line { display: grid; grid-template-columns: auto 1fr; column-gap: 0; align-items: baseline; }
+    .report-note-line.with-help { grid-template-columns: auto 1fr auto; }
+    .report-note-prefix { white-space: pre; }
+    .report-note-spacer { visibility: hidden; }
     .notice-help {
       position: relative;
       display: inline-flex;
@@ -1559,7 +1566,10 @@ function renderHtml(report, options = {}) {
     <div class="report-header-row">
       <div class="report-header-title">
     <h1>DevTracker 工时数据分析报告 | ${escapeHtml(titleScopeText)}</h1>
-    <p class="report-note">${escapeHtml(referenceNotice)}<button type="button" class="notice-help" aria-label="查看数据参考说明" data-tip="${escapeHtml(referenceTip)}">?</button></p>
+    <div class="report-note" aria-label="数据统计注意事项">
+      <div class="report-note-line with-help"><span class="report-note-prefix">注意：</span><span>1，${escapeHtml(referenceNoticeLines[0])}</span><button type="button" class="notice-help" aria-label="查看数据参考说明" data-tip="${escapeHtml(referenceTip)}">?</button></div>
+      <div class="report-note-line"><span class="report-note-prefix report-note-spacer">注意：</span><span>2，${escapeHtml(referenceNoticeLines[1])}</span></div>
+    </div>
       </div>
       ${periodSwitcher}
     </div>
@@ -1627,7 +1637,7 @@ function renderHtml(report, options = {}) {
 
     <section class="tab-panel" id="tab-pm">
       <section class="chart-grid">
-        ${stackedBarChart(topPms, '产品经理归属 Top：三端拆分', { limit: 12 })}
+        ${stackedBarChart(topPms, '产品经理归属 Top：三端拆分（未包含AI_Agent需求开发测试工时）', { limit: 12 })}
         ${pieChart(report.productManagers, '产品经理工时占比', { limit: 8 })}
       </section>
       ${pmSummaryTable}
