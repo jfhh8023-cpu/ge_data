@@ -81,6 +81,7 @@ function getMedalRank(records, currentHours) {
 /* ========== Tab 切换 ========== */
 const activeTab = ref('department')
 const pageLoading = ref(true)  // v1.4.3: 页面初始加载状态
+const reportEntryReady = ref(false)
 const pmSortOrder = ref('desc')  // v3.2.1: 默认工时降序（'' | 'asc' | 'desc'）
 
 /* ========== 弹窗状态 ========== */
@@ -138,12 +139,33 @@ const statsScopeTitle = computed(() => `${selectedYear.value}年 ${selectedQuart
 /* ========== 数据加载 ========== */
 /* 跨页面数据同步监听 */
 let cleanupSync = null
+let reportEntryTimer = null
+
+function setReportEntryLoading() {
+  reportEntryReady.value = false
+  if (reportEntryTimer) {
+    clearTimeout(reportEntryTimer)
+    reportEntryTimer = null
+  }
+}
+
+async function showReportEntryWhenReady() {
+  await nextTick()
+  if (reportEntryTimer) clearTimeout(reportEntryTimer)
+  reportEntryTimer = setTimeout(() => {
+    requestAnimationFrame(() => {
+      reportEntryReady.value = true
+      reportEntryTimer = null
+    })
+  }, 0)
+}
 
 onMounted(async () => {
   pageLoading.value = true
+  setReportEntryLoading()
   await taskStore.fetchAll()
   await pmStore.fetchAll()
-  await loadDeptStats()
+  await loadDeptStats({ syncReportEntry: false })
   // 监听工时变更广播，自动刷新统计
   cleanupSync = onDataChange(SYNC_EVENTS.WORK_RECORD_CHANGED, () => {
     loadDeptStats()
@@ -152,21 +174,28 @@ onMounted(async () => {
   // v1.4.4: 等待 v-if 切换完成后再绘制图表（解决首次加载图表偶现不显示）
   await nextTick()
   setTimeout(drawChart, 50)
+  await showReportEntryWhenReady()
 })
 
 onUnmounted(() => {
   if (cleanupSync) cleanupSync()
+  if (reportEntryTimer) clearTimeout(reportEntryTimer)
 })
 
-async function loadDeptStats() {
-  await statsStore.fetch({
-    year: selectedYear.value,
-    quarter: selectedQuarter.value,
-    taskId: selectedTaskId.value,
-    pmSort: pmSortOrder.value || undefined
-  })
-  await nextTick()
-  drawChart()
+async function loadDeptStats({ syncReportEntry = true } = {}) {
+  if (syncReportEntry) setReportEntryLoading()
+  try {
+    await statsStore.fetch({
+      year: selectedYear.value,
+      quarter: selectedQuarter.value,
+      taskId: selectedTaskId.value,
+      pmSort: pmSortOrder.value || undefined
+    })
+    await nextTick()
+    drawChart()
+  } finally {
+    if (syncReportEntry) await showReportEntryWhenReady()
+  }
 }
 
 // v1.4.4: 切换到部门全观时重绘图表
@@ -178,45 +207,50 @@ watch(activeTab, async (tab) => {
 })
 
 watch([selectedYear, selectedQuarter, selectedTaskId], async ([year, quarter], [oldYear, oldQuarter]) => {
-  if ((year !== oldYear || quarter !== oldQuarter) && selectedTaskId.value !== 'all') {
-    selectedTaskId.value = 'all'
-    return
-  }
-  if (activeTab.value === 'department') {
-    loadDeptStats()
-  } else if (activeTab.value === 'personal') {
-    // 刷新部门统计（保持 taskOptions 下拉和 staff 列表同步）
-    await statsStore.fetch({
-      year: selectedYear.value,
-      quarter: selectedQuarter.value,
-      taskId: selectedTaskId.value
-    })
-    // 根据当前 viewMode 刷新个人数据
-    if (viewMode.value === 'individual' && selectedStaffId.value) {
-      await statsStore.fetchPersonal(selectedStaffId.value, {
+  setReportEntryLoading()
+  try {
+    if ((year !== oldYear || quarter !== oldQuarter) && selectedTaskId.value !== 'all') {
+      selectedTaskId.value = 'all'
+      return
+    }
+    if (activeTab.value === 'department') {
+      await loadDeptStats({ syncReportEntry: false })
+    } else if (activeTab.value === 'personal') {
+      // 刷新部门统计（保持 taskOptions 下拉和 staff 列表同步）
+      await statsStore.fetch({
         year: selectedYear.value,
         quarter: selectedQuarter.value,
         taskId: selectedTaskId.value
       })
-    } else if (viewMode.value === 'all') {
-      await loadAllPersonalData()
-    }
-  } else if (activeTab.value === 'product') {
-    // 刷新部门统计（保持 taskOptions 同步）
-    await statsStore.fetch({
-      year: selectedYear.value,
-      quarter: selectedQuarter.value,
-      taskId: selectedTaskId.value
-    })
-    if (pmViewMode.value === 'individual' && selectedPmId.value) {
-      await statsStore.fetchPmFocus(selectedPmId.value, {
+      // 根据当前 viewMode 刷新个人数据
+      if (viewMode.value === 'individual' && selectedStaffId.value) {
+        await statsStore.fetchPersonal(selectedStaffId.value, {
+          year: selectedYear.value,
+          quarter: selectedQuarter.value,
+          taskId: selectedTaskId.value
+        })
+      } else if (viewMode.value === 'all') {
+        await loadAllPersonalData()
+      }
+    } else if (activeTab.value === 'product') {
+      // 刷新部门统计（保持 taskOptions 同步）
+      await statsStore.fetch({
         year: selectedYear.value,
         quarter: selectedQuarter.value,
         taskId: selectedTaskId.value
       })
-    } else if (pmViewMode.value === 'all') {
-      await loadAllPmData()
+      if (pmViewMode.value === 'individual' && selectedPmId.value) {
+        await statsStore.fetchPmFocus(selectedPmId.value, {
+          year: selectedYear.value,
+          quarter: selectedQuarter.value,
+          taskId: selectedTaskId.value
+        })
+      } else if (pmViewMode.value === 'all') {
+        await loadAllPmData()
+      }
     }
+  } finally {
+    await showReportEntryWhenReady()
   }
 })
 
@@ -1202,7 +1236,11 @@ function exportStatsData() {
         <p class="dt-page-description">部门工时趋势与个人贡献分析 · 当前范围：{{ statsScopeTitle }}</p>
       </div>
       <div class="dt-stats-actions">
-        <button type="button" class="dt-btn dt-btn-primary dt-btn-sm dt-analysis-open-btn" @click="openWorkloadReportPage('total')">📊 周期数据分析</button>
+        <button v-if="reportEntryReady" type="button" class="dt-btn dt-btn-primary dt-btn-sm dt-analysis-open-btn" @click="openWorkloadReportPage('total')">📊 周期数据分析</button>
+        <button v-else type="button" class="dt-btn dt-btn-primary dt-btn-sm dt-analysis-open-btn dt-analysis-open-btn-loading" disabled aria-live="polite">
+          <span class="dt-action-spinner"></span>
+          加载中
+        </button>
         <el-button v-if="authStore.hasPermission('btn:stats:export', 'view')" size="small" @click="exportStatsData">📤 导出Excel</el-button>
         <el-button circle @click="loadDeptStats" title="刷新数据" style="font-size:16px;">🔄</el-button>
       </div>
@@ -2109,6 +2147,24 @@ function exportStatsData() {
 
 .dt-analysis-open-btn {
   min-width: 116px;
+}
+
+.dt-analysis-open-btn-loading {
+  opacity: 0.82;
+  cursor: wait;
+}
+
+.dt-action-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: dtActionSpin 0.8s linear infinite;
+}
+
+@keyframes dtActionSpin {
+  to { transform: rotate(360deg); }
 }
 
 /* === 本地周期分析弹窗 === */
