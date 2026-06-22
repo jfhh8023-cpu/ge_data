@@ -22,6 +22,7 @@ Thumbs.db
 # Logs
 *.log
 logs/
+.codex-local/
 
 # Deploy (contains credentials / data)
 deploy/deploy.py

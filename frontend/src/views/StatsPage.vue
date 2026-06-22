@@ -47,6 +47,23 @@ const ROLE_LABEL = { frontend: '前端', backend: '后端', test: '测试' }
 const ROLE_DOT_COLOR = { frontend: '#165DFF', backend: '#00B42A', test: '#FF7D00' }
 const ROLE_TAG_CLASS = { frontend: 'dt-tag-blue', backend: 'dt-tag-green', test: 'dt-tag-orange' }
 const PM_THEME_COLOR = '#722ED1'
+const ANALYSIS_ROLE_META = [
+  { key: 'frontend', label: '前端', itemClass: 'dt-analysis-fe', bgClass: 'dt-analysis-fe-bg' },
+  { key: 'backend', label: '后端', itemClass: 'dt-analysis-be', bgClass: 'dt-analysis-be-bg' },
+  { key: 'test', label: '测试', itemClass: 'dt-analysis-qa', bgClass: 'dt-analysis-qa-bg' }
+]
+const WORKLOAD_REPORT_URL = 'http://127.0.0.1:3001/local-reports/workload-analysis/devtracker_workload_all_latest.html'
+const ANALYSIS_KEYWORD_DEFS = [
+  { name: '语音', pattern: /语音|通话|呼叫|坐席|热线|TTS|SIP|kamailio|vos|VOS|DID|网关|线路|外呼|群呼|CC/i },
+  { name: 'AI/智能体', pattern: /智能体|Agent|agent|AI|意图识别|知识库/i },
+  { name: '工单/任务', pattern: /工单|任务|待办|审批|流转/ },
+  { name: '监控/告警', pattern: /监控|告警|日志|链路|审计|报表|统计/ },
+  { name: '性能/优化', pattern: /优化|性能|压测|卡顿|稳定|改进|升级/ },
+  { name: '部署/运维', pattern: /部署|服务器|环境|网关|TLS|证书|服务|运维/ },
+  { name: '短信', pattern: /短信|SMS/i },
+  { name: '前端界面', pattern: /前端|页面|界面|列表|按钮|展示|排序|UI/i },
+  { name: '测试问题', pattern: /测试|问题|缺陷|bug|修复|异常|定位/i }
+]
 
 /* ========== 金银铜牌常量 ========== */
 const MEDAL_EMOJI = ['🥇', '🥈', '🥉']
@@ -69,6 +86,8 @@ const pmSortOrder = ref('desc')  // v3.2.1: 默认工时降序（'' | 'asc' | 'd
 /* ========== 弹窗状态 ========== */
 const reqStatsDialogVisible = ref(false)
 const staffDialogVisible = ref(false)
+const analysisDialogVisible = ref(false)
+const analysisDimension = ref('total')
 
 /* ========== 筛选状态（共享） ========== */
 const selectedYear = ref(CURRENT_YEAR)
@@ -101,6 +120,20 @@ const filterLabel = computed(() => {
   }
   return selectedQuarter.value
 })
+
+const selectedPeriodRangeText = computed(() => {
+  const tasks = statsStore.tasks || []
+  if (selectedTaskId.value !== 'all') {
+    const task = tasks.find(t => t.id === selectedTaskId.value)
+    return task ? formatTaskPeriod(task) : '未识别周期范围'
+  }
+  if (!tasks.length) return '当前筛选暂无周期'
+  const start = tasks.reduce((min, t) => !min || new Date(t.start_date) < new Date(min) ? t.start_date : min, '')
+  const end = tasks.reduce((max, t) => !max || new Date(t.end_date) > new Date(max) ? t.end_date : max, '')
+  return start && end ? `${start} 至 ${end}` : '未识别周期范围'
+})
+
+const statsScopeTitle = computed(() => `${selectedYear.value}年 ${selectedQuarter.value} / ${filterLabel.value}`)
 
 /* ========== 数据加载 ========== */
 /* 跨页面数据同步监听 */
@@ -226,6 +259,240 @@ const reqStats = computed(() => {
     perPm
   }
 })
+
+function toNumber(val) {
+  const n = parseFloat(val || 0)
+  return Number.isFinite(n) ? n : 0
+}
+
+function formatTaskPeriod(task) {
+  if (!task) return '-'
+  const year = task.year || String(task.start_date || '').slice(0, 4) || String(selectedYear.value)
+  const week = String(task.week_number || '').padStart(2, '0')
+  const weekText = week ? `第${week}周` : '未识别周'
+  return `${year}-${weekText} ${task.start_date || '-'}~${task.end_date || '-'}`
+}
+
+function taskSortTime(task) {
+  return task?.end_date ? new Date(task.end_date).getTime() : 0
+}
+
+function firstPmName(productManagers) {
+  const arr = parseJsonField(productManagers).filter(isValidPMName)
+  return arr[0] || '不在上述'
+}
+
+function groupAnalysisRows(records, keyGetter, labelGetter) {
+  const map = new Map()
+  for (const rec of records) {
+    const key = keyGetter(rec)
+    const label = labelGetter ? labelGetter(rec) : key
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        label,
+        total: 0,
+        frontend: 0,
+        backend: 0,
+        test: 0,
+        recordCount: 0,
+        requirementSet: new Set(),
+        taskSet: new Set()
+      })
+    }
+    const row = map.get(key)
+    const hours = toNumber(rec.hours)
+    const role = rec.staff?.role || rec.role
+    row.total += hours
+    row.recordCount += 1
+    row.taskSet.add(rec.task_id)
+    row.requirementSet.add(`${rec.task_id || ''}||${rec.requirement_title || ''}||${rec.version || ''}`)
+    if (row[role] !== undefined) row[role] += hours
+  }
+  return [...map.values()]
+    .map(row => ({
+      ...row,
+      total: Number(row.total.toFixed(1)),
+      frontend: Number(row.frontend.toFixed(1)),
+      backend: Number(row.backend.toFixed(1)),
+      test: Number(row.test.toFixed(1)),
+      taskCount: row.taskSet.size,
+      requirementCount: row.requirementSet.size,
+      share: 0
+    }))
+    .sort((a, b) => b.total - a.total)
+}
+
+const analysisDimensionMeta = computed(() => {
+  const meta = {
+    total: { label: '总工时', role: '', color: '#F53F3F' },
+    frontend: { label: '前端总工时', role: 'frontend', color: '#165DFF' },
+    backend: { label: '后端总工时', role: 'backend', color: '#00B42A' },
+    test: { label: '测试总工时', role: 'test', color: '#FF7D00' }
+  }
+  return meta[analysisDimension.value] || meta.total
+})
+
+const analysisVisibleRoles = computed(() => {
+  const role = analysisDimensionMeta.value.role
+  return role ? [role] : ANALYSIS_ROLE_META.map(item => item.key)
+})
+
+function showAnalysisRole(role) {
+  return analysisVisibleRoles.value.includes(role)
+}
+
+const analysisRecords = computed(() => {
+  const records = statsStore.records || []
+  const role = analysisDimensionMeta.value.role
+  return role ? records.filter(r => r.staff?.role === role) : records
+})
+
+const analysisData = computed(() => {
+  const records = analysisRecords.value
+  const total = records.reduce((sum, rec) => sum + toNumber(rec.hours), 0)
+  const roleTotals = { frontend: 0, backend: 0, test: 0 }
+  for (const rec of records) {
+    const role = rec.staff?.role || rec.role
+    if (roleTotals[role] !== undefined) roleTotals[role] += toNumber(rec.hours)
+  }
+  const requirementKey = rec => `${rec.task_id || ''}||${rec.requirement_title || ''}||${rec.version || ''}`
+  const pmRows = groupAnalysisRows(records, rec => firstPmName(rec.product_managers)).map(row => ({ ...row, share: total ? Number((row.total * 100 / total).toFixed(1)) : 0 }))
+  const staffRows = groupAnalysisRows(records, rec => rec.staff?.name || '-', rec => `${rec.staff?.name || '-'}（${ROLE_LABEL[rec.staff?.role] || rec.staff?.role || '-'}）`).map(row => ({ ...row, share: total ? Number((row.total * 100 / total).toFixed(1)) : 0 }))
+  const versionRows = groupAnalysisRows(records, rec => rec.version || '——').map(row => ({ ...row, share: total ? Number((row.total * 100 / total).toFixed(1)) : 0 }))
+  const requirementRows = groupAnalysisRows(records, requirementKey, rec => rec.requirement_title || '-').map(row => ({ ...row, share: total ? Number((row.total * 100 / total).toFixed(1)) : 0 }))
+  const taskRows = groupAnalysisRows(records, rec => rec.task_id || '-', rec => {
+    const task = (statsStore.tasks || []).find(t => t.id === rec.task_id)
+    return task ? formatTaskPeriod(task) : rec.task_id || '-'
+  }).map(row => {
+    const task = (statsStore.tasks || []).find(t => t.id === row.key)
+    return {
+      ...row,
+      sortTime: taskSortTime(task),
+      share: total ? Number((row.total * 100 / total).toFixed(1)) : 0
+    }
+  }).sort((a, b) => b.sortTime - a.sortTime)
+  const roleComboRows = groupAnalysisRows(records, requirementKey, rec => rec.requirement_title || '-')
+    .map(row => ({
+      combo: ['frontend', 'backend', 'test'].filter(role => row[role] > 0).map(role => ROLE_LABEL[role]).join('+') || '无角色',
+      total: row.total,
+      requirementCount: 1
+    }))
+    .reduce((arr, row) => {
+      const found = arr.find(item => item.combo === row.combo)
+      if (found) {
+        found.total = Number((found.total + row.total).toFixed(1))
+        found.requirementCount += 1
+      } else {
+        arr.push({ ...row })
+      }
+      return arr
+    }, [])
+    .map(row => ({ ...row, share: total ? Number((row.total * 100 / total).toFixed(1)) : 0 }))
+    .sort((a, b) => b.total - a.total)
+  const keywordRows = ANALYSIS_KEYWORD_DEFS.map(def => {
+    const hitRecords = records.filter(rec => def.pattern.test(`${rec.requirement_title || ''} ${rec.version || ''}`))
+    const hours = hitRecords.reduce((sum, rec) => sum + toNumber(rec.hours), 0)
+    return {
+      label: def.name,
+      total: Number(hours.toFixed(1)),
+      share: total ? Number((hours * 100 / total).toFixed(1)) : 0,
+      recordCount: hitRecords.length,
+      requirementCount: new Set(hitRecords.map(requirementKey)).size
+    }
+  }).filter(row => row.total > 0).sort((a, b) => b.total - a.total)
+  const emptyPmRecords = records.filter(rec => parseJsonField(rec.product_managers).filter(isValidPMName).length === 0)
+  const missingVersionRecords = records.filter(rec => !String(rec.version || '').trim() || rec.version === '-')
+  const zeroHoursRecords = records.filter(rec => toNumber(rec.hours) <= 0)
+  const qualityRows = [
+    { label: '空产品经理', records: emptyPmRecords },
+    { label: '未填版本', records: missingVersionRecords },
+    { label: '0 或负工时', records: zeroHoursRecords }
+  ].map(item => {
+    const hours = item.records.reduce((sum, rec) => sum + toNumber(rec.hours), 0)
+    return {
+      label: item.label,
+      recordCount: item.records.length,
+      total: Number(hours.toFixed(1)),
+      share: total ? Number((hours * 100 / total).toFixed(1)) : 0
+    }
+  })
+  return {
+    total: Number(total.toFixed(1)),
+    recordCount: records.length,
+    requirementCount: new Set(records.map(requirementKey)).size,
+    taskCount: new Set(records.map(r => r.task_id)).size,
+    avgRecordHours: records.length ? Number((total / records.length).toFixed(1)) : 0,
+    avgRequirementHours: requirementRows.length ? Number((total / requirementRows.length).toFixed(1)) : 0,
+    roleTotals: {
+      frontend: Number(roleTotals.frontend.toFixed(1)),
+      backend: Number(roleTotals.backend.toFixed(1)),
+      test: Number(roleTotals.test.toFixed(1))
+    },
+    pmRows,
+    staffRows,
+    versionRows,
+    requirementRows,
+    taskRows,
+    roleComboRows,
+    keywordRows,
+    qualityRows
+  }
+})
+
+const analysisDialogTitle = computed(() => `${statsScopeTitle.value}｜${analysisDimensionMeta.value.label} 数据分析`)
+
+const analysisTopRows = computed(() => ({
+  period: [...analysisData.value.taskRows].sort((a, b) => b.total - a.total)[0],
+  pm: analysisData.value.pmRows[0],
+  staff: analysisData.value.staffRows[0],
+  requirement: analysisData.value.requirementRows[0],
+  version: analysisData.value.versionRows[0],
+  keyword: analysisData.value.keywordRows[0],
+  combo: analysisData.value.roleComboRows[0]
+}))
+
+const analysisRoleRows = computed(() => {
+  return ANALYSIS_ROLE_META
+    .filter(item => showAnalysisRole(item.key))
+    .map(item => {
+      const hours = analysisData.value.roleTotals[item.key] || 0
+      const share = analysisData.value.total ? Number((hours * 100 / analysisData.value.total).toFixed(1)) : 0
+      return {
+        ...item,
+        hours,
+        share
+      }
+    })
+})
+
+const analysisRoleSummaryText = computed(() => {
+  if (analysisDimensionMeta.value.role) {
+    const row = analysisRoleRows.value[0]
+    return row ? `${row.label} ${row.hours.toFixed(1)}h。` : ''
+  }
+  return `后端 ${analysisData.value.roleTotals.backend.toFixed(1)}h，前端 ${analysisData.value.roleTotals.frontend.toFixed(1)}h，测试 ${analysisData.value.roleTotals.test.toFixed(1)}h。`
+})
+
+function openAnalysisDialog(dimension = 'total') {
+  analysisDimension.value = dimension
+  analysisDialogVisible.value = true
+}
+
+function workloadReportUrl(extra = {}) {
+  const params = new URLSearchParams()
+  params.set('year', String(selectedYear.value))
+  params.set('quarter', selectedQuarter.value)
+  params.set('taskId', selectedTaskId.value)
+  if (extra.dimension) params.set('dimension', extra.dimension)
+  return `${WORKLOAD_REPORT_URL}?${params.toString()}`
+}
+
+function openWorkloadReportPage(dimension = 'total') {
+  const url = workloadReportUrl({ dimension })
+  const opened = window.open(url, '_blank')
+  if (!opened) ElMessage.info('浏览器拦截了新窗口，请允许弹窗后重试')
+}
 
 /* ========== 明细表：按 PM 分组的扁平数据 + 合并单元格（REQ-13 + REQ-30 需求合并） ========== */
 const flatTableData = computed(() => {
@@ -922,10 +1189,11 @@ function exportStatsData() {
     <template v-else>
     <div class="dt-page-header flex-between">
       <div>
-        <h1 class="dt-page-title">周期统计（季度）</h1>
-        <p class="dt-page-description">部门工时趋势与个人贡献分析</p>
+        <h1 class="dt-page-title">周期统计（季度）｜{{ selectedPeriodRangeText }}</h1>
+        <p class="dt-page-description">部门工时趋势与个人贡献分析 · 当前范围：{{ statsScopeTitle }}</p>
       </div>
       <div style="display:flex; align-items:center; gap:8px;">
+        <el-button class="dt-analysis-open-btn" type="primary" size="small" @click="openWorkloadReportPage('total')">📊 周期数据分析</el-button>
         <el-button v-if="authStore.hasPermission('btn:stats:export', 'view')" size="small" @click="exportStatsData">📤 导出Excel</el-button>
         <el-button circle @click="loadDeptStats" title="刷新数据" style="font-size:16px;">🔄</el-button>
       </div>
@@ -951,28 +1219,28 @@ function exportStatsData() {
 
         <!-- 概要卡片（v1.4.2：总工时→角色→通用，排序调整） -->
         <div class="dt-stat-cards">
-          <div class="dt-stat-card">
+          <div class="dt-stat-card dt-stat-card-clickable" @click="openAnalysisDialog('total')">
             <div class="dt-stat-card-label">{{ filterLabel }} 总工时</div>
             <div class="dt-stat-card-value" style="color:#F53F3F;">
               {{ statsStore.summary.totalHours?.toFixed(1) || '0' }}
               <span class="dt-stat-card-unit">小时</span>
             </div>
           </div>
-          <div class="dt-stat-card">
+          <div class="dt-stat-card dt-stat-card-clickable" @click="openAnalysisDialog('frontend')">
             <div class="dt-stat-card-label">{{ filterLabel }} 前端总工时</div>
             <div class="dt-stat-card-value" style="color:#165DFF;">
               {{ roleTotals.frontend?.toFixed(1) || '0' }}
               <span class="dt-stat-card-unit">小时</span>
             </div>
           </div>
-          <div class="dt-stat-card">
+          <div class="dt-stat-card dt-stat-card-clickable" @click="openAnalysisDialog('backend')">
             <div class="dt-stat-card-label">{{ filterLabel }} 后端总工时</div>
             <div class="dt-stat-card-value" style="color:#00B42A;">
               {{ roleTotals.backend?.toFixed(1) || '0' }}
               <span class="dt-stat-card-unit">小时</span>
             </div>
           </div>
-          <div class="dt-stat-card">
+          <div class="dt-stat-card dt-stat-card-clickable" @click="openAnalysisDialog('test')">
             <div class="dt-stat-card-label">{{ filterLabel }} 测试总工时</div>
             <div class="dt-stat-card-value" style="color:#FF7D00;">
               {{ roleTotals.test?.toFixed(1) || '0' }}
@@ -1049,7 +1317,7 @@ function exportStatsData() {
                 <span v-else style="font-family:var(--font-mono);">{{ row.version }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="需求名称" min-width="200">
+            <el-table-column label="需求名称" min-width="200" align="left" header-align="center">
               <template #default="{ row }">
                 <span style="font-weight:500;">{{ row.requirement_title }}</span>
               </template>
@@ -1177,7 +1445,7 @@ function exportStatsData() {
                   <span class="dt-accordion-arrow" :class="{ 'dt-accordion-arrow-open': expandedTaskIds.includes(task.id) }">▶</span>
                   <span style="font-weight:500; flex:1;">{{ task.title }}</span>
                   <span style="font-size:12px; color:var(--color-text-3); margin-right:12px;">
-                    {{ task.start_date }} — {{ task.end_date }}
+                    {{ formatTaskPeriod(task) }}
                   </span>
                   <span class="dt-tag dt-tag-gray" style="font-size:11px;">
                     {{ task.records.length > 0 ? task.records.length + ' 条记录' : '暂无记录' }}
@@ -1186,20 +1454,24 @@ function exportStatsData() {
                 <transition name="accordion">
                   <div v-if="expandedTaskIds.includes(task.id)" class="dt-accordion-body">
                     <div v-if="task.records.length === 0" style="padding:16px; text-align:center; color:var(--color-text-3); font-size:13px;">该周期暂无提交记录</div>
-                    <el-table v-else :data="task.records" border size="small" style="width:100%;" table-layout="fixed">
+                    <el-table v-else :data="task.records" border size="small" style="width:100%;" table-layout="fixed"
+                      :default-sort="{ prop: 'hours', order: 'descending' }"
+                    >
                       <el-table-column type="index" label="#" width="45" align="center" />
-                      <el-table-column prop="version" label="版本号" width="100">
+                      <el-table-column prop="version" label="版本号" width="100" sortable>
                         <template #default="{ row }">
                           <span style="font-family:var(--font-mono);">{{ row.version || '-' }}</span>
                         </template>
                       </el-table-column>
-                      <el-table-column prop="requirement_title" label="需求标题" min-width="180" show-overflow-tooltip />
-                      <el-table-column prop="product_managers" label="产品经理" min-width="130">
+                      <el-table-column prop="requirement_title" label="需求标题" min-width="180" align="left" header-align="center" show-overflow-tooltip sortable />
+                      <el-table-column prop="product_managers" label="产品经理" min-width="130" sortable>
                         <template #default="{ row }">
                           <span style="word-break:break-all;">{{ formatPM(row.product_managers) }}</span>
                         </template>
                       </el-table-column>
-                      <el-table-column prop="hours" label="工时(小时)" width="100" align="center">
+                      <el-table-column prop="hours" label="工时(小时)" width="100" align="center" sortable
+                        :sort-method="(a, b) => parseFloat(a.hours||0) - parseFloat(b.hours||0)"
+                      >
                         <template #default="{ row }">
                           <span style="font-weight:700; color:var(--color-primary);">{{ parseFloat(row.hours || 0).toFixed(1) }}</span>
                         </template>
@@ -1407,7 +1679,7 @@ function exportStatsData() {
                   <span class="dt-accordion-arrow" :class="{ 'dt-accordion-arrow-open': pmExpandedTaskIds.includes(task.id) }">▶</span>
                   <span style="font-weight:500; flex:1;">{{ task.title }}</span>
                   <span style="font-size:12px; color:var(--color-text-3); margin-right:12px;">
-                    {{ task.start_date }} — {{ task.end_date }}
+                    {{ formatTaskPeriod(task) }}
                   </span>
                   <span class="dt-tag dt-tag-gray" style="font-size:11px;">
                     {{ task.records.length > 0 ? task.records.length + ' 条记录' : '暂无记录' }}
@@ -1425,7 +1697,7 @@ function exportStatsData() {
                           <span style="font-family:var(--font-mono);">{{ row.version || '-' }}</span>
                         </template>
                       </el-table-column>
-                      <el-table-column prop="requirement_title" label="需求标题" min-width="180" show-overflow-tooltip sortable />
+                      <el-table-column prop="requirement_title" label="需求标题" min-width="180" align="left" header-align="center" show-overflow-tooltip sortable />
                       <el-table-column prop="staffName" label="人员" width="100" align="center" sortable />
                       <el-table-column prop="role" label="角色" width="80" align="center" sortable>
                         <template #default="{ row }">
@@ -1530,7 +1802,7 @@ function exportStatsData() {
                           <span style="font-family:monospace; font-size:11px; white-space:nowrap;">{{ row.version || '-' }}</span>
                         </template>
                       </el-table-column>
-                      <el-table-column prop="requirement_title" label="需求标题" min-width="140" show-overflow-tooltip sortable />
+                      <el-table-column prop="requirement_title" label="需求标题" min-width="140" align="left" header-align="center" show-overflow-tooltip sortable />
                       <el-table-column prop="staffName" label="人员" width="65" align="center" sortable />
                       <el-table-column prop="role" label="角色" width="55" align="center" sortable>
                         <template #default="{ row }">
@@ -1583,6 +1855,184 @@ function exportStatsData() {
       </el-tab-pane>
     </el-tabs>
 
+    <!-- 本地周期数据分析弹窗 -->
+    <el-dialog v-model="analysisDialogVisible" :title="analysisDialogTitle" width="88%" class="dt-analysis-dialog">
+      <div class="dt-analysis-scope">
+        <span>统计周期：{{ selectedPeriodRangeText }}</span>
+        <span>筛选范围：{{ statsScopeTitle }}</span>
+        <span>口径：以工时填报记录和人员岗位为准</span>
+        <el-button size="small" type="primary" plain @click="openWorkloadReportPage(analysisDimension)">打开完整报告页</el-button>
+      </div>
+
+      <div class="dt-analysis-kpis">
+        <div class="dt-analysis-kpi">
+          <span>当前维度工时</span>
+          <strong :style="{ color: analysisDimensionMeta.color }">{{ analysisData.total.toFixed(1) }}</strong>
+          <em>小时</em>
+        </div>
+        <div class="dt-analysis-kpi">
+          <span>记录数</span>
+          <strong>{{ analysisData.recordCount }}</strong>
+          <em>条</em>
+        </div>
+        <div class="dt-analysis-kpi">
+          <span>需求数</span>
+          <strong>{{ analysisData.requirementCount }}</strong>
+          <em>个</em>
+        </div>
+        <div class="dt-analysis-kpi">
+          <span>周期数</span>
+          <strong>{{ analysisData.taskCount }}</strong>
+          <em>个</em>
+        </div>
+      </div>
+
+      <div class="dt-analysis-role-strip">
+        <div
+          v-for="role in analysisRoleRows"
+          :key="role.key"
+          class="dt-analysis-role-item"
+          :class="role.itemClass"
+        >
+          <span>{{ role.label }}</span>
+          <strong>{{ role.hours.toFixed(1) }}H</strong>
+        </div>
+      </div>
+
+      <el-tabs type="border-card" class="dt-analysis-tabs">
+        <el-tab-pane label="总览">
+          <div class="dt-analysis-overview">
+            <div class="dt-analysis-findings">
+              <h4>核心解读</h4>
+              <ul>
+                <li>当前维度共 {{ analysisData.recordCount }} 条记录、{{ analysisData.requirementCount }} 个需求粒度、{{ analysisData.taskCount }} 个周期。</li>
+                <li>{{ analysisRoleSummaryText }}</li>
+                <li>平均单条记录 {{ analysisData.avgRecordHours.toFixed(1) }}h，平均单需求 {{ analysisData.avgRequirementHours.toFixed(1) }}h。</li>
+                <li v-if="analysisTopRows.period">峰值周期：{{ analysisTopRows.period.label }}，{{ analysisTopRows.period.total }}h。</li>
+              </ul>
+            </div>
+            <div class="dt-analysis-findings">
+              <h4>重点维度</h4>
+              <ul>
+                <li v-if="analysisTopRows.pm">产品经理最高：{{ analysisTopRows.pm.label }}，{{ analysisTopRows.pm.total }}h / {{ analysisTopRows.pm.share }}%。</li>
+                <li v-if="analysisTopRows.staff">人员最高：{{ analysisTopRows.staff.label }}，{{ analysisTopRows.staff.total }}h / {{ analysisTopRows.staff.share }}%。</li>
+                <li v-if="analysisTopRows.requirement">需求最高：{{ analysisTopRows.requirement.label }}，{{ analysisTopRows.requirement.total }}h / {{ analysisTopRows.requirement.share }}%。</li>
+                <li v-if="analysisTopRows.combo">协作形态最高：{{ analysisTopRows.combo.combo }}，{{ analysisTopRows.combo.total }}h / {{ analysisTopRows.combo.share }}%。</li>
+              </ul>
+            </div>
+          </div>
+          <div class="dt-analysis-mini-bars">
+            <div v-for="role in analysisRoleRows" :key="role.key" class="dt-analysis-mini-bar">
+              <span>{{ role.label }}</span>
+              <div><i :class="role.bgClass" :style="{ width: `${role.share}%` }"></i></div>
+              <strong>{{ role.hours.toFixed(1) }}h</strong>
+            </div>
+          </div>
+        </el-tab-pane>
+        <el-tab-pane label="产品经理">
+          <el-table :data="analysisData.pmRows.slice(0, 20)" border size="small" class="dt-analysis-table" table-layout="auto" style="width:100%;" :default-sort="{ prop: 'total', order: 'descending' }">
+            <el-table-column prop="label" label="产品经理" width="1" align="center" sortable class-name="dt-analysis-primary-cell" header-class-name="dt-analysis-primary-header" />
+            <el-table-column prop="total" label="工时" align="center" sortable />
+            <el-table-column prop="share" label="占比" align="center" sortable>
+              <template #default="{ row }">{{ row.share }}%</template>
+            </el-table-column>
+            <el-table-column v-if="showAnalysisRole('frontend')" prop="frontend" label="前端" align="center" sortable />
+            <el-table-column v-if="showAnalysisRole('backend')" prop="backend" label="后端" align="center" sortable />
+            <el-table-column v-if="showAnalysisRole('test')" prop="test" label="测试" align="center" sortable />
+            <el-table-column prop="recordCount" label="记录数" align="center" sortable />
+            <el-table-column prop="requirementCount" label="需求数" align="center" sortable />
+          </el-table>
+        </el-tab-pane>
+        <el-tab-pane label="人员">
+          <el-table :data="analysisData.staffRows.slice(0, 20)" border size="small" class="dt-analysis-table" table-layout="auto" style="width:100%;" :default-sort="{ prop: 'total', order: 'descending' }">
+            <el-table-column prop="label" label="人员" width="1" align="center" sortable class-name="dt-analysis-primary-cell" header-class-name="dt-analysis-primary-header" />
+            <el-table-column prop="total" label="工时" align="center" sortable />
+            <el-table-column prop="share" label="占比" align="center" sortable>
+              <template #default="{ row }">{{ row.share }}%</template>
+            </el-table-column>
+            <el-table-column prop="recordCount" label="记录数" align="center" sortable />
+            <el-table-column prop="taskCount" label="周期数" align="center" sortable />
+            <el-table-column prop="requirementCount" label="需求数" align="center" sortable />
+          </el-table>
+        </el-tab-pane>
+        <el-tab-pane label="周期">
+          <el-table :data="analysisData.taskRows" border size="small" class="dt-analysis-table" table-layout="auto" style="width:100%;" :default-sort="{ prop: 'sortTime', order: 'descending' }">
+            <el-table-column prop="sortTime" label="周期" width="1" align="center" sortable :sort-method="(a, b) => a.sortTime - b.sortTime" class-name="dt-analysis-primary-cell" header-class-name="dt-analysis-primary-header">
+              <template #default="{ row }">{{ row.label }}</template>
+            </el-table-column>
+            <el-table-column prop="total" label="工时" align="center" sortable />
+            <el-table-column prop="share" label="占比" align="center" sortable>
+              <template #default="{ row }">{{ row.share }}%</template>
+            </el-table-column>
+            <el-table-column v-if="showAnalysisRole('frontend')" prop="frontend" label="前端" align="center" sortable />
+            <el-table-column v-if="showAnalysisRole('backend')" prop="backend" label="后端" align="center" sortable />
+            <el-table-column v-if="showAnalysisRole('test')" prop="test" label="测试" align="center" sortable />
+            <el-table-column prop="recordCount" label="记录数" align="center" sortable />
+            <el-table-column prop="requirementCount" label="需求数" align="center" sortable />
+          </el-table>
+        </el-tab-pane>
+        <el-tab-pane label="版本">
+          <el-table :data="analysisData.versionRows.slice(0, 30)" border size="small" class="dt-analysis-table" table-layout="auto" style="width:100%;" :default-sort="{ prop: 'total', order: 'descending' }">
+            <el-table-column prop="label" label="版本" width="1" align="center" sortable class-name="dt-analysis-primary-cell" header-class-name="dt-analysis-primary-header" />
+            <el-table-column prop="total" label="工时" align="center" sortable />
+            <el-table-column prop="share" label="占比" align="center" sortable>
+              <template #default="{ row }">{{ row.share }}%</template>
+            </el-table-column>
+            <el-table-column prop="recordCount" label="记录数" align="center" sortable />
+            <el-table-column prop="requirementCount" label="需求数" align="center" sortable />
+          </el-table>
+        </el-tab-pane>
+        <el-tab-pane label="需求">
+          <el-table :data="analysisData.requirementRows.slice(0, 50)" border size="small" class="dt-analysis-table dt-analysis-requirement-table" table-layout="auto" style="width:100%;" :default-sort="{ prop: 'total', order: 'descending' }">
+            <el-table-column prop="label" label="需求" width="130" align="left" header-align="center" show-overflow-tooltip sortable class-name="dt-analysis-requirement-cell" />
+            <el-table-column prop="total" label="工时" align="center" sortable />
+            <el-table-column prop="share" label="占比" align="center" sortable>
+              <template #default="{ row }">{{ row.share }}%</template>
+            </el-table-column>
+            <el-table-column v-if="showAnalysisRole('frontend')" prop="frontend" label="前端" align="center" sortable />
+            <el-table-column v-if="showAnalysisRole('backend')" prop="backend" label="后端" align="center" sortable />
+            <el-table-column v-if="showAnalysisRole('test')" prop="test" label="测试" align="center" sortable />
+            <el-table-column prop="recordCount" label="记录数" align="center" sortable />
+          </el-table>
+        </el-tab-pane>
+        <el-tab-pane label="关键词">
+          <el-table :data="analysisData.keywordRows.slice(0, 30)" border size="small" class="dt-analysis-table" table-layout="auto" style="width:100%;" :default-sort="{ prop: 'total', order: 'descending' }">
+            <el-table-column prop="label" label="关键词" width="1" align="center" sortable class-name="dt-analysis-primary-cell" header-class-name="dt-analysis-primary-header" />
+            <el-table-column prop="total" label="命中工时" align="center" sortable />
+            <el-table-column prop="share" label="占比" align="center" sortable>
+              <template #default="{ row }">{{ row.share }}%</template>
+            </el-table-column>
+            <el-table-column prop="recordCount" label="记录数" align="center" sortable />
+            <el-table-column prop="requirementCount" label="需求数" align="center" sortable />
+          </el-table>
+          <p class="dt-analysis-note">关键词按固定正则命中需求名称和版本字段，同一记录可命中多个关键词，仅用于识别特征，不用于反推总工时。</p>
+        </el-tab-pane>
+        <el-tab-pane label="数据质量">
+          <el-table :data="analysisData.qualityRows" border size="small" class="dt-analysis-table" table-layout="auto" style="width:100%;" :default-sort="{ prop: 'total', order: 'descending' }">
+            <el-table-column prop="label" label="检查项" width="1" align="center" sortable class-name="dt-analysis-primary-cell" header-class-name="dt-analysis-primary-header" />
+            <el-table-column prop="recordCount" label="记录数" align="center" sortable />
+            <el-table-column prop="total" label="工时" align="center" sortable />
+            <el-table-column prop="share" label="占比" align="center" sortable>
+              <template #default="{ row }">{{ row.share }}%</template>
+            </el-table-column>
+          </el-table>
+        </el-tab-pane>
+        <el-tab-pane label="公式步骤">
+          <div class="dt-analysis-formula">
+            <ol>
+              <li>先按页面上选择的年份、季度或具体周期确定统计范围。</li>
+              <li>如果点击总工时卡片，就统计全部岗位；如果点击前端、后端或测试卡片，就只统计对应岗位。</li>
+              <li>工时合计：把当前范围内符合条件的每条填报工时相加。</li>
+              <li>占比：用当前行的工时除以当前弹窗的总工时，再换算成百分比。</li>
+              <li>需求数量：同一个周期内，需求名称和版本相同的内容视为同一个需求。</li>
+              <li>产品经理归属：优先使用填报时选择的第一个产品经理；没有填写时归入“不在上述”。</li>
+              <li>产品经理、人员、周期、版本、需求、关键词和数据质量页签都沿用同一套周期范围和卡片岗位范围。</li>
+            </ol>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
+    </el-dialog>
+
     <!-- v3.2.1: 需求总数统计弹窗 -->
     <el-dialog v-model="reqStatsDialogVisible" title="需求总数统计明细" width="520px">
       <div style="margin-bottom:16px;">
@@ -1597,11 +2047,11 @@ function exportStatsData() {
           </div>
         </div>
         <div style="font-size:13px; font-weight:600; color:var(--color-text-1); margin-bottom:8px;">按产品经理分组：</div>
-        <el-table :data="reqStats.perPm" border size="small" style="width:100%;">
-          <el-table-column prop="name" label="产品经理" width="130" />
-          <el-table-column prop="versionCount" label="去重版本数" width="120" align="center" />
-          <el-table-column prop="noVersionCount" label="无版本号数" width="120" align="center" />
-          <el-table-column label="小计" width="100" align="center">
+        <el-table :data="reqStats.perPm" border size="small" style="width:100%;" :default-sort="{ prop: 'versionCount', order: 'descending' }">
+          <el-table-column prop="name" label="产品经理" width="130" align="center" sortable />
+          <el-table-column prop="versionCount" label="去重版本数" width="120" align="center" sortable />
+          <el-table-column prop="noVersionCount" label="无版本号数" width="120" align="center" sortable />
+          <el-table-column label="小计" width="100" align="center" sortable :sort-method="(a, b) => (a.versionCount + a.noVersionCount) - (b.versionCount + b.noVersionCount)">
             <template #default="{ row }">
               <span style="font-weight:700; color:var(--color-primary);">{{ row.versionCount + row.noVersionCount }}</span>
             </template>
@@ -1614,12 +2064,12 @@ function exportStatsData() {
     <el-dialog v-model="staffDialogVisible" title="研发人员明细" width="420px">
       <el-table :data="statsStore.staff" border size="small" style="width:100%;">
         <el-table-column type="index" label="#" width="45" align="center" />
-        <el-table-column prop="name" label="姓名" width="100">
+        <el-table-column prop="name" label="姓名" width="100" align="center" sortable>
           <template #default="{ row }">
             <span style="font-weight:600;">{{ row.name }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="role" label="岗位" width="100" align="center">
+        <el-table-column prop="role" label="岗位" width="100" align="center" sortable>
           <template #default="{ row }">
             <span
               :style="{
@@ -1639,6 +2089,211 @@ function exportStatsData() {
 </template>
 
 <style scoped>
+/* === 本地周期分析弹窗 === */
+.dt-analysis-scope {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+  color: var(--color-text-2, #4E5969);
+  font-size: 13px;
+}
+
+.dt-analysis-scope span {
+  padding: 5px 10px;
+  border-radius: 6px;
+  background: var(--color-bg-2, #F7F8FA);
+  border: 1px solid var(--color-border-light, #F2F3F5);
+}
+
+.dt-analysis-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.dt-analysis-kpi {
+  padding: 14px 16px;
+  border: 1px solid var(--color-border-light, #F2F3F5);
+  border-radius: 8px;
+  background: #fff;
+  text-align: center;
+}
+
+.dt-analysis-kpi span {
+  display: block;
+  color: var(--color-text-3, #86909C);
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.dt-analysis-kpi strong {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--color-text-1, #1D2129);
+}
+
+.dt-analysis-kpi em {
+  margin-left: 4px;
+  font-style: normal;
+  color: var(--color-text-3, #86909C);
+  font-size: 12px;
+}
+
+.dt-analysis-role-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.dt-analysis-role-item {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  align-items: center;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  border: 1px solid transparent;
+}
+
+.dt-analysis-role-item strong {
+  font-size: 16px;
+}
+
+.dt-analysis-fe { color: #165DFF; background: #E8F3FF; border-color: #BEDAFF; }
+.dt-analysis-be { color: #00B42A; background: #E8FFEA; border-color: #B7F0C0; }
+.dt-analysis-qa { color: #FF7D00; background: #FFF7E8; border-color: #FFD9A8; }
+
+:deep(.el-table th),
+:deep(.el-table td),
+:deep(.el-table th .cell),
+:deep(.el-table td .cell) {
+  text-align: center;
+  vertical-align: middle;
+}
+
+:deep(.el-table th.is-left),
+:deep(.el-table td.is-left),
+:deep(.el-table th.is-left .cell),
+:deep(.el-table td.is-left .cell) {
+  text-align: left;
+}
+
+.dt-analysis-tabs :deep(.el-table th),
+.dt-analysis-tabs :deep(.el-table td) {
+  text-align: center;
+  vertical-align: middle;
+}
+
+.dt-analysis-table :deep(.el-table__header table),
+.dt-analysis-table :deep(.el-table__body table) {
+  table-layout: auto !important;
+}
+
+.dt-analysis-table :deep(.cell) {
+  white-space: nowrap;
+}
+
+.dt-analysis-table :deep(.dt-analysis-primary-header),
+.dt-analysis-table :deep(.dt-analysis-primary-cell) {
+  width: 1%;
+}
+
+.dt-analysis-table :deep(.dt-analysis-primary-header .cell),
+.dt-analysis-table :deep(.dt-analysis-primary-cell .cell) {
+  white-space: nowrap;
+}
+
+.dt-analysis-requirement-table :deep(th.is-left),
+.dt-analysis-requirement-table :deep(th.is-left .cell),
+.dt-analysis-requirement-table :deep(td.dt-analysis-requirement-cell),
+.dt-analysis-requirement-table :deep(td.dt-analysis-requirement-cell .cell) {
+  text-align: left !important;
+}
+
+.dt-analysis-overview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.dt-analysis-findings {
+  border: 1px solid var(--color-border-light, #F2F3F5);
+  border-radius: 8px;
+  background: #fff;
+  padding: 12px 14px;
+}
+
+.dt-analysis-findings h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: var(--color-text-1, #1D2129);
+}
+
+.dt-analysis-findings ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--color-text-2, #4E5969);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.dt-analysis-mini-bars {
+  display: grid;
+  gap: 9px;
+}
+
+.dt-analysis-mini-bar {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr) 90px;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.dt-analysis-mini-bar div {
+  height: 16px;
+  border-radius: 4px;
+  background: #EEF2F7;
+  overflow: hidden;
+}
+
+.dt-analysis-mini-bar i {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+}
+
+.dt-analysis-fe-bg { background: #165DFF; }
+.dt-analysis-be-bg { background: #00B42A; }
+.dt-analysis-qa-bg { background: #FF7D00; }
+
+.dt-analysis-note {
+  margin: 10px 0 0;
+  color: var(--color-text-3, #86909C);
+  font-size: 12px;
+}
+
+.dt-analysis-formula {
+  padding: 12px 16px;
+  border: 1px solid var(--color-border-light, #F2F3F5);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--color-text-2, #4E5969);
+  line-height: 1.8;
+}
+
+.dt-analysis-formula code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #F2F3F5;
+  color: #1D2129;
+}
+
 /* === 人员选择器 === */
 .dt-staff-selector {
   display: flex;
