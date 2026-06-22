@@ -52,7 +52,7 @@ const ANALYSIS_ROLE_META = [
   { key: 'backend', label: '后端', itemClass: 'dt-analysis-be', bgClass: 'dt-analysis-be-bg' },
   { key: 'test', label: '测试', itemClass: 'dt-analysis-qa', bgClass: 'dt-analysis-qa-bg' }
 ]
-const WORKLOAD_REPORT_URL = 'http://127.0.0.1:3001/local-reports/workload-analysis/devtracker_workload_all_latest.html'
+const WORKLOAD_REPORT_PATH = 'api/local-reports/workload-analysis/devtracker_workload_all_latest.html'
 const ANALYSIS_KEYWORD_DEFS = [
   { name: '语音', pattern: /语音|通话|呼叫|坐席|热线|TTS|SIP|kamailio|vos|VOS|DID|网关|线路|外呼|群呼|CC/i },
   { name: 'AI/智能体', pattern: /智能体|Agent|agent|AI|意图识别|知识库/i },
@@ -485,7 +485,8 @@ function workloadReportUrl(extra = {}) {
   params.set('quarter', selectedQuarter.value)
   params.set('taskId', selectedTaskId.value)
   if (extra.dimension) params.set('dimension', extra.dimension)
-  return `${WORKLOAD_REPORT_URL}?${params.toString()}`
+  const base = import.meta.env.BASE_URL || '/'
+  return `${base}${WORKLOAD_REPORT_PATH}?${params.toString()}`
 }
 
 function openWorkloadReportPage(dimension = 'total') {

@@ -30,10 +30,12 @@ app.use('/api/excel',       require('./routes/excel'));
 app.use('/api/settings',    require('./routes/settings'));
 app.use('/api/pm',          require('./routes/pm'));
 app.use('/api/quotes',      require('./routes/quotes'));
-app.use('/local-reports', express.static(path.join(__dirname, '..', '..', '.codex-local', 'reports'), {
+const localReportsStatic = express.static(path.join(__dirname, '..', '..', '.codex-local', 'reports'), {
   index: false,
   extensions: ['html']
-}));
+});
+app.use('/local-reports', localReportsStatic);
+app.use('/api/local-reports', localReportsStatic);
 
 /* 健康检查 */
 app.get('/api/health', (req, res) => {
