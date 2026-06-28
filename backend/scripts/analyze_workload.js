@@ -2038,6 +2038,12 @@ function renderHtml(report, options = {}) {
       return window.__WORKLOAD_REPORT__?.dataset?.periodKey || 'all';
     }
 
+    function queryParentPeriodItem() {
+      const key = new URLSearchParams(window.location.search).get('parentPeriod');
+      const item = key ? reportByKey(key) : null;
+      return item && item.grain !== 'week' ? item : null;
+    }
+
     const REPORT_WEEK_WINDOW_SIZE = 9;
     const REPORT_WEEK_FOCUS_INDEX = 4;
     const REPORT_WEEK_WINDOW_STEP = 2;
@@ -2073,6 +2079,8 @@ function renderHtml(report, options = {}) {
     function parentGrainForItem(item) {
       if (!item) return 'all';
       if (item.grain !== 'week') return item.grain || 'all';
+      const parent = queryParentPeriodItem();
+      if (parent) return parent.grain || 'all';
       if (item.month) return 'month';
       if (item.quarter) return 'quarter';
       if (item.year) return 'year';
@@ -2082,6 +2090,8 @@ function renderHtml(report, options = {}) {
     function parentPeriodKeyForItem(item) {
       if (!item) return 'all';
       if (item.grain !== 'week') return item.key;
+      const queryParent = queryParentPeriodItem();
+      if (queryParent) return queryParent.key;
       const reports = window.__PERIOD_REPORTS__ || [];
       if (item.month) {
         const month = reports.find(report => report.grain === 'month' && report.month === item.month);
@@ -2098,9 +2108,19 @@ function renderHtml(report, options = {}) {
       return 'all';
     }
 
+    function weekScopeItem(item) {
+      if (!item || item.grain !== 'week') return item;
+      const parentKey = parentPeriodKeyForItem(item);
+      return reportByKey(parentKey) || item;
+    }
+
     function weeksForPeriod(item) {
       if (!item) return [];
       const weeks = window.__NATURAL_WEEKS__ || [];
+      if (item.grain === 'week') {
+        const parent = weekScopeItem(item);
+        if (parent && parent.key !== item.key) return weeksForPeriod(parent);
+      }
       if (item.grain === 'all') return [...weeks];
       if (item.grain === 'year') return weeks.filter(week => week.year === item.year);
       if (item.grain === 'quarter') return weeks.filter(week => week.year === item.year && week.quarter === item.quarter);
@@ -2142,7 +2162,8 @@ function renderHtml(report, options = {}) {
         return;
       }
       const activeIndex = weeks.findIndex(week => week.key === item.key);
-      const scopeKey = item?.key || 'all';
+      const scopeItem = weekScopeItem(item);
+      const scopeKey = scopeItem?.key || item?.key || 'all';
       if (reportWeekScopeKey !== scopeKey) {
         reportWeekWindowStart = activeIndex >= 0 ? clampReportWeekStart(activeIndex - REPORT_WEEK_FOCUS_INDEX, weeks) : 0;
         reportWeekScopeKey = scopeKey;
@@ -2178,10 +2199,16 @@ function renderHtml(report, options = {}) {
       root.hidden = false;
     }
 
-    function reportHref(item) {
+    function reportHref(item, parentPeriodKey = '') {
       if (!item || !item.href) return '';
       const url = new URL(item.href, window.location.href);
       url.search = '';
+      if (item.grain === 'week') {
+        const parentKey = parentPeriodKey || parentPeriodKeyForItem(reportByKey(currentPeriodKey()) || item);
+        if (parentKey && parentKey !== item.key) {
+          url.searchParams.set('parentPeriod', parentKey);
+        }
+      }
       url.hash = window.location.hash || '';
       return url.href;
     }
@@ -2232,11 +2259,14 @@ function renderHtml(report, options = {}) {
       if (reports.some(item => item.key === selectedKey)) select.value = selectedKey;
     }
 
-    function setPeriod(key, updateUrl = false) {
+    function setPeriod(key, updateUrl = false, parentPeriodKey = '') {
       const item = reportByKey(key);
       if (!item) return;
+      const parentContextKey = item.grain === 'week'
+        ? (parentPeriodKey || queryParentPeriodItem()?.key || parentPeriodKeyForItem(reportByKey(currentPeriodKey()) || item))
+        : '';
       if (item.key !== currentPeriodKey() && item.href) {
-        const href = reportHref(item);
+        const href = reportHref(item, parentContextKey);
         if (href) {
           if (updateUrl) window.location.assign(href);
           else window.location.replace(href);
@@ -2256,6 +2286,11 @@ function renderHtml(report, options = {}) {
       if (updateUrl) {
         const url = new URL(window.location.href);
         url.searchParams.set('period', item.key);
+        if (parentContextKey) {
+          url.searchParams.set('parentPeriod', parentContextKey);
+        } else {
+          url.searchParams.delete('parentPeriod');
+        }
         window.history.replaceState(null, '', url.pathname + '?' + url.searchParams.toString() + window.location.hash);
       }
       const initialTab = (window.location.hash || '').replace('#', '') || 'overview';
@@ -2379,7 +2414,8 @@ function renderHtml(report, options = {}) {
       }
       const periodWeekBtn = event.target.closest('[data-period-week-key]');
       if (periodWeekBtn) {
-        setPeriod(periodWeekBtn.dataset.periodWeekKey, true);
+        const currentItem = reportByKey(currentPeriodKey()) || reportByKey(reportByQuery());
+        setPeriod(periodWeekBtn.dataset.periodWeekKey, true, parentPeriodKeyForItem(currentItem));
         return;
       }
       const openBtn = event.target.closest('[data-open-tab]');

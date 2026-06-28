@@ -21,7 +21,7 @@ import { useTaskStore } from '../stores/task'
 import { usePmStore } from '../stores/pm'
 import api from '../api'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, ArrowUp } from '@element-plus/icons-vue'
 import { onDataChange, SYNC_EVENTS } from '../utils/sync'
 import { generateAndDownloadExcel, uploadExcelToServer } from '../utils/excel'
 import { useAuthStore } from '../stores/auth'
@@ -89,6 +89,7 @@ function getMedalRank(records, currentHours) {
 const activeTab = ref('department')
 const pageLoading = ref(true)  // v1.4.3: 页面初始加载状态
 const pmSortOrder = ref('desc')  // v3.2.1: 默认工时降序（'' | 'asc' | 'desc'）
+const showBackTop = ref(false)
 
 /* ========== 弹窗状态 ========== */
 const reqStatsDialogVisible = ref(false)
@@ -100,6 +101,7 @@ const analysisDimension = ref('total')
 const selectedYear = ref(CURRENT_YEAR)
 const selectedQuarter = ref(getCurrentQuarter())
 const selectedTaskId = ref('all')
+const selectedNaturalWeekTaskId = ref('')
 const weekWindowStart = ref(0)
 const weekSelectorRef = ref(null)
 const weekWindowSize = ref(WEEK_WINDOW_SIZE)
@@ -252,7 +254,8 @@ const hasHiddenWeeksRight = computed(() => {
 const weekFocusIndex = computed(() => Math.min(WEEK_FOCUS_INDEX, Math.max(0, weekWindowSize.value - 1)))
 
 const selectedWeekKey = computed(() => {
-  const week = quarterWeeks.value.find(w => w.taskId && w.taskId === selectedTaskId.value)
+  const weekTaskId = selectedNaturalWeekTaskId.value || selectedTaskId.value
+  const week = quarterWeeks.value.find(w => w.taskId && w.taskId === weekTaskId)
   return week?.key || ''
 })
 
@@ -267,7 +270,7 @@ function shiftWeekWindow(direction) {
 
 function selectQuarterWeek(week, visibleIndex) {
   if (week.state !== 'ready' || !week.taskId) return
-  selectedTaskId.value = week.taskId
+  selectedNaturalWeekTaskId.value = week.taskId
   if (quarterWeeks.value.length <= weekWindowSize.value) return
 
   if (visibleIndex > weekFocusIndex.value) {
@@ -279,6 +282,7 @@ function selectQuarterWeek(week, visibleIndex) {
 
 watch([selectedYear, selectedQuarter], () => {
   weekWindowStart.value = 0
+  selectedNaturalWeekTaskId.value = ''
 })
 
 watch(quarterWeeks, async () => {
@@ -291,7 +295,8 @@ watch(weekWindowSize, () => {
   weekWindowStart.value = clampWeekWindowStart(weekWindowStart.value)
 })
 
-watch(selectedTaskId, (taskId) => {
+watch(selectedTaskId, (taskId, oldTaskId) => {
+  if (taskId !== oldTaskId) selectedNaturalWeekTaskId.value = ''
   if (!taskId || taskId === 'all' || quarterWeeks.value.length <= weekWindowSize.value) return
   const idx = quarterWeeks.value.findIndex(w => w.taskId === taskId)
   if (idx >= 0) {
@@ -304,20 +309,50 @@ const taskOptions = computed(() => {
   return [{ id: 'all', title: '全部周期' }, ...sorted]
 })
 
+const effectiveTaskId = computed(() => selectedNaturalWeekTaskId.value || selectedTaskId.value)
+
+const selectedEffectiveTask = computed(() => {
+  const taskId = effectiveTaskId.value
+  if (!taskId || taskId === 'all') return null
+  return (statsStore.tasks || []).find(t => t.id === taskId) || null
+})
+
+function reportPeriodKeyForTask(task) {
+  const fallback = `quarter:${selectedYear.value}-${selectedQuarter.value}`
+  if (!task || selectedTaskId.value === 'all') return fallback
+  const dimension = task.time_dimension || task.timeDimension || ''
+  const endDate = String(task.end_date || task.start_date || '')
+  const year = String(task.year || endDate.slice(0, 4) || selectedYear.value)
+  if (dimension === 'year') return `year:${year}`
+  if (dimension === 'quarter') {
+    const month = Number(endDate.slice(5, 7))
+    const quarter = task.quarter || (month ? getQuarterByMonth(month) : selectedQuarter.value)
+    return `quarter:${year}-${quarter}`
+  }
+  if (dimension === 'month') {
+    const monthKey = String(task.month || endDate.slice(0, 7) || '')
+    return monthKey ? `month:${monthKey}` : fallback
+  }
+  return fallback
+}
+
+function selectedReportParentPeriodKey() {
+  if (selectedTaskId.value === 'all') return `quarter:${selectedYear.value}-${selectedQuarter.value}`
+  const task = (statsStore.tasks || []).find(t => t.id === selectedTaskId.value)
+  return reportPeriodKeyForTask(task)
+}
+
 /** 当前筛选的标签文字（用于柱状图标题） */
 const filterLabel = computed(() => {
-  if (selectedTaskId.value !== 'all') {
-    const task = (statsStore.tasks || []).find(t => t.id === selectedTaskId.value)
-    return task ? task.title : selectedQuarter.value
-  }
+  const task = selectedEffectiveTask.value
+  if (task) return task.title
   return selectedQuarter.value
 })
 
 const selectedPeriodRangeText = computed(() => {
   const tasks = statsStore.tasks || []
-  if (selectedTaskId.value !== 'all') {
-    const task = tasks.find(t => t.id === selectedTaskId.value)
-    return task ? formatTaskPeriod(task) : '未识别周期范围'
+  if (effectiveTaskId.value !== 'all') {
+    return selectedEffectiveTask.value ? formatTaskPeriod(selectedEffectiveTask.value) : '未识别周期范围'
   }
   if (!tasks.length) return '当前筛选暂无周期'
   const start = tasks.reduce((min, t) => !min || new Date(t.start_date) < new Date(min) ? t.start_date : min, '')
@@ -330,6 +365,21 @@ const statsScopeTitle = computed(() => `${selectedYear.value}年 ${selectedQuart
 /* ========== 数据加载 ========== */
 /* 跨页面数据同步监听 */
 let cleanupSync = null
+
+function updateBackTopVisibility() {
+  showBackTop.value = window.scrollY > 320
+}
+
+function scrollToStatsTop() {
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+  document.documentElement.scrollTop = 0
+  document.body.scrollTop = 0
+  window.requestAnimationFrame(() => {
+    window.scrollTo(0, 0)
+    document.documentElement.scrollTop = 0
+    document.body.scrollTop = 0
+  })
+}
 
 onMounted(async () => {
   pageLoading.value = true
@@ -344,6 +394,8 @@ onMounted(async () => {
     weekSelectorResizeObserver.observe(weekSelectorRef.value)
   }
   window.addEventListener('resize', updateWeekWindowSize)
+  window.addEventListener('scroll', updateBackTopVisibility, { passive: true })
+  updateBackTopVisibility()
   // 监听工时变更广播，自动刷新统计
   cleanupSync = onDataChange(SYNC_EVENTS.WORK_RECORD_CHANGED, () => {
     loadDeptStats()
@@ -358,13 +410,14 @@ onUnmounted(() => {
   if (cleanupSync) cleanupSync()
   if (weekSelectorResizeObserver) weekSelectorResizeObserver.disconnect()
   window.removeEventListener('resize', updateWeekWindowSize)
+  window.removeEventListener('scroll', updateBackTopVisibility)
 })
 
 async function loadDeptStats() {
   await statsStore.fetch({
     year: selectedYear.value,
     quarter: selectedQuarter.value,
-    taskId: selectedTaskId.value,
+    taskId: effectiveTaskId.value,
     pmSort: pmSortOrder.value || undefined
   })
   await nextTick()
@@ -379,7 +432,7 @@ watch(activeTab, async (tab) => {
   }
 })
 
-watch([selectedYear, selectedQuarter, selectedTaskId], async ([year, quarter], [oldYear, oldQuarter]) => {
+watch([selectedYear, selectedQuarter, selectedTaskId, selectedNaturalWeekTaskId], async ([year, quarter], [oldYear, oldQuarter]) => {
   if ((year !== oldYear || quarter !== oldQuarter) && selectedTaskId.value !== 'all') {
     selectedTaskId.value = 'all'
     return
@@ -391,14 +444,14 @@ watch([selectedYear, selectedQuarter, selectedTaskId], async ([year, quarter], [
     await statsStore.fetch({
       year: selectedYear.value,
       quarter: selectedQuarter.value,
-      taskId: selectedTaskId.value
+      taskId: effectiveTaskId.value
     })
     // 根据当前 viewMode 刷新个人数据
     if (viewMode.value === 'individual' && selectedStaffId.value) {
       await statsStore.fetchPersonal(selectedStaffId.value, {
         year: selectedYear.value,
         quarter: selectedQuarter.value,
-        taskId: selectedTaskId.value
+        taskId: effectiveTaskId.value
       })
     } else if (viewMode.value === 'all') {
       await loadAllPersonalData()
@@ -408,13 +461,13 @@ watch([selectedYear, selectedQuarter, selectedTaskId], async ([year, quarter], [
     await statsStore.fetch({
       year: selectedYear.value,
       quarter: selectedQuarter.value,
-      taskId: selectedTaskId.value
+      taskId: effectiveTaskId.value
     })
     if (pmViewMode.value === 'individual' && selectedPmId.value) {
       await statsStore.fetchPmFocus(selectedPmId.value, {
         year: selectedYear.value,
         quarter: selectedQuarter.value,
-        taskId: selectedTaskId.value
+        taskId: effectiveTaskId.value
       })
     } else if (pmViewMode.value === 'all') {
       await loadAllPmData()
@@ -689,8 +742,11 @@ function workloadReportUrl(extra = {}) {
   const params = new URLSearchParams()
   params.set('year', String(selectedYear.value))
   params.set('quarter', selectedQuarter.value)
-  if (selectedTaskId.value !== 'all') {
-    params.set('taskId', selectedTaskId.value)
+  if (effectiveTaskId.value !== 'all') {
+    params.set('taskId', effectiveTaskId.value)
+    if (selectedNaturalWeekTaskId.value) {
+      params.set('parentPeriod', selectedReportParentPeriodKey())
+    }
   } else {
     params.set('period', `quarter:${selectedYear.value}-${selectedQuarter.value}`)
   }
@@ -1058,7 +1114,7 @@ async function selectStaff(staffId) {
   await statsStore.fetchPersonal(staffId, {
     year: selectedYear.value,
     quarter: selectedQuarter.value,
-    taskId: selectedTaskId.value
+    taskId: effectiveTaskId.value
   })
   // v1.4.4: 默认展开上一周任务；若无则展开第一个有记录的任务
   const tasks = statsStore.personalData?.tasks || []
@@ -1080,14 +1136,14 @@ watch(activeTab, async (tab) => {
     await statsStore.fetch({
       year: selectedYear.value,
       quarter: selectedQuarter.value,
-      taskId: selectedTaskId.value
+      taskId: effectiveTaskId.value
     })
     // 刷新个人数据
     if (viewMode.value === 'individual' && selectedStaffId.value) {
       await statsStore.fetchPersonal(selectedStaffId.value, {
         year: selectedYear.value,
         quarter: selectedQuarter.value,
-        taskId: selectedTaskId.value
+        taskId: effectiveTaskId.value
       })
     } else if (viewMode.value === 'all') {
       await loadAllPersonalData()
@@ -1097,14 +1153,14 @@ watch(activeTab, async (tab) => {
     await statsStore.fetch({
       year: selectedYear.value,
       quarter: selectedQuarter.value,
-      taskId: selectedTaskId.value
+      taskId: effectiveTaskId.value
     })
     await pmStore.fetchAll()
     if (pmViewMode.value === 'individual' && selectedPmId.value) {
       await statsStore.fetchPmFocus(selectedPmId.value, {
         year: selectedYear.value,
         quarter: selectedQuarter.value,
-        taskId: selectedTaskId.value
+        taskId: effectiveTaskId.value
       })
     } else if (pmViewMode.value === 'all') {
       await loadAllPmData()
@@ -1121,7 +1177,7 @@ async function loadAllPersonalData() {
   for (const staff of statsStore.staff) {
     try {
       const res = await api.get(`/stats/personal/${staff.id}`, {
-        params: { year: selectedYear.value, quarter: selectedQuarter.value, taskId: selectedTaskId.value }
+        params: { year: selectedYear.value, quarter: selectedQuarter.value, taskId: effectiveTaskId.value }
       })
       const data = res.data || res || {}
       data.staff = staff
@@ -1184,7 +1240,7 @@ async function selectPm(pmId) {
   await statsStore.fetchPmFocus(pmId, {
     year: selectedYear.value,
     quarter: selectedQuarter.value,
-    taskId: selectedTaskId.value
+    taskId: effectiveTaskId.value
   })
   // 默认展开最近一个周期（按 start_date 最新）
   const tasks = statsStore.pmFocusData?.tasks || []
@@ -1209,7 +1265,7 @@ async function loadAllPmData() {
   for (const pm of pmStore.activePms) {
     try {
       const res = await api.get(`/stats/pm/${pm.id}`, {
-        params: { year: selectedYear.value, quarter: selectedQuarter.value, taskId: selectedTaskId.value }
+        params: { year: selectedYear.value, quarter: selectedQuarter.value, taskId: effectiveTaskId.value }
       })
       const data = res.data.data || res.data || {}
       // 周期倒序（最新在前）
@@ -2326,6 +2382,18 @@ function exportStatsData() {
     </el-dialog>
 
     </template>
+    <Teleport to="body">
+      <button
+        v-show="showBackTop"
+        type="button"
+        class="dt-stats-backtop"
+        title="回到顶部"
+        aria-label="回到顶部"
+        @click="scrollToStatsTop"
+      >
+        <el-icon><ArrowUp /></el-icon>
+      </button>
+    </Teleport>
   </div>
 </template>
 
@@ -2341,6 +2409,41 @@ function exportStatsData() {
 
 .dt-analysis-open-btn {
   min-width: 116px;
+}
+
+.dt-stats-backtop {
+  position: fixed;
+  right: 28px;
+  bottom: 28px;
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid #D8E7FF;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #FFFFFF 0%, #F6FAFF 100%);
+  color: var(--color-primary, #165DFF);
+  box-shadow: 0 6px 18px rgba(22, 93, 255, 0.16);
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.dt-stats-backtop:hover {
+  background: var(--color-primary-light, #E8F3FF);
+  color: var(--color-primary-hover, #4080FF);
+  box-shadow: 0 10px 24px rgba(22, 93, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.dt-stats-backtop:active {
+  transform: translateY(0);
+}
+
+.dt-stats-backtop .el-icon {
+  font-size: 18px;
 }
 
 /* === 季度自然周快捷选择 === */
