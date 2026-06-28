@@ -1513,21 +1513,32 @@ function renderHtml(report, options = {}) {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-width: 12px;
+      width: 24px;
       height: 24px;
       padding: 0;
-      border: 0;
-      background: transparent;
-      color: #cbd5e1;
-      font-size: 13px;
-      font-weight: 700;
+      border: 1px solid rgba(147, 197, 253, 0.34);
+      border-radius: 7px;
+      background: rgba(255, 255, 255, 0.08);
+      color: #bfdbfe;
       line-height: 1;
       cursor: pointer;
-      transition: color 0.16s ease, transform 0.16s ease;
+      transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
     }
     .report-week-more:hover {
-      color: #93c5fd;
+      border-color: #93c5fd;
+      background: rgba(37, 99, 235, 0.22);
+      color: #ffffff;
+      box-shadow: 0 4px 10px rgba(15, 23, 42, 0.22);
       transform: translateY(-1px);
+    }
+    .report-week-more-icon {
+      width: 13px;
+      height: 13px;
+      stroke: currentColor;
+      stroke-width: 2.3;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      fill: none;
     }
     .report-week-chip {
       position: relative;
@@ -2142,8 +2153,10 @@ function renderHtml(report, options = {}) {
       const hasHiddenLeft = reportWeekWindowStart > 0;
       const hasHiddenRight = reportWeekWindowStart + REPORT_WEEK_WINDOW_SIZE < weeks.length;
       const activeWeekKey = indicatorWeekKey(item, weeks);
-      const leftMore = hasHiddenLeft ? '<button type="button" class="report-week-more" data-report-week-shift="-1" title="向左显示更多自然周">《</button>' : '';
-      const rightMore = hasHiddenRight ? '<button type="button" class="report-week-more" data-report-week-shift="1" title="向右显示更多自然周">》</button>' : '';
+      const leftIcon = '<svg class="report-week-more-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 5 8l5 5"></path></svg>';
+      const rightIcon = '<svg class="report-week-more-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5"></path></svg>';
+      const leftMore = hasHiddenLeft ? '<button type="button" class="report-week-more" data-report-week-shift="-1" title="向左显示更多自然周" aria-label="向左显示更多自然周">' + leftIcon + '</button>' : '';
+      const rightMore = hasHiddenRight ? '<button type="button" class="report-week-more" data-report-week-shift="1" title="向右显示更多自然周" aria-label="向右显示更多自然周">' + rightIcon + '</button>' : '';
       const weekButtons = visible.map((week, index) => {
         const active = week.key === activeWeekKey;
         const classes = ['report-week-chip'];
