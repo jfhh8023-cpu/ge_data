@@ -2,7 +2,7 @@
 /**
  * StatsPage.vue — 周期统计（季度）页
  * Tab 1: 部门全观 — 三级筛选器 + 概要卡片 + 明细表 + Canvas 柱状图
- * Tab 2: 个人聚焦 — 人员选择 + 概要卡片 + 手风琴任务列表
+ * Tab 2: 研发聚焦 — 人员选择 + 概要卡片 + 手风琴任务列表
  *
  * v1.4.3: 页面加载动画 + 产品经理列修复（过滤数字字符串）
  * v1.4.2: 卡片排序调整、合计行格式修正、明细表/个人聚焦列错位修复
@@ -42,6 +42,8 @@ const BAR_COLORS = {
 const CANVAS_HEIGHT = 360
 const BAR_LABELS = ['前端', '后端', '测试', '总计']
 const BAR_KEYS = ['frontend', 'backend', 'test', 'total']
+const WEEK_WINDOW_SIZE = 9
+const WEEK_FOCUS_INDEX = 4
 
 const ROLE_LABEL = { frontend: '前端', backend: '后端', test: '测试' }
 const ROLE_DOT_COLOR = { frontend: '#165DFF', backend: '#00B42A', test: '#FF7D00' }
@@ -93,10 +95,14 @@ const analysisDimension = ref('total')
 const selectedYear = ref(CURRENT_YEAR)
 const selectedQuarter = ref(getCurrentQuarter())
 const selectedTaskId = ref('all')
+const weekWindowStart = ref(0)
 
 function getCurrentQuarter() {
-  const m = new Date().getMonth() + 1
-  return m <= 3 ? 'Q1' : m <= 6 ? 'Q2' : m <= 9 ? 'Q3' : 'Q4'
+  return getQuarterByMonth(new Date().getMonth() + 1)
+}
+
+function getQuarterByMonth(month) {
+  return month <= 3 ? 'Q1' : month <= 6 ? 'Q2' : month <= 9 ? 'Q3' : 'Q4'
 }
 
 const yearOptions = computed(() => {
@@ -106,6 +112,143 @@ const yearOptions = computed(() => {
 })
 
 const quarterOptions = ['Q1', 'Q2', 'Q3', 'Q4']
+
+function startOfDay(date) {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+function addDays(date, days) {
+  const d = new Date(date)
+  d.setDate(d.getDate() + days)
+  return d
+}
+
+function formatDateKey(date) {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+function getQuarterDateRange(year, quarter) {
+  const startMonthMap = { Q1: 0, Q2: 3, Q3: 6, Q4: 9 }
+  const startMonth = startMonthMap[quarter] ?? 0
+  return {
+    start: startOfDay(new Date(year, startMonth, 1)),
+    end: startOfDay(new Date(year, startMonth + 3, 0))
+  }
+}
+
+function getNaturalWeekStart(date) {
+  const d = startOfDay(date)
+  const day = d.getDay() || 7
+  d.setDate(d.getDate() - day + 1)
+  return d
+}
+
+function getISOWeekNumber(date) {
+  const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+  const dayNum = utcDate.getUTCDay() || 7
+  utcDate.setUTCDate(utcDate.getUTCDate() + 4 - dayNum)
+  const yearStart = new Date(Date.UTC(utcDate.getUTCFullYear(), 0, 1))
+  return Math.ceil((((utcDate - yearStart) / 86400000) + 1) / 7)
+}
+
+function taskMatchesWeek(task, week) {
+  if (!task || (task.time_dimension && task.time_dimension !== 'week')) return false
+  const taskStart = String(task.start_date || '').slice(0, 10)
+  const taskEnd = String(task.end_date || '').slice(0, 10)
+  if (taskStart === week.startDate || taskEnd === week.endDate) return true
+  return Number(task.week_number) === week.weekNumber
+}
+
+const quarterWeeks = computed(() => {
+  const { start, end } = getQuarterDateRange(Number(selectedYear.value), selectedQuarter.value)
+  const today = startOfDay(new Date())
+  const isCurrentQuarter = Number(selectedYear.value) === today.getFullYear()
+    && selectedQuarter.value === getQuarterByMonth(today.getMonth() + 1)
+  const weeks = []
+
+  for (let cursor = getNaturalWeekStart(start); cursor <= end; cursor = addDays(cursor, 7)) {
+    const weekEnd = addDays(cursor, 6)
+    if (weekEnd < start || weekEnd > end) continue
+    if (isCurrentQuarter && weekEnd > today) continue
+
+    const weekNumber = getISOWeekNumber(cursor)
+    const baseWeek = {
+      key: `${selectedYear.value}-W${String(weekNumber).padStart(2, '0')}`,
+      weekNumber,
+      label: `${weekNumber}周`,
+      startDate: formatDateKey(cursor),
+      endDate: formatDateKey(weekEnd)
+    }
+    const task = (statsStore.tasks || []).find(t => taskMatchesWeek(t, baseWeek))
+    weeks.push({
+      ...baseWeek,
+      taskId: task?.id || '',
+      taskTitle: task?.title || ''
+    })
+  }
+
+  return weeks.sort((a, b) => new Date(b.endDate) - new Date(a.endDate))
+})
+
+function clampWeekWindowStart(start) {
+  const maxStart = Math.max(0, quarterWeeks.value.length - WEEK_WINDOW_SIZE)
+  return Math.min(Math.max(start, 0), maxStart)
+}
+
+const visibleQuarterWeeks = computed(() => {
+  if (quarterWeeks.value.length <= WEEK_WINDOW_SIZE) return quarterWeeks.value
+  const start = clampWeekWindowStart(weekWindowStart.value)
+  return quarterWeeks.value.slice(start, start + WEEK_WINDOW_SIZE)
+})
+
+const hasHiddenWeeksLeft = computed(() => {
+  if (quarterWeeks.value.length <= WEEK_WINDOW_SIZE) return false
+  return clampWeekWindowStart(weekWindowStart.value) > 0
+})
+
+const hasHiddenWeeksRight = computed(() => {
+  if (quarterWeeks.value.length <= WEEK_WINDOW_SIZE) return false
+  const start = clampWeekWindowStart(weekWindowStart.value)
+  return start + WEEK_WINDOW_SIZE < quarterWeeks.value.length
+})
+
+const selectedWeekKey = computed(() => {
+  const week = quarterWeeks.value.find(w => w.taskId && w.taskId === selectedTaskId.value)
+  return week?.key || ''
+})
+
+function selectQuarterWeek(week, visibleIndex) {
+  if (!week.taskId) return
+  selectedTaskId.value = week.taskId
+  if (quarterWeeks.value.length <= WEEK_WINDOW_SIZE) return
+
+  if (visibleIndex > WEEK_FOCUS_INDEX) {
+    weekWindowStart.value = clampWeekWindowStart(weekWindowStart.value + visibleIndex - WEEK_FOCUS_INDEX)
+  } else if (visibleIndex < WEEK_FOCUS_INDEX) {
+    weekWindowStart.value = clampWeekWindowStart(weekWindowStart.value - (WEEK_FOCUS_INDEX - visibleIndex))
+  }
+}
+
+watch([selectedYear, selectedQuarter], () => {
+  weekWindowStart.value = 0
+})
+
+watch(quarterWeeks, () => {
+  weekWindowStart.value = clampWeekWindowStart(weekWindowStart.value)
+})
+
+watch(selectedTaskId, (taskId) => {
+  if (!taskId || taskId === 'all' || quarterWeeks.value.length <= WEEK_WINDOW_SIZE) return
+  const idx = quarterWeeks.value.findIndex(w => w.taskId === taskId)
+  if (idx >= 0) {
+    weekWindowStart.value = clampWeekWindowStart(idx - WEEK_FOCUS_INDEX)
+  }
+})
 
 const taskOptions = computed(() => {
   const sorted = [...(statsStore.tasks || [])].sort((a, b) => new Date(b.start_date) - new Date(a.start_date))
@@ -832,7 +975,7 @@ function onChartMouseMove(event) {
   canvas.style.cursor = isOverLabel ? 'pointer' : 'default'
 }
 
-/* ========== Tab 2: 个人聚焦 ========== */
+/* ========== Tab 2: 研发聚焦 ========== */
 const selectedStaffId = ref('')
 const expandedTaskIds = ref([])
 
@@ -910,7 +1053,7 @@ watch(activeTab, async (tab) => {
   }
 })
 
-/* ========== 个人聚焦双模式 ========== */
+/* ========== 研发聚焦双模式 ========== */
 const viewMode = ref('individual')  // 'individual' | 'all'
 const allPersonalData = ref({ backend: [], frontend: [], test: [] })
 
@@ -1209,16 +1352,41 @@ function exportStatsData() {
     </div>
 
     <!-- 年度 / 季度 / 任务周期 三联筛选器（两个 Tab 共享，REQ-12） -->
-    <div style="display:flex; align-items:center; gap:16px; margin-bottom:24px;">
-      <el-select v-model="selectedYear" style="width:120px;">
-        <el-option v-for="y in yearOptions" :key="y" :label="`${y}年`" :value="y" />
-      </el-select>
-      <el-select v-model="selectedQuarter" style="width:100px;">
-        <el-option v-for="q in quarterOptions" :key="q" :label="q" :value="q" />
-      </el-select>
-      <el-select v-model="selectedTaskId" style="width:400px;" placeholder="选择任务周期">
-        <el-option v-for="t in taskOptions" :key="t.id" :label="t.title" :value="t.id" />
-      </el-select>
+    <div class="dt-period-filter">
+      <div class="dt-period-filter-row">
+        <el-select v-model="selectedYear" style="width:120px;">
+          <el-option v-for="y in yearOptions" :key="y" :label="`${y}年`" :value="y" />
+        </el-select>
+        <el-select v-model="selectedQuarter" style="width:100px;">
+          <el-option v-for="q in quarterOptions" :key="q" :label="q" :value="q" />
+        </el-select>
+        <el-select v-model="selectedTaskId" style="width:400px;" placeholder="选择任务周期">
+          <el-option v-for="t in taskOptions" :key="t.id" :label="t.title" :value="t.id" />
+        </el-select>
+        <div v-if="visibleQuarterWeeks.length" class="dt-week-selector" aria-label="自然周快捷选择">
+          <span class="dt-week-selector-label">自然周</span>
+          <span v-if="hasHiddenWeeksLeft" class="dt-week-more" title="左侧还有自然周">《</span>
+          <div class="dt-week-selector-window">
+            <button
+              v-for="(week, index) in visibleQuarterWeeks"
+              :key="week.key"
+              type="button"
+              class="dt-week-chip"
+              :class="{
+                'dt-week-chip-active': selectedWeekKey === week.key,
+                'dt-week-chip-disabled': !week.taskId
+              }"
+              :disabled="!week.taskId"
+              :title="week.taskId ? `${week.startDate} 至 ${week.endDate}` : `${week.startDate} 至 ${week.endDate} 暂无收集任务`"
+              @click="selectQuarterWeek(week, index)"
+            >
+              <span>{{ week.label }}</span>
+              <i v-if="selectedWeekKey === week.key" class="dt-week-chip-pointer"></i>
+            </button>
+          </div>
+          <span v-if="hasHiddenWeeksRight" class="dt-week-more" title="右侧还有自然周">》</span>
+        </div>
+      </div>
     </div>
 
     <!-- 双 Tab 切换 -->
@@ -1371,8 +1539,8 @@ function exportStatsData() {
         </div>
       </el-tab-pane>
 
-      <!-- ===== Tab 2: 个人聚焦 ===== -->
-      <el-tab-pane label="个人聚焦" name="personal">
+      <!-- ===== Tab 2: 研发聚焦 ===== -->
+      <el-tab-pane label="研发聚焦" name="personal">
         <!-- 模式切换按钮 -->
         <div style="display:flex; gap:8px; margin-bottom:16px;">
           <button
@@ -2109,6 +2277,110 @@ function exportStatsData() {
 
 .dt-analysis-open-btn {
   min-width: 116px;
+}
+
+/* === 季度自然周快捷选择 === */
+.dt-period-filter {
+  margin-bottom: 0;
+  overflow: visible;
+  padding-bottom: 0;
+}
+
+.dt-period-filter-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 16px;
+  min-width: max-content;
+}
+
+.dt-week-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding-left: 2px;
+}
+
+.dt-week-selector-label {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-3, #86909C);
+}
+
+.dt-week-selector-window {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  overflow: visible;
+}
+
+.dt-week-more {
+  flex: 0 0 auto;
+  min-width: 14px;
+  color: var(--color-text-3, #86909C);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+}
+
+.dt-week-chip {
+  position: relative;
+  flex: 0 0 48px;
+  min-width: 48px;
+  height: 30px;
+  padding: 0 6px;
+  border: 1px solid var(--color-border, #E5E6EB);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--color-text-2, #4E5969);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 28px;
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.dt-week-chip:hover:not(:disabled) {
+  color: var(--color-primary, #165DFF);
+  border-color: var(--color-primary-hover, #4080FF);
+  background: var(--color-primary-light, #E8F3FF);
+}
+
+.dt-week-chip-active {
+  color: #fff;
+  background: var(--color-primary, #165DFF);
+  border-color: var(--color-primary, #165DFF);
+  box-shadow: 0 4px 10px rgba(22, 93, 255, 0.16);
+}
+
+.dt-week-chip-pointer {
+  position: absolute;
+  left: 50%;
+  bottom: -7px;
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid var(--color-primary, #165DFF);
+  transform: translateX(-50%);
+}
+
+.dt-week-chip-disabled {
+  color: var(--color-text-4, #C9CDD4);
+  background: var(--color-bg-2, #F7F8FA);
+  border-color: var(--color-border-light, #F2F3F5);
+  cursor: not-allowed;
+}
+
+@media (max-width: 900px) {
+  .dt-period-filter-row {
+    gap: 10px;
+  }
 }
 
 /* === 本地周期分析弹窗 === */

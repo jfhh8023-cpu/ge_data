@@ -1257,6 +1257,10 @@ function renderHtml(report, options = {}) {
           <option value="">数据加载中...</option>
         </select>
       </label>
+      <div class="report-week-selector" data-report-week-selector hidden aria-label="自然周快捷选择">
+        <span class="report-week-label">自然周</span>
+        <div class="report-week-window" data-report-week-window></div>
+      </div>
     </div>
   ` : '';
 
@@ -1323,16 +1327,18 @@ function renderHtml(report, options = {}) {
       to { transform: rotate(360deg); }
     }
     header {
-      padding: 16px 28px 14px;
+      height: 92px;
+      min-height: 92px;
+      padding: 8px 28px 6px;
       background: #111827;
       color: #fff;
     }
     .report-header-row { display: flex; justify-content: space-between; gap: 20px; align-items: center; }
     .report-header-title { flex: 1; min-width: 0; }
-    .period-switcher { display: flex; gap: 8px; align-items: center; flex-wrap: nowrap; justify-content: flex-end; flex: 0 0 auto; }
-    .period-switcher label { display: flex; gap: 6px; align-items: center; color: #d1d5db; font-size: 12px; white-space: nowrap; }
+    .period-switcher { position: relative; display: flex; gap: 8px; align-items: center; flex-wrap: nowrap; justify-content: flex-end; flex: 0 0 auto; overflow: visible; }
+    .period-switcher label { display: flex; gap: 6px; align-items: center; color: #d1d5db; font-size: 11px; white-space: nowrap; }
     .period-switcher select {
-      height: 30px;
+      height: 28px;
       min-width: 108px;
       border: 1px solid #475569;
       border-radius: 7px;
@@ -1341,8 +1347,83 @@ function renderHtml(report, options = {}) {
       padding: 0 10px;
       font: inherit;
     }
-    header h1 { margin: 0; font-size: 24px; line-height: 1.25; letter-spacing: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .report-note { margin: 4px 0 0; color: #cbd5e1; font-size: 12px; line-height: 1.35; }
+    .report-week-selector {
+      position: absolute;
+      top: calc(100% + 5px);
+      right: 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex: 0 0 auto;
+      min-height: 26px;
+      margin-right: 4px;
+      justify-content: flex-end;
+    }
+    .report-week-selector[hidden] { display: none !important; }
+    .report-week-label {
+      color: #d1d5db;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .report-week-window {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      overflow: visible;
+    }
+    .report-week-more {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 12px;
+      height: 24px;
+      color: #cbd5e1;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .report-week-chip {
+      position: relative;
+      min-width: 44px;
+      height: 24px;
+      padding: 0 5px;
+      border: 1px solid #475569;
+      border-radius: 7px;
+      background: #ffffff;
+      color: #1f2937;
+      font: inherit;
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 22px;
+      text-align: center;
+      cursor: pointer;
+      transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+    }
+    .report-week-chip:hover {
+      color: #2563eb;
+      border-color: #93c5fd;
+      background: #eff6ff;
+    }
+    .report-week-chip.active {
+      color: #ffffff;
+      border-color: #2563eb;
+      background: #2563eb;
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.22);
+    }
+    .report-week-pointer {
+      position: absolute;
+      left: 50%;
+      bottom: -6px;
+      width: 0;
+      height: 0;
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-top: 5px solid #2563eb;
+      transform: translateX(-50%);
+    }
+    header h1 { margin: 0; font-size: 22px; line-height: 1.12; letter-spacing: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .report-note { margin: 2px 0 0; color: #cbd5e1; font-size: 11px; line-height: 1.16; }
     .report-note-line { display: grid; grid-template-columns: auto 1fr; column-gap: 0; align-items: baseline; }
     .report-note-prefix { white-space: pre; }
     .report-note-spacer { visibility: hidden; }
@@ -1547,10 +1628,14 @@ function renderHtml(report, options = {}) {
       .pie-layout { grid-template-columns: 1fr; }
       .bar-row, .bar-row.simple, .bar-row.simple.has-meta { grid-template-columns: minmax(100px, 180px) 1fr 72px; }
       .bar-meta, .segment-breakdown { grid-column: 1 / -1; }
+      main { padding: 16px; }
+    }
+    @media (max-width: 720px) {
       .report-header-row { display: block; }
       header h1 { white-space: normal; }
       .period-switcher { justify-content: flex-start; flex-wrap: wrap; margin-top: 10px; }
-      main { padding: 16px; }
+      .report-week-selector { position: static; width: 100%; margin-top: 8px; justify-content: flex-start; }
+      .report-week-window { flex-wrap: wrap; }
     }
   </style>
 </head>
@@ -1779,6 +1864,83 @@ function renderHtml(report, options = {}) {
       return window.__WORKLOAD_REPORT__?.dataset?.periodKey || 'all';
     }
 
+    const REPORT_WEEK_WINDOW_SIZE = 9;
+    const REPORT_WEEK_FOCUS_INDEX = 4;
+    let reportWeekWindowStart = 0;
+
+    function escapeClientHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, ch => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      }[ch]));
+    }
+
+    function weekSortNumber(item) {
+      const n = Number(item?.week || 0);
+      return Number.isFinite(n) ? n : 0;
+    }
+
+    function weekEndSortValue(item) {
+      const range = String(item?.range || '');
+      const match = range.match(/(\\d{4}-\\d{2}-\\d{2})\\s*(?:至|~|-)?\\s*(\\d{4}-\\d{2}-\\d{2})?$/);
+      return match ? (match[2] || match[1]) : '';
+    }
+
+    function clampReportWeekStart(start, weeks) {
+      const maxStart = Math.max(0, weeks.length - REPORT_WEEK_WINDOW_SIZE);
+      return Math.min(Math.max(start, 0), maxStart);
+    }
+
+    function weeksForPeriod(item) {
+      if (!item) return [];
+      if (item.grain !== 'quarter' && item.grain !== 'week') return [];
+      const targetYear = item.year || '';
+      const targetQuarter = item.quarter || '';
+      if (!targetYear || !targetQuarter) return [];
+      return (window.__PERIOD_REPORTS__ || [])
+        .filter(report => report.grain === 'week' && report.year === targetYear && report.quarter === targetQuarter)
+        .sort((a, b) => String(weekEndSortValue(b)).localeCompare(String(weekEndSortValue(a))) || weekSortNumber(b) - weekSortNumber(a));
+    }
+
+    function renderReportWeekSelector(item) {
+      const root = document.querySelector('[data-report-week-selector]');
+      const windowEl = document.querySelector('[data-report-week-window]');
+      if (!root || !windowEl) return;
+      const weeks = weeksForPeriod(item);
+      if (!weeks.length) {
+        root.hidden = true;
+        windowEl.innerHTML = '';
+        return;
+      }
+      const activeIndex = weeks.findIndex(week => week.key === item.key);
+      if (activeIndex >= 0) {
+        reportWeekWindowStart = clampReportWeekStart(activeIndex - REPORT_WEEK_FOCUS_INDEX, weeks);
+      } else {
+        reportWeekWindowStart = clampReportWeekStart(reportWeekWindowStart, weeks);
+      }
+      const visible = weeks.slice(reportWeekWindowStart, reportWeekWindowStart + REPORT_WEEK_WINDOW_SIZE);
+      const hasHiddenLeft = reportWeekWindowStart > 0;
+      const hasHiddenRight = reportWeekWindowStart + REPORT_WEEK_WINDOW_SIZE < weeks.length;
+      const leftMore = hasHiddenLeft ? '<span class="report-week-more" title="左侧还有自然周">《</span>' : '';
+      const rightMore = hasHiddenRight ? '<span class="report-week-more" title="右侧还有自然周">》</span>' : '';
+      const weekButtons = visible.map((week, index) => {
+        const active = week.key === item.key;
+        const classes = ['report-week-chip'];
+        if (active) classes.push('active');
+        const label = week.week ? (Number(week.week) + '周') : String(week.titleScope || week.label || '').replace(/^第0?/, '').replace(/周.*/, '周');
+        const title = (week.range || week.label || '').trim();
+        return '<button type="button" class="' + classes.join(' ') + '" data-period-week-key="' + escapeClientHtml(week.key) + '" title="' + escapeClientHtml(title) + '">' +
+          '<span>' + escapeClientHtml(label) + '</span>' +
+          (active ? '<i class="report-week-pointer"></i>' : '') +
+        '</button>';
+      }).join('');
+      windowEl.innerHTML = leftMore + weekButtons + rightMore;
+      root.hidden = false;
+    }
+
     function reportHref(item) {
       if (!item || !item.href) return '';
       const url = new URL(item.href, window.location.href);
@@ -1851,6 +2013,7 @@ function renderHtml(report, options = {}) {
       populatePeriodOptions(item.grain, item.key);
       const periodSelect = document.querySelector('[data-period-key]');
       if (periodSelect) periodSelect.value = item.key;
+      renderReportWeekSelector(item);
       if (updateUrl) {
         const url = new URL(window.location.href);
         url.searchParams.set('period', item.key);
@@ -1968,6 +2131,11 @@ function renderHtml(report, options = {}) {
       const sortHeader = event.target.closest('th[data-sort-index]');
       if (sortHeader) {
         sortTableByHeader(sortHeader);
+        return;
+      }
+      const periodWeekBtn = event.target.closest('[data-period-week-key]');
+      if (periodWeekBtn) {
+        setPeriod(periodWeekBtn.dataset.periodWeekKey, true);
         return;
       }
       const openBtn = event.target.closest('[data-open-tab]');
