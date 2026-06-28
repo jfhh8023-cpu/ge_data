@@ -44,6 +44,7 @@ const BAR_LABELS = ['前端', '后端', '测试', '总计']
 const BAR_KEYS = ['frontend', 'backend', 'test', 'total']
 const WEEK_WINDOW_SIZE = 9
 const WEEK_FOCUS_INDEX = 4
+const WEEK_WINDOW_STEP = 2
 
 const ROLE_LABEL = { frontend: '前端', backend: '后端', test: '测试' }
 const ROLE_DOT_COLOR = { frontend: '#165DFF', backend: '#00B42A', test: '#FF7D00' }
@@ -164,6 +165,11 @@ function taskMatchesWeek(task, week) {
   return Number(task.week_number) === week.weekNumber
 }
 
+function taskRecordCount(task) {
+  const count = Number(task?.record_count ?? task?.recordCount ?? 0)
+  return Number.isFinite(count) ? count : 0
+}
+
 const quarterWeeks = computed(() => {
   const { start, end } = getQuarterDateRange(Number(selectedYear.value), selectedQuarter.value)
   const today = startOfDay(new Date())
@@ -174,7 +180,7 @@ const quarterWeeks = computed(() => {
   for (let cursor = getNaturalWeekStart(start); cursor <= end; cursor = addDays(cursor, 7)) {
     const weekEnd = addDays(cursor, 6)
     if (weekEnd < start || weekEnd > end) continue
-    if (isCurrentQuarter && weekEnd > today) continue
+    if (isCurrentQuarter && cursor > today) continue
 
     const weekNumber = getISOWeekNumber(cursor)
     const baseWeek = {
@@ -185,10 +191,13 @@ const quarterWeeks = computed(() => {
       endDate: formatDateKey(weekEnd)
     }
     const task = (statsStore.tasks || []).find(t => taskMatchesWeek(t, baseWeek))
+    const recordCount = taskRecordCount(task)
     weeks.push({
       ...baseWeek,
       taskId: task?.id || '',
-      taskTitle: task?.title || ''
+      taskTitle: task?.title || '',
+      recordCount,
+      state: !task ? 'no-task' : recordCount > 0 ? 'ready' : 'empty'
     })
   }
 
@@ -222,8 +231,17 @@ const selectedWeekKey = computed(() => {
   return week?.key || ''
 })
 
+const indicatorWeekKey = computed(() => {
+  if (selectedWeekKey.value) return selectedWeekKey.value
+  return quarterWeeks.value.find(w => w.state === 'ready')?.key || ''
+})
+
+function shiftWeekWindow(direction) {
+  weekWindowStart.value = clampWeekWindowStart(weekWindowStart.value + direction * WEEK_WINDOW_STEP)
+}
+
 function selectQuarterWeek(week, visibleIndex) {
-  if (!week.taskId) return
+  if (week.state !== 'ready' || !week.taskId) return
   selectedTaskId.value = week.taskId
   if (quarterWeeks.value.length <= WEEK_WINDOW_SIZE) return
 
@@ -1365,7 +1383,7 @@ function exportStatsData() {
         </el-select>
         <div v-if="visibleQuarterWeeks.length" class="dt-week-selector" aria-label="自然周快捷选择">
           <span class="dt-week-selector-label">自然周</span>
-          <span v-if="hasHiddenWeeksLeft" class="dt-week-more" title="左侧还有自然周">《</span>
+          <button v-if="hasHiddenWeeksLeft" type="button" class="dt-week-more" title="向左显示更多自然周" @click="shiftWeekWindow(-1)">《</button>
           <div class="dt-week-selector-window">
             <button
               v-for="(week, index) in visibleQuarterWeeks"
@@ -1373,18 +1391,19 @@ function exportStatsData() {
               type="button"
               class="dt-week-chip"
               :class="{
-                'dt-week-chip-active': selectedWeekKey === week.key,
-                'dt-week-chip-disabled': !week.taskId
+                'dt-week-chip-active': indicatorWeekKey === week.key,
+                'dt-week-chip-disabled': week.state === 'no-task',
+                'dt-week-chip-empty': week.state === 'empty'
               }"
-              :disabled="!week.taskId"
-              :title="week.taskId ? `${week.startDate} 至 ${week.endDate}` : `${week.startDate} 至 ${week.endDate} 暂无收集任务`"
+              :disabled="week.state !== 'ready'"
+              :title="week.state === 'ready' ? `${week.startDate} 至 ${week.endDate}` : week.state === 'empty' ? `${week.startDate} 至 ${week.endDate} 已生成任务，暂无统计数据` : `${week.startDate} 至 ${week.endDate} 暂无收集任务`"
               @click="selectQuarterWeek(week, index)"
             >
               <span>{{ week.label }}</span>
-              <i v-if="selectedWeekKey === week.key" class="dt-week-chip-pointer"></i>
+              <i v-if="indicatorWeekKey === week.key" class="dt-week-chip-pointer"></i>
             </button>
           </div>
-          <span v-if="hasHiddenWeeksRight" class="dt-week-more" title="右侧还有自然周">》</span>
+          <button v-if="hasHiddenWeeksRight" type="button" class="dt-week-more" title="向右显示更多自然周" @click="shiftWeekWindow(1)">》</button>
         </div>
       </div>
     </div>
@@ -2320,11 +2339,22 @@ function exportStatsData() {
 .dt-week-more {
   flex: 0 0 auto;
   min-width: 14px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--color-text-3, #86909C);
   font-size: 14px;
   font-weight: 700;
   line-height: 1;
   text-align: center;
+  cursor: pointer;
+  transition: color 0.18s ease, transform 0.18s ease;
+}
+
+.dt-week-more:hover {
+  color: var(--color-primary, #165DFF);
+  transform: translateY(-1px);
 }
 
 .dt-week-chip {
@@ -2352,10 +2382,10 @@ function exportStatsData() {
 }
 
 .dt-week-chip-active {
-  color: #fff;
-  background: var(--color-primary, #165DFF);
-  border-color: var(--color-primary, #165DFF);
-  box-shadow: 0 4px 10px rgba(22, 93, 255, 0.16);
+  color: var(--color-text-2, #4E5969);
+  background: #fff;
+  border-color: var(--color-border, #E5E6EB);
+  box-shadow: none;
 }
 
 .dt-week-chip-pointer {
@@ -2366,7 +2396,7 @@ function exportStatsData() {
   height: 0;
   border-left: 5px solid transparent;
   border-right: 5px solid transparent;
-  border-top: 6px solid var(--color-primary, #165DFF);
+  border-top: 6px solid #A9D3FF;
   transform: translateX(-50%);
 }
 
@@ -2374,6 +2404,13 @@ function exportStatsData() {
   color: var(--color-text-4, #C9CDD4);
   background: var(--color-bg-2, #F7F8FA);
   border-color: var(--color-border-light, #F2F3F5);
+  cursor: not-allowed;
+}
+
+.dt-week-chip-empty {
+  color: var(--color-text-3, #86909C);
+  background: #fff;
+  border-color: var(--color-primary, #165DFF);
   cursor: not-allowed;
 }
 

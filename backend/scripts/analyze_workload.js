@@ -93,6 +93,40 @@ function quarterOf(value) {
   return `${year}-Q${Math.floor((month - 1) / 3) + 1}`;
 }
 
+function startOfDay(value) {
+  const date = value instanceof Date ? new Date(value) : new Date(value);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function addDays(value, days) {
+  const date = startOfDay(value);
+  date.setDate(date.getDate() + days);
+  return date;
+}
+
+function dateKey(value) {
+  const date = startOfDay(value);
+  const p = n => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}`;
+}
+
+function naturalWeekStart(value) {
+  const date = startOfDay(value);
+  const day = date.getDay() || 7;
+  date.setDate(date.getDate() - day + 1);
+  return date;
+}
+
+function isoWeekNumber(value) {
+  const date = startOfDay(value);
+  const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = utcDate.getUTCDay() || 7;
+  utcDate.setUTCDate(utcDate.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(utcDate.getUTCFullYear(), 0, 1));
+  return Math.ceil((((utcDate - yearStart) / 86400000) + 1) / 7);
+}
+
 function parseJsonArray(value) {
   if (value == null) return [];
   if (Array.isArray(value)) return value;
@@ -853,8 +887,11 @@ function buildPeriodReports(data, baseReport) {
       year: task ? String(task.year) : key.slice(0, 4),
       week: task ? String(task.week_number || '') : '',
       quarter: task ? quarterOf(task.end_date).split('-')[1] : '',
+      month: task ? monthOf(task.end_date) : '',
       taskId: task?.id || '',
-      taskTitle: task?.title || key
+      taskTitle: task?.title || key,
+      startDate: task ? dateStr(task.start_date) : '',
+      endDate: task ? dateStr(task.end_date) : ''
     };
   });
 
@@ -870,6 +907,8 @@ function buildPeriodReports(data, baseReport) {
     month: item.report.dataset.month || '',
     week: item.report.dataset.week || '',
     taskId: item.report.dataset.taskId || '',
+    startDate: item.report.dataset.startDate || '',
+    endDate: item.report.dataset.endDate || '',
     report: item.report
   }));
 }
@@ -891,9 +930,107 @@ function periodMeta(item, allHref) {
     month: item.month,
     week: item.week,
     taskId: item.taskId,
+    startDate: item.startDate,
+    endDate: item.endDate,
     href: item.key === 'all' ? allHref : `${periodFileBase(item)}.html`,
     jsonHref: item.key === 'all' ? allHref.replace(/\.html$/i, '.json') : `${periodFileBase(item)}.json`
   };
+}
+
+function taskNaturalWeekKey(task) {
+  const year = String(task?.year || dateStr(task?.end_date).slice(0, 4) || '');
+  const week = Number(task?.week_number || 0);
+  if (!year || !week) return '';
+  return `${year}-W${String(week).padStart(2, '0')}`;
+}
+
+function naturalWeekKey(year, weekNumber) {
+  if (!year || !weekNumber) return '';
+  return `${year}-W${String(weekNumber).padStart(2, '0')}`;
+}
+
+function buildNaturalWeekMetas(data, periodMetas) {
+  const tasks = Array.isArray(data.tasks) ? data.tasks : [];
+  const rows = Array.isArray(data.rows) ? data.rows : [];
+  const today = startOfDay(new Date());
+  const currentYear = today.getFullYear();
+  const years = new Set([String(currentYear)]);
+  for (const task of tasks) {
+    const year = String(task.year || dateStr(task.end_date).slice(0, 4) || '');
+    if (year) years.add(year);
+  }
+  for (const row of rows) {
+    const year = String(row.year || dateStr(row.end_date).slice(0, 4) || '');
+    if (year) years.add(year);
+  }
+
+  const reportsByYearWeek = new Map();
+  for (const report of periodMetas || []) {
+    if (report.grain !== 'week') continue;
+    const key = naturalWeekKey(report.year, Number(report.week || 0));
+    if (key) reportsByYearWeek.set(key, report);
+  }
+
+  const tasksByYearWeek = new Map();
+  for (const task of tasks) {
+    if (task.time_dimension && task.time_dimension !== 'week') continue;
+    const key = taskNaturalWeekKey(task);
+    if (!key) continue;
+    if (!tasksByYearWeek.has(key)) tasksByYearWeek.set(key, []);
+    tasksByYearWeek.get(key).push(task);
+  }
+
+  const recordCountByTaskId = new Map();
+  const hoursByTaskId = new Map();
+  for (const row of rows) {
+    const taskId = row.task_id;
+    recordCountByTaskId.set(taskId, (recordCountByTaskId.get(taskId) || 0) + 1);
+    hoursByTaskId.set(taskId, (hoursByTaskId.get(taskId) || 0) + Number(row.hours || 0));
+  }
+
+  const weeks = [];
+  for (const yearText of [...years].sort((a, b) => Number(b) - Number(a))) {
+    const year = Number(yearText);
+    if (!Number.isFinite(year) || year > currentYear) continue;
+    const yearStart = startOfDay(new Date(year, 0, 1));
+    const yearEnd = startOfDay(new Date(year, 11, 31));
+    for (let cursor = naturalWeekStart(yearStart); cursor <= yearEnd; cursor = addDays(cursor, 7)) {
+      const weekEnd = addDays(cursor, 6);
+      if (weekEnd < yearStart || weekEnd > yearEnd) continue;
+      if (year === currentYear && cursor > today) continue;
+
+      const weekNumber = isoWeekNumber(cursor);
+      const yearWeekKey = naturalWeekKey(year, weekNumber);
+      const weekTasks = tasksByYearWeek.get(yearWeekKey) || [];
+      const taskIds = weekTasks.map(task => task.id).filter(Boolean);
+      const recordCount = taskIds.reduce((sum, taskId) => sum + (recordCountByTaskId.get(taskId) || 0), 0);
+      const totalHours = taskIds.reduce((sum, taskId) => sum + (hoursByTaskId.get(taskId) || 0), 0);
+      const report = reportsByYearWeek.get(yearWeekKey);
+      const state = weekTasks.length === 0 ? 'no-task' : recordCount > 0 ? 'ready' : 'empty';
+      const startDate = dateKey(cursor);
+      const endDate = dateKey(weekEnd);
+      weeks.push({
+        key: report?.key || `natural-week:${yearWeekKey}`,
+        reportKey: report?.key || '',
+        grain: 'natural-week',
+        state,
+        year: String(year),
+        quarter: quarterOf(endDate).split('-')[1] || '',
+        month: monthOf(endDate),
+        week: String(weekNumber),
+        label: `${weekNumber}周`,
+        range: `${startDate}~${endDate}`,
+        startDate,
+        endDate,
+        taskId: taskIds[0] || '',
+        taskTitle: weekTasks[0]?.title || '',
+        recordCount,
+        totalHours: round(totalHours),
+        href: report?.href || ''
+      });
+    }
+  }
+  return weeks.sort((a, b) => String(b.endDate).localeCompare(String(a.endDate)) || Number(b.week) - Number(a.week));
 }
 
 function formulasHtml() {
@@ -1239,6 +1376,7 @@ function renderHtml(report, options = {}) {
   const referenceTip = '1，需求存在如：工单需求，有多个产品负责，单个开发负责开发，单个测试负责测试，最后填写工时只选择了其中一个产品人员，因此存在偏差；\n2，工时都是人工自己预估，存在不绝对准确的情况，因此不具备绝对工时参考，仅做相对数据参考；';
 
   const periodReports = Array.isArray(options.periodReports) ? options.periodReports : null;
+  const naturalWeeks = Array.isArray(options.naturalWeeks) ? options.naturalWeeks : [];
   const periodSwitcher = periodReports ? `
     <div class="period-switcher" aria-label="周期切换">
       <label>
@@ -1248,7 +1386,6 @@ function renderHtml(report, options = {}) {
           <option value="year">年度</option>
           <option value="quarter">季度</option>
           <option value="month">月份</option>
-          <option value="week">周</option>
         </select>
       </label>
       <label>
@@ -1378,10 +1515,19 @@ function renderHtml(report, options = {}) {
       justify-content: center;
       min-width: 12px;
       height: 24px;
+      padding: 0;
+      border: 0;
+      background: transparent;
       color: #cbd5e1;
       font-size: 13px;
       font-weight: 700;
       line-height: 1;
+      cursor: pointer;
+      transition: color 0.16s ease, transform 0.16s ease;
+    }
+    .report-week-more:hover {
+      color: #93c5fd;
+      transform: translateY(-1px);
     }
     .report-week-chip {
       position: relative;
@@ -1406,10 +1552,26 @@ function renderHtml(report, options = {}) {
       background: #eff6ff;
     }
     .report-week-chip.active {
-      color: #ffffff;
-      border-color: #2563eb;
-      background: #2563eb;
-      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.22);
+      color: #1f2937;
+      border-color: #475569;
+      background: #ffffff;
+      box-shadow: none;
+    }
+    .report-week-chip.empty {
+      color: #64748b;
+      border-color: #60a5fa;
+      background: #ffffff;
+      cursor: not-allowed;
+    }
+    .report-week-chip.no-task {
+      color: #94a3b8;
+      border-color: #334155;
+      background: #f1f5f9;
+      cursor: not-allowed;
+    }
+    .report-week-chip:disabled:hover {
+      color: inherit;
+      background: inherit;
     }
     .report-week-pointer {
       position: absolute;
@@ -1419,7 +1581,7 @@ function renderHtml(report, options = {}) {
       height: 0;
       border-left: 4px solid transparent;
       border-right: 4px solid transparent;
-      border-top: 5px solid #2563eb;
+      border-top: 5px solid #93c5fd;
       transform: translateX(-50%);
     }
     header h1 { margin: 0; font-size: 22px; line-height: 1.12; letter-spacing: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1842,6 +2004,7 @@ function renderHtml(report, options = {}) {
       summary: report.summary
     })};
     window.__PERIOD_REPORTS__ = ${scriptJson(periodReports || [])};
+    window.__NATURAL_WEEKS__ = ${scriptJson(naturalWeeks)};
 
     function openTab(tab) {
       const tabButtons = [...document.querySelectorAll('[data-open-tab]')];
@@ -1866,7 +2029,9 @@ function renderHtml(report, options = {}) {
 
     const REPORT_WEEK_WINDOW_SIZE = 9;
     const REPORT_WEEK_FOCUS_INDEX = 4;
+    const REPORT_WEEK_WINDOW_STEP = 2;
     let reportWeekWindowStart = 0;
+    let reportWeekScopeKey = '';
 
     function escapeClientHtml(value) {
       return String(value ?? '').replace(/[&<>"']/g, ch => ({
@@ -1894,45 +2059,104 @@ function renderHtml(report, options = {}) {
       return Math.min(Math.max(start, 0), maxStart);
     }
 
+    function parentGrainForItem(item) {
+      if (!item) return 'all';
+      if (item.grain !== 'week') return item.grain || 'all';
+      if (item.month) return 'month';
+      if (item.quarter) return 'quarter';
+      if (item.year) return 'year';
+      return 'all';
+    }
+
+    function parentPeriodKeyForItem(item) {
+      if (!item) return 'all';
+      if (item.grain !== 'week') return item.key;
+      const reports = window.__PERIOD_REPORTS__ || [];
+      if (item.month) {
+        const month = reports.find(report => report.grain === 'month' && report.month === item.month);
+        if (month) return month.key;
+      }
+      if (item.year && item.quarter) {
+        const quarter = reports.find(report => report.grain === 'quarter' && report.year === item.year && report.quarter === item.quarter);
+        if (quarter) return quarter.key;
+      }
+      if (item.year) {
+        const year = reports.find(report => report.grain === 'year' && report.year === item.year);
+        if (year) return year.key;
+      }
+      return 'all';
+    }
+
     function weeksForPeriod(item) {
       if (!item) return [];
-      if (item.grain !== 'quarter' && item.grain !== 'week') return [];
-      const targetYear = item.year || '';
-      const targetQuarter = item.quarter || '';
-      if (!targetYear || !targetQuarter) return [];
-      return (window.__PERIOD_REPORTS__ || [])
-        .filter(report => report.grain === 'week' && report.year === targetYear && report.quarter === targetQuarter)
+      const weeks = window.__NATURAL_WEEKS__ || [];
+      if (item.grain === 'all') return [...weeks];
+      if (item.grain === 'year') return weeks.filter(week => week.year === item.year);
+      if (item.grain === 'quarter') return weeks.filter(week => week.year === item.year && week.quarter === item.quarter);
+      if (item.grain === 'month') return weeks.filter(week => week.month === item.month);
+      if (item.grain === 'week') {
+        if (item.month) return weeks.filter(week => week.month === item.month);
+        if (item.year && item.quarter) return weeks.filter(week => week.year === item.year && week.quarter === item.quarter);
+        if (item.year) return weeks.filter(week => week.year === item.year);
+      }
+      return [];
+    }
+
+    function sortedNaturalWeeks(weeks) {
+      return [...weeks]
         .sort((a, b) => String(weekEndSortValue(b)).localeCompare(String(weekEndSortValue(a))) || weekSortNumber(b) - weekSortNumber(a));
+    }
+
+    function indicatorWeekKey(item, weeks) {
+      if (item?.grain === 'week') return item.key;
+      return weeks.find(week => week.state === 'ready')?.key || '';
+    }
+
+    function shiftReportWeekWindow(direction) {
+      const item = reportByKey(currentPeriodKey()) || reportByKey(reportByQuery());
+      const weeks = sortedNaturalWeeks(weeksForPeriod(item));
+      reportWeekWindowStart = clampReportWeekStart(reportWeekWindowStart + direction * REPORT_WEEK_WINDOW_STEP, weeks);
+      renderReportWeekSelector(item);
     }
 
     function renderReportWeekSelector(item) {
       const root = document.querySelector('[data-report-week-selector]');
       const windowEl = document.querySelector('[data-report-week-window]');
       if (!root || !windowEl) return;
-      const weeks = weeksForPeriod(item);
+      const weeks = sortedNaturalWeeks(weeksForPeriod(item));
       if (!weeks.length) {
         root.hidden = true;
         windowEl.innerHTML = '';
+        reportWeekScopeKey = '';
         return;
       }
       const activeIndex = weeks.findIndex(week => week.key === item.key);
-      if (activeIndex >= 0) {
-        reportWeekWindowStart = clampReportWeekStart(activeIndex - REPORT_WEEK_FOCUS_INDEX, weeks);
+      const scopeKey = item?.key || 'all';
+      if (reportWeekScopeKey !== scopeKey) {
+        reportWeekWindowStart = activeIndex >= 0 ? clampReportWeekStart(activeIndex - REPORT_WEEK_FOCUS_INDEX, weeks) : 0;
+        reportWeekScopeKey = scopeKey;
       } else {
         reportWeekWindowStart = clampReportWeekStart(reportWeekWindowStart, weeks);
       }
       const visible = weeks.slice(reportWeekWindowStart, reportWeekWindowStart + REPORT_WEEK_WINDOW_SIZE);
       const hasHiddenLeft = reportWeekWindowStart > 0;
       const hasHiddenRight = reportWeekWindowStart + REPORT_WEEK_WINDOW_SIZE < weeks.length;
-      const leftMore = hasHiddenLeft ? '<span class="report-week-more" title="左侧还有自然周">《</span>' : '';
-      const rightMore = hasHiddenRight ? '<span class="report-week-more" title="右侧还有自然周">》</span>' : '';
+      const activeWeekKey = indicatorWeekKey(item, weeks);
+      const leftMore = hasHiddenLeft ? '<button type="button" class="report-week-more" data-report-week-shift="-1" title="向左显示更多自然周">《</button>' : '';
+      const rightMore = hasHiddenRight ? '<button type="button" class="report-week-more" data-report-week-shift="1" title="向右显示更多自然周">》</button>' : '';
       const weekButtons = visible.map((week, index) => {
-        const active = week.key === item.key;
+        const active = week.key === activeWeekKey;
         const classes = ['report-week-chip'];
         if (active) classes.push('active');
-        const label = week.week ? (Number(week.week) + '周') : String(week.titleScope || week.label || '').replace(/^第0?/, '').replace(/周.*/, '周');
-        const title = (week.range || week.label || '').trim();
-        return '<button type="button" class="' + classes.join(' ') + '" data-period-week-key="' + escapeClientHtml(week.key) + '" title="' + escapeClientHtml(title) + '">' +
+        if (week.state === 'empty') classes.push('empty');
+        if (week.state === 'no-task') classes.push('no-task');
+        const label = week.label || (week.week ? (Number(week.week) + '周') : String(week.titleScope || '').replace(/^第0?/, '').replace(/周.*/, '周'));
+        const statusText = week.state === 'ready' ? '' : week.state === 'empty' ? ' 已生成任务，暂无统计数据' : ' 暂无收集任务';
+        const title = ((week.range || week.label || '').trim() + statusText).trim();
+        const attrs = week.state === 'ready'
+          ? ' data-period-week-key="' + escapeClientHtml(week.key) + '"'
+          : ' disabled aria-disabled="true"';
+        return '<button type="button" class="' + classes.join(' ') + '"' + attrs + ' title="' + escapeClientHtml(title) + '">' +
           '<span>' + escapeClientHtml(label) + '</span>' +
           (active ? '<i class="report-week-pointer"></i>' : '') +
         '</button>';
@@ -2009,10 +2233,12 @@ function renderHtml(report, options = {}) {
       const title = document.querySelector('header h1');
       if (title) title.textContent = 'DevTracker 工时数据分析报告 | ' + (item.titleScope || item.range);
       const grainSelect = document.querySelector('[data-period-grain]');
-      if (grainSelect) grainSelect.value = item.grain;
-      populatePeriodOptions(item.grain, item.key);
+      const displayGrain = parentGrainForItem(item);
+      const displayPeriodKey = parentPeriodKeyForItem(item);
+      if (grainSelect) grainSelect.value = displayGrain;
+      populatePeriodOptions(displayGrain, displayPeriodKey);
       const periodSelect = document.querySelector('[data-period-key]');
-      if (periodSelect) periodSelect.value = item.key;
+      if (periodSelect) periodSelect.value = displayPeriodKey;
       renderReportWeekSelector(item);
       if (updateUrl) {
         const url = new URL(window.location.href);
@@ -2133,6 +2359,11 @@ function renderHtml(report, options = {}) {
         sortTableByHeader(sortHeader);
         return;
       }
+      const weekShiftBtn = event.target.closest('[data-report-week-shift]');
+      if (weekShiftBtn) {
+        shiftReportWeekWindow(Number(weekShiftBtn.dataset.reportWeekShift || 0));
+        return;
+      }
       const periodWeekBtn = event.target.closest('[data-period-week-key]');
       if (periodWeekBtn) {
         setPeriod(periodWeekBtn.dataset.periodWeekKey, true);
@@ -2183,11 +2414,12 @@ async function main() {
   const latestHtmlPath = path.join(outDir, `devtracker_workload_${scopeSlug}_latest.html`);
   const latestHtmlName = path.basename(latestHtmlPath);
   const periodMetas = periodReports.map(item => periodMeta(item, latestHtmlName));
+  const naturalWeeks = buildNaturalWeekMetas(data, periodMetas);
 
   fs.writeFileSync(jsonPath, JSON.stringify(report, null, 2), 'utf8');
-  fs.writeFileSync(htmlPath, renderHtml(report, { periodReports: periodMetas }), 'utf8');
+  fs.writeFileSync(htmlPath, renderHtml(report, { periodReports: periodMetas, naturalWeeks }), 'utf8');
   fs.writeFileSync(latestJsonPath, JSON.stringify(report, null, 2), 'utf8');
-  fs.writeFileSync(latestHtmlPath, renderHtml(report, { periodReports: periodMetas }), 'utf8');
+  fs.writeFileSync(latestHtmlPath, renderHtml(report, { periodReports: periodMetas, naturalWeeks }), 'utf8');
 
   const shouldWriteSharedPeriodPages = scopeSlug === 'all';
   if (shouldWriteSharedPeriodPages) {
@@ -2195,7 +2427,7 @@ async function main() {
       if (item.key === 'all') continue;
       const periodBase = periodFileBase(item);
       fs.writeFileSync(path.join(outDir, `${periodBase}.json`), JSON.stringify(item.report, null, 2), 'utf8');
-      fs.writeFileSync(path.join(outDir, `${periodBase}.html`), renderHtml(item.report, { periodReports: periodMetas }), 'utf8');
+      fs.writeFileSync(path.join(outDir, `${periodBase}.html`), renderHtml(item.report, { periodReports: periodMetas, naturalWeeks }), 'utf8');
     }
   }
 

@@ -11,7 +11,7 @@
 const express = require('express');
 const router = express.Router();
 const { CollectionTask, WorkRecord, MatchGroup, Staff, FillLink } = require('../models');
-const { Op } = require('sequelize');
+const { Op, fn, col } = require('sequelize');
 const { safeParseJsonArray } = require('../utils/parseJson');
 
 /* 季度月份映射 */
@@ -70,7 +70,15 @@ router.get('/', async (req, res, next) => {
       where: {
         year: yearNum,
         end_date: { [Op.between]: [startFrom, startTo] }
-      }
+      },
+      attributes: {
+        include: [
+          [fn('COUNT', col('records.id')), 'record_count']
+        ]
+      },
+      include: [{ model: WorkRecord, as: 'records', attributes: [] }],
+      group: ['collection_tasks.id'],
+      subQuery: false
     });
 
     let taskIds = tasks.map(t => t.id);
