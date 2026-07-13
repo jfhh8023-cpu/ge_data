@@ -1,14 +1,18 @@
 import { defineStore } from 'pinia'
 import api from '../api'
 
+function isActiveLike(person) {
+  return (person?.employment_status || (person?.is_active === false ? 'resigned' : 'active')) !== 'resigned'
+}
+
 export const useStaffStore = defineStore('staff', {
   state: () => ({
     list: [],
     loading: false
   }),
   getters: {
-    activeStaff: (state) => state.list.filter(s => s.is_active),
-    byRole: (state) => (role) => state.list.filter(s => s.role === role && s.is_active),
+    activeStaff: (state) => state.list.filter(isActiveLike),
+    byRole: (state) => (role) => state.list.filter(s => s.role === role && isActiveLike(s)),
     frontendStaff() { return this.byRole('frontend') },
     backendStaff() { return this.byRole('backend') },
     testStaff() { return this.byRole('test') }

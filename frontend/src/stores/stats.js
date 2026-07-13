@@ -7,6 +7,7 @@ export const useStatsStore = defineStore('stats', {
     records: [],
     matchGroups: [],
     staff: [],
+    currentStaff: [],
     summary: { totalHours: 0, recordCount: 0, staffCount: 0, taskCount: 0 },
     /* v1.1.0: 基于 WorkRecord + Staff.role 的聚合统计（REQ-11） */
     roleSummary: { frontend: 0, backend: 0, test: 0 },
@@ -36,6 +37,7 @@ export const useStatsStore = defineStore('stats', {
         this.records = data.records || []
         this.matchGroups = data.matchGroups || []
         this.staff = data.staff || []
+        this.currentStaff = data.currentStaff || data.staff || []
         this.summary = data.summary || {}
         this.roleSummary = data.roleSummary || { frontend: 0, backend: 0, test: 0 }
         this.pmDistribution = data.pmDistribution || []

@@ -20,6 +20,8 @@ const submitting = ref(false)
 const savingDraft = ref(false)
 const fillData = ref(null)
 const error = ref('')
+const isBlocked = computed(() => fillData.value?.blocked === true)
+const blockMessage = computed(() => fillData.value?.message || '用户已离职，无法填写页面数据')
 
 /** 产品经理选项列表（从 API 动态获取） */
 const pmOptions = ref([])
@@ -48,6 +50,7 @@ const canFill = computed(() => !!currentTask.value)
  * - 编辑历史任务：仅 active 时可编辑，closed 时只读
  */
 const isEditable = computed(() => {
+  if (isBlocked.value) return false
   if (!currentTask.value) return false
   return currentTask.value.status === 'active'
 })
@@ -67,7 +70,10 @@ onMounted(async () => {
     fillData.value = fillRes.data
     // 初始化 PM 选项（仅活跃的 PM）
     const pmList = Array.isArray(pmRes.data) ? pmRes.data : []
-    pmOptions.value = pmList.filter(p => p.is_active).map(p => p.name)
+    pmOptions.value = pmList
+      .filter(p => (p.employment_status || (p.is_active === false ? 'resigned' : 'active')) !== 'resigned')
+      .map(p => p.name)
+    if (fillData.value?.blocked) return
     if (fillData.value?.task) {
       // 有首选任务时，尝试恢复草稿或已提交记录
       if (Array.isArray(fillRes.data.draft_records) && fillRes.data.draft_records.length > 0) {
@@ -131,6 +137,7 @@ let keepAliveTimer = null  // 定时保持 editing 状态（避免 30s 超时）
 
 async function notifyEditing() {
   try {
+    if (isBlocked.value) return
     const taskId = currentTask.value?.id
     if (!taskId) return
     await api.put(`/fill/${route.params.token}/editing`, { task_id: taskId })
@@ -162,6 +169,7 @@ onUnmounted(() => {
 
 /** 提交工时 */
 async function handleSubmit() {
+  if (isBlocked.value) return ElMessage.error(blockMessage.value)
   if (!currentTask.value) return
   const validRows = rows.value
     .map((row, index) => ({ row, index }))
@@ -213,6 +221,7 @@ async function handleSubmit() {
 
 /** 暂存草稿 */
 async function handleSaveDraft() {
+  if (isBlocked.value) return ElMessage.error(blockMessage.value)
   if (savingDraft.value) return
   savingDraft.value = true
   try {
@@ -535,6 +544,25 @@ function exportHistory() {
       <p style="font-size:14px; color:var(--color-text-3);">{{ error }}</p>
     </div>
 
+    <!-- 离职阻断：链接可访问，但页面不可操作 -->
+    <template v-else-if="isBlocked">
+      <div class="fill-blocked-shell"></div>
+      <el-dialog
+        :model-value="true"
+        width="380px"
+        align-center
+        append-to-body
+        :show-close="false"
+        :close-on-click-modal="false"
+        :close-on-press-escape="false"
+        class="fill-blocked-dialog"
+      >
+        <div class="fill-blocked-content">
+          <div class="fill-blocked-title">{{ blockMessage }}</div>
+        </div>
+      </el-dialog>
+    </template>
+
     <!-- 双栏布局 — 左侧表单 + 右侧历史 -->
     <div v-else class="fill-dual-layout">
       <!-- ====== 左栏：填写表单 ====== -->
@@ -769,6 +797,22 @@ function exportHistory() {
 
 <style scoped>
 .fill-page-root { padding: 8px 10px 30px; }
+.fill-blocked-shell {
+  min-height: 70vh;
+  background: var(--color-bg-white);
+  border-radius: 12px;
+  box-shadow: var(--shadow-1);
+}
+.fill-blocked-content {
+  padding: 18px 8px 22px;
+  text-align: center;
+}
+.fill-blocked-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1D2129;
+  line-height: 1.6;
+}
 
 /* 双栏布局 */
 .fill-dual-layout {

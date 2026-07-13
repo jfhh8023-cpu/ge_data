@@ -1230,8 +1230,17 @@ const pmAllExpandedMap = ref({})
 /** PM 聚焦信息 */
 const pmFocusInfo = computed(() => statsStore.pmFocusData)
 
-/** PM 列表（来自 PM store） */
-const pmList = computed(() => pmStore.activePms)
+/** PM 列表：当前非离职 PM + 所选周期仍有历史数据的离职 PM */
+const pmList = computed(() => {
+  const map = new Map()
+  for (const pm of pmStore.activePms) map.set(pm.id, pm)
+  for (const item of statsStore.pmDistribution || []) {
+    if (item.id && !map.has(item.id)) {
+      map.set(item.id, { id: item.id, name: item.name })
+    }
+  }
+  return [...map.values()]
+})
 
 /** 选择产品经理 */
 async function selectPm(pmId) {
@@ -1262,7 +1271,7 @@ async function switchPmViewMode(mode) {
 /** 加载所有 PM 的聚焦数据 */
 async function loadAllPmData() {
   const results = []
-  for (const pm of pmStore.activePms) {
+  for (const pm of pmList.value) {
     try {
       const res = await api.get(`/stats/pm/${pm.id}`, {
         params: { year: selectedYear.value, quarter: selectedQuarter.value, taskId: effectiveTaskId.value }
@@ -1272,7 +1281,7 @@ async function loadAllPmData() {
       if (data.tasks?.length) {
         data.tasks.sort((a, b) => new Date(b.start_date) - new Date(a.start_date))
       }
-      results.push(data)
+      if (data.pm) results.push(data)
     } catch { /* skip */ }
   }
   allPmFocusData.value = results
@@ -1345,6 +1354,7 @@ function getVisiblePmTasks(pmData) {
 
 /** 个人信息 */
 const personalInfo = computed(() => statsStore.personalData)
+const currentStaffList = computed(() => statsStore.currentStaff || statsStore.staff || [])
 
 /** 人员头像首字 */
 function getInitial(name) {
@@ -1932,7 +1942,7 @@ function exportStatsData() {
           <el-skeleton v-else-if="statsStore.pmFocusLoading" :rows="6" animated />
 
           <!-- PM 数据 -->
-          <template v-else-if="pmFocusInfo">
+          <template v-else-if="pmFocusInfo?.pm">
             <!-- PM 概要卡片 -->
             <div class="dt-personal-header dt-pm-header" style="margin-top:8px;">
               <div class="dt-personal-avatar" :style="{ background: PM_THEME_COLOR }">
@@ -2359,7 +2369,7 @@ function exportStatsData() {
 
     <!-- v3.2.1: 研发人员明细弹窗 -->
     <el-dialog v-model="staffDialogVisible" title="研发人员明细" width="420px">
-      <el-table :data="statsStore.staff" border size="small" style="width:100%;">
+      <el-table :data="currentStaffList" border size="small" style="width:100%;">
         <el-table-column type="index" label="#" width="45" align="center" />
         <el-table-column prop="name" label="姓名" width="100" align="center" sortable>
           <template #default="{ row }">

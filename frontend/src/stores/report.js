@@ -1,6 +1,46 @@
 import { defineStore } from 'pinia'
 import api from '../api'
 
+function parseJsonArray(value) {
+  if (Array.isArray(value)) return value
+  if (typeof value !== 'string') return []
+  let text = value.trim()
+  if (!text) return []
+  for (let i = 0; i < 2; i += 1) {
+    try {
+      const parsed = JSON.parse(text)
+      if (Array.isArray(parsed)) return parsed
+      if (typeof parsed === 'string') {
+        text = parsed
+        continue
+      }
+      return []
+    } catch {
+      return []
+    }
+  }
+  return []
+}
+
+function normalizeRoleList(value) {
+  return parseJsonArray(value)
+    .map(item => ({
+      staffName: String(item?.staffName || item?.name || '').trim(),
+      hours: Number(item?.hours || 0)
+    }))
+    .filter(item => item.staffName || item.hours > 0)
+}
+
+function normalizeGroup(group) {
+  return {
+    ...group,
+    product_managers: parseJsonArray(group.product_managers).map(item => String(item || '').trim()).filter(Boolean),
+    frontend: normalizeRoleList(group.frontend),
+    backend: normalizeRoleList(group.backend),
+    test_role: normalizeRoleList(group.test_role)
+  }
+}
+
 export const useReportStore = defineStore('report', {
   state: () => ({
     matchGroups: [],
@@ -41,7 +81,7 @@ export const useReportStore = defineStore('report', {
       this.loading = true
       try {
         const res = await api.get('/report', { params: { taskId } })
-        this.matchGroups = res.data.data || res.data
+        this.matchGroups = (res.data.data || res.data || []).map(normalizeGroup)
       } finally { this.loading = false }
     },
     async triggerMatch(taskId) {
@@ -59,7 +99,7 @@ export const useReportStore = defineStore('report', {
     },
     async addManualRow(taskId) {
       const res = await api.post('/report/manual-row', { task_id: taskId })
-      const newRow = res.data.data || res.data
+      const newRow = normalizeGroup(res.data.data || res.data)
       this.matchGroups.push(newRow)
       return newRow
     },
@@ -68,9 +108,11 @@ export const useReportStore = defineStore('report', {
       this.matchGroups = this.matchGroups.filter(g => g.id !== id)
     },
     async updateRow(id, data) {
-      await api.put(`/report/${id}`, data)
+      const res = await api.put(`/report/${id}`, data)
+      const saved = normalizeGroup(res.data.data || res.data || data)
       const idx = this.matchGroups.findIndex(g => g.id === id)
-      if (idx !== -1) Object.assign(this.matchGroups[idx], data)
+      if (idx !== -1) Object.assign(this.matchGroups[idx], saved)
+      return saved
     }
   }
 })

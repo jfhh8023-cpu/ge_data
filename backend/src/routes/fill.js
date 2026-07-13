@@ -15,6 +15,16 @@ const { v4: uuidv4 } = require('uuid');
 const { FillLink, CollectionTask, Staff, WorkRecord, MatchGroup, StaffFillLink } = require('../models');
 const { matchRecords } = require('../services/MatchService');
 const { Op } = require('sequelize');
+const {
+  STAFF_RESIGNED_MESSAGE,
+  assertStaffCanWrite,
+  buildCurrentStatusPayload,
+  getPmStatusContextByName,
+  getTaskBusinessDate,
+  isResignedAt,
+  normalizeEmploymentStatus,
+  isNonResigned
+} = require('../services/PersonStatusService');
 
 const EDITING_TIMEOUT_MS = 30000;
 
@@ -43,6 +53,25 @@ function validateRequiredProductManagers(records) {
     records[i].product_managers = normalizedPms;
   }
   return '';
+}
+
+async function assertProductManagersCanWrite(records, task) {
+  const names = [...new Set(records.flatMap(record => normalizeProductManagers(record.product_managers)))];
+  const context = await getPmStatusContextByName(names);
+  const businessDate = getTaskBusinessDate(task);
+  for (const name of names) {
+    const ctx = context.get(name);
+    if (!ctx) continue;
+    if (isResignedAt(
+      ctx.histories,
+      businessDate,
+      normalizeEmploymentStatus(ctx.pm.employment_status, ctx.pm.is_active !== false)
+    )) {
+      const err = new Error(STAFF_RESIGNED_MESSAGE);
+      err.status = 403;
+      throw err;
+    }
+  }
 }
 
 /* ======================================================
@@ -81,6 +110,23 @@ router.get('/:token', async (req, res, next) => {
 
     if (resolved.type === 'system') {
       const { sfl } = resolved;
+      if (!isNonResigned(sfl.staff)) {
+        return res.json({
+          code: 0,
+          data: {
+            linkType: 'system',
+            blocked: true,
+            reason: 'staff_resigned',
+            message: STAFF_RESIGNED_MESSAGE,
+            staff: { ...sfl.staff.toJSON(), ...buildCurrentStatusPayload(sfl.staff) },
+            task: null,
+            records: [],
+            draft_records: null,
+            draft_saved_at: null,
+            is_submitted: false
+          }
+        });
+      }
 
       // v1.6.2: 优先取首选任务；若无首选则自动取最新的 active 任务；都没有才为 null
       let currentTask = await CollectionTask.findOne({
@@ -127,6 +173,24 @@ router.get('/:token', async (req, res, next) => {
 
     // 旧体系
     const { link } = resolved;
+    if (!isNonResigned(link.staff)) {
+      return res.json({
+        code: 0,
+        data: {
+          linkType: 'legacy',
+          blocked: true,
+          reason: 'staff_resigned',
+          message: STAFF_RESIGNED_MESSAGE,
+          link,
+          task: link.task,
+          staff: { ...link.staff.toJSON(), ...buildCurrentStatusPayload(link.staff) },
+          records: [],
+          draft_records: null,
+          draft_saved_at: null,
+          is_submitted: Boolean(link.is_submitted)
+        }
+      });
+    }
     const records = await WorkRecord.findAll({ where: { link_id: link.id } });
     return res.json({
       code: 0,
@@ -156,6 +220,8 @@ router.put('/:token/draft', async (req, res, next) => {
     if (!Array.isArray(draft_records)) {
       return res.status(400).json({ code: 1, message: 'draft_records 须为数组' });
     }
+    const writeStaff = resolved.type === 'system' ? resolved.sfl.staff : resolved.link.staff;
+    assertStaffCanWrite(writeStaff);
 
     if (resolved.type === 'system') {
       const { sfl } = resolved;
@@ -203,6 +269,8 @@ router.post('/:token/submit', async (req, res, next) => {
     if (!Array.isArray(records)) return res.status(400).json({ code: 1, message: 'records 须为数组' });
     const pmValidationError = validateRequiredProductManagers(records);
     if (pmValidationError) return res.status(400).json({ code: 1, message: pmValidationError });
+    const writeStaff = resolved.type === 'system' ? resolved.sfl.staff : resolved.link.staff;
+    assertStaffCanWrite(writeStaff);
 
     if (resolved.type === 'system') {
       const { sfl } = resolved;
@@ -213,6 +281,7 @@ router.post('/:token/submit', async (req, res, next) => {
       if (task.status === 'closed') {
         return res.status(403).json({ code: 1, message: '该任务已停止收集，无法提交' });
       }
+      await assertProductManagersCanWrite(records, task);
 
       // 删除该成员该任务的旧记录后重新插入
       await WorkRecord.destroy({ where: { task_id, staff_id: sfl.staff_id } });
@@ -283,6 +352,7 @@ router.post('/:token/submit', async (req, res, next) => {
     if (link.task?.status === 'closed') {
       return res.status(403).json({ code: 1, message: '该任务已停止收集，请联系管理员重新开启任务收集！' });
     }
+    await assertProductManagersCanWrite(records, link.task);
     await WorkRecord.destroy({ where: { link_id: link.id } });
     const created = [];
     for (const r of records) {
@@ -338,6 +408,8 @@ router.put('/:token/editing', async (req, res, next) => {
   try {
     const resolved = await resolveToken(req.params.token);
     if (!resolved) return res.status(404).json({ code: 1, message: '链接无效' });
+    const writeStaff = resolved.type === 'system' ? resolved.sfl.staff : resolved.link.staff;
+    assertStaffCanWrite(writeStaff);
 
     if (resolved.type === 'system') {
       const { sfl } = resolved;

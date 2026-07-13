@@ -18,6 +18,8 @@ const AutoTaskRunLog = require('./AutoTaskRunLog');
 const AutoTaskMessage = require('./AutoTaskMessage');
 const Quote = require('./Quote');
 const QuoteConfig = require('./QuoteConfig');
+const StaffStatusHistory = require('./StaffStatusHistory');
+const ProductManagerStatusHistory = require('./ProductManagerStatusHistory');
 
 /* ========== 关联定义 ========== */
 
@@ -49,6 +51,14 @@ LinkPermission.belongsTo(AccessLink, { foreignKey: 'link_id', as: 'accessLink' }
 Staff.hasOne(StaffFillLink, { foreignKey: 'staff_id', as: 'fillLink' });
 StaffFillLink.belongsTo(Staff, { foreignKey: 'staff_id', as: 'staff' });
 
+// Staff 1:N status history
+Staff.hasMany(StaffStatusHistory, { foreignKey: 'staff_id', as: 'statusHistory' });
+StaffStatusHistory.belongsTo(Staff, { foreignKey: 'staff_id', as: 'staff' });
+
+// ProductManager 1:N status history
+ProductManager.hasMany(ProductManagerStatusHistory, { foreignKey: 'product_manager_id', as: 'statusHistory' });
+ProductManagerStatusHistory.belongsTo(ProductManager, { foreignKey: 'product_manager_id', as: 'productManager' });
+
 // AutoTaskRule 1:N AutoTaskRunLog（v3.1.0 自动任务）
 AutoTaskRule.hasMany(AutoTaskRunLog, { foreignKey: 'rule_id', as: 'logs' });
 AutoTaskRunLog.belongsTo(AutoTaskRule, { foreignKey: 'rule_id', as: 'rule' });
@@ -77,5 +87,7 @@ module.exports = {
   AutoTaskRunLog,
   AutoTaskMessage,
   Quote,
-  QuoteConfig
+  QuoteConfig,
+  StaffStatusHistory,
+  ProductManagerStatusHistory
 };

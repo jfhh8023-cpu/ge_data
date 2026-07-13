@@ -20,6 +20,7 @@ const ROLE_TEXT = { frontend: '前端', backend: '后端', test: '测试' };
 const ROLE_CLASS = { frontend: 'fe', backend: 'be', test: 'qa' };
 const ROLE_COLORS = { frontend: '#2563eb', backend: '#16a34a', test: '#f97316' };
 const DEFAULT_PM = '不在上述';
+const RESIGNED_STATUS = 'resigned';
 
 const KEYWORD_DEFS = [
   ['语音', /语音|通话|呼叫|坐席|热线|双声道|录音|TTS|SIP|kamailio|vos|VOS|DID|网关|线路|外呼|群呼|CC/i],
@@ -150,6 +151,52 @@ function parseJsonArray(value) {
   return [];
 }
 
+function statusHistoriesBy(rows, keyField) {
+  const map = new Map();
+  for (const row of rows || []) {
+    const key = row[keyField];
+    if (!key) continue;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(row);
+  }
+  for (const list of map.values()) {
+    list.sort((a, b) => dateStr(a.started_at).localeCompare(dateStr(b.started_at)));
+  }
+  return map;
+}
+
+function isResignedAt(histories, businessDate, fallbackStatus = 'active') {
+  const key = dateStr(businessDate);
+  const matched = (histories || []).find(row => {
+    const started = dateStr(row.started_at);
+    const ended = row.ended_at ? dateStr(row.ended_at) : '';
+    return started && started <= key && (!ended || key < ended);
+  });
+  return (matched?.status || fallbackStatus) === 'resigned';
+}
+
+function filterRowsByEmploymentStatus(rows, staffHistories, pmHistoriesByName) {
+  return rows.reduce((acc, row) => {
+    const businessDate = row.end_date || row.start_date || row.updated_at || row.created_at;
+    if (isResignedAt(staffHistories.get(row.staff_id), businessDate, row.staff_status || (row.staff_active ? 'active' : 'resigned'))) {
+      return acc;
+    }
+    const pms = parseJsonArray(row.product_managers).map(item => String(item || '').trim()).filter(Boolean);
+    const visiblePms = pms.filter(pmName => {
+      const histories = pmHistoriesByName.get(pmName);
+      if (!histories) return true;
+      return !isResignedAt(histories, businessDate, row.pm_status || 'active');
+    });
+    if (pms.length > 0 && visiblePms.length === 0) {
+      row.product_managers = JSON.stringify([]);
+    } else if (pms.length > 0) {
+      row.product_managers = JSON.stringify(visiblePms);
+    }
+    acc.push(row);
+    return acc;
+  }, []);
+}
+
 function emptyGroup() {
   return {
     total: 0,
@@ -160,6 +207,37 @@ function emptyGroup() {
     tasks: new Set(),
     requirements: new Set()
   };
+}
+
+function isCurrentResignedPerson(person) {
+  const status = String(person?.employment_status || '').trim();
+  if (status) return status === RESIGNED_STATUS;
+  return person?.is_active === false || Number(person?.is_active) === 0;
+}
+
+function isCurrentVisiblePerson(person) {
+  return !isCurrentResignedPerson(person);
+}
+
+function staffDisplayName(person) {
+  return `${person.name}（${ROLE_TEXT[person.role] || person.role}）`;
+}
+
+function ensureZeroGroup(map, name) {
+  const key = String(name || '').trim();
+  if (!key || map[key]) return;
+  map[key] = emptyGroup();
+}
+
+function seedCurrentVisiblePeopleGroups(byStaff, byPm, staff, pms) {
+  for (const person of staff || []) {
+    if (!isCurrentVisiblePerson(person)) continue;
+    ensureZeroGroup(byStaff, staffDisplayName(person));
+  }
+  for (const pm of pms || []) {
+    if (!isCurrentVisiblePerson(pm)) continue;
+    ensureZeroGroup(byPm, pm.name);
+  }
 }
 
 function addWork(group, row, hours, reqKey) {
@@ -470,6 +548,7 @@ async function loadData(args) {
              CAST(wr.hours AS DECIMAL(10,2)) AS hours, wr.created_at, wr.updated_at, wr.is_active,
              wr.edit_count, wr.submit_count,
              s.name AS staff_name, s.role AS role, s.is_active AS staff_active,
+             s.employment_status AS staff_status, s.status_changed_at AS staff_status_changed_at,
              ct.title AS task_title, ct.time_dimension, ct.start_date, ct.end_date,
              ct.week_number, ct.year, ct.status AS task_status
       FROM work_records wr
@@ -485,11 +564,21 @@ async function loadData(args) {
       ${where.taskClause}
       ORDER BY ct.end_date
     `, where.taskParams);
-    const [staff] = await conn.query('SELECT id, name, role, is_active, sort_order FROM staff ORDER BY role, sort_order, name');
-    const [pms] = await conn.query('SELECT id, name, is_active, sort_order FROM product_managers ORDER BY sort_order, name');
+    const [staff] = await conn.query('SELECT id, name, role, is_active, employment_status, status_changed_at, sort_order FROM staff ORDER BY role, sort_order, name');
+    const [pms] = await conn.query('SELECT id, name, is_active, employment_status, status_changed_at, sort_order FROM product_managers ORDER BY sort_order, name');
+    const [staffStatusHistory] = await conn.query('SELECT staff_id, status, started_at, ended_at FROM staff_status_history ORDER BY staff_id, started_at');
+    const [pmStatusHistoryRows] = await conn.query(`
+      SELECT h.product_manager_id, p.name, h.status, h.started_at, h.ended_at
+      FROM product_manager_status_history h
+      JOIN product_managers p ON p.id = h.product_manager_id
+      ORDER BY h.product_manager_id, h.started_at
+    `);
+    const staffHistories = statusHistoriesBy(staffStatusHistory, 'staff_id');
+    const pmHistoriesByName = statusHistoriesBy(pmStatusHistoryRows, 'name');
+    const filteredRows = filterRowsByEmploymentStatus(rows, staffHistories, pmHistoriesByName);
 
     await conn.query('COMMIT');
-    return { rows, tasks, staff, pms, scopeText: where.scopeText };
+    return { rows: filteredRows, tasks, staff, pms, scopeText: where.scopeText };
   } catch (err) {
     await conn.query('ROLLBACK');
     throw err;
@@ -512,6 +601,7 @@ function analyze(data) {
   const comboMap = {};
   const recordDetails = [];
   for (const [name] of KEYWORD_DEFS) byKeyword[name] = emptyGroup();
+  seedCurrentVisiblePeopleGroups(byStaff, byPm, staff, pms);
 
   const quality = {
     emptyPm: { count: 0, hours: 0 },
@@ -691,10 +781,10 @@ function analyze(data) {
     requirementCount: requirements.length,
     taskCount: new Set(rows.map(row => row.task_id)).size,
     allTaskCount: tasks.length,
-    staffCount: staff.length,
-    activeStaffCount: staff.filter(item => item.is_active).length,
-    productManagerCount: pms.length,
-    activeProductManagerCount: pms.filter(item => item.is_active).length,
+    staffCount: staff.filter(isCurrentVisiblePerson).length,
+    activeStaffCount: staff.filter(isCurrentVisiblePerson).length,
+    productManagerCount: pms.filter(isCurrentVisiblePerson).length,
+    activeProductManagerCount: pms.filter(isCurrentVisiblePerson).length,
     dateStart: tasks.length ? dateStr(tasks[0].start_date) : '',
     dateEnd: tasks.length ? dateStr(tasks[tasks.length - 1].end_date) : ''
   };
@@ -733,8 +823,8 @@ function analyze(data) {
     requirementDetails: [...requirements].sort((a, b) => String(b.taskSort || '').localeCompare(String(a.taskSort || ''), 'zh-CN') || b.total - a.total),
     records: recordDetails.sort((a, b) => String(b.periodSort || '').localeCompare(String(a.periodSort || ''), 'zh-CN') || b.hours - a.hours),
     dataQuality: qualitySummary,
-    inactiveStaff: staff.filter(item => !item.is_active).map(item => ({ name: item.name, role: item.role })),
-    inactiveProductManagers: pms.filter(item => !item.is_active).map(item => item.name)
+    inactiveStaff: staff.filter(isCurrentResignedPerson).map(item => ({ name: item.name, role: item.role })),
+    inactiveProductManagers: pms.filter(isCurrentResignedPerson).map(item => item.name)
   };
 }
 

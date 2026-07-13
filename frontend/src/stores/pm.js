@@ -1,15 +1,19 @@
 import { defineStore } from 'pinia'
 import api from '../api'
 
+function isActiveLike(pm) {
+  return (pm?.employment_status || (pm?.is_active === false ? 'resigned' : 'active')) !== 'resigned'
+}
+
 export const usePmStore = defineStore('pm', {
   state: () => ({
     list: [],
     loading: false
   }),
   getters: {
-    activePms: (state) => state.list.filter(pm => pm.is_active),
+    activePms: (state) => state.list.filter(isActiveLike),
     /** 获取 PM 名称列表（用于下拉选择） */
-    nameList: (state) => state.list.filter(pm => pm.is_active).map(pm => pm.name)
+    nameList: (state) => state.list.filter(isActiveLike).map(pm => pm.name)
   },
   actions: {
     async fetchAll() {

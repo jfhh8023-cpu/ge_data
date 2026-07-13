@@ -2,6 +2,7 @@ const { v4: uuidv4 } = require('uuid');
 const { DataTypes, Op } = require('sequelize');
 const { sequelize, AutoTaskRule, AutoTaskRunLog, AutoTaskMessage, CollectionTask, Staff } = require('../models');
 const { createPreferredTask } = require('./TaskService');
+const { isNonResigned } = require('./PersonStatusService');
 const {
   addDays,
   dateFromYmd,
@@ -320,20 +321,23 @@ async function resolveStaffPhoneDetails(staffIds = []) {
         { name: { [Op.in]: ids } }
       ]
     },
-    attributes: ['id', 'name', 'phone']
+    attributes: ['id', 'name', 'phone', 'employment_status', 'is_active']
   });
   const phones = [];
   const missing = [];
   for (const id of ids) {
-    if (isValidPhone(id)) {
-      phones.push(id);
-      continue;
-    }
     const matched = staffRows.find(staff =>
       String(staff.id || '').trim() === id ||
       String(staff.phone || '').trim() === id ||
       String(staff.name || '').trim() === id
     );
+    if (matched && !isNonResigned(matched)) {
+      continue;
+    }
+    if (!matched && isValidPhone(id)) {
+      phones.push(id);
+      continue;
+    }
     const phone = String(matched?.phone || '').trim();
     if (isValidPhone(phone)) {
       phones.push(phone);

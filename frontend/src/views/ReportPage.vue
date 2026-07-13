@@ -8,14 +8,18 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useReportStore } from '../stores/report'
 import { useTaskStore } from '../stores/task'
+import { useStaffStore } from '../stores/staff'
+import { usePmStore } from '../stores/pm'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { onDataChange, SYNC_EVENTS } from '../utils/sync'
+import { broadcastDataChange, onDataChange, SYNC_EVENTS } from '../utils/sync'
 import api from '../api'
 import { parseExcelFile, validateHeaders, generateAndDownloadExcel, uploadExcelToServer, downloadTemplate } from '../utils/excel'
 import { useAuthStore } from '../stores/auth'
 
 const reportStore = useReportStore()
 const taskStore = useTaskStore()
+const staffStore = useStaffStore()
+const pmStore = usePmStore()
 const authStore = useAuthStore()
 
 /* ========== 常量 ========== */
@@ -25,6 +29,11 @@ const SORT_OPTIONS = [
   { key: 'frontend', label: '前端' },
   { key: 'backend', label: '后端' },
   { key: 'test', label: '测试' }
+]
+const ROLE_EDITORS = [
+  { field: 'frontend', role: 'frontend' },
+  { field: 'backend', role: 'backend' },
+  { field: 'test_role', role: 'test' }
 ]
 const DIMENSION_LABEL = {
   day: '日', week: '周', half_month: '半月', month: '月',
@@ -76,10 +85,16 @@ function taskIsLastWeek(task) {
 /* ========== 初始化：v1.4.2 智能默认选中 ========== */
 /* 跨页面数据同步监听 */
 let cleanupSync = null
+const pageSyncId = `report-${Date.now()}-${Math.random().toString(16).slice(2)}`
+const autoSaveTimers = new Map()
 
 onMounted(async () => {
   pageLoading.value = true
-  await taskStore.fetchAll()
+  await Promise.all([
+    taskStore.fetchAll(),
+    staffStore.fetchAll(),
+    pmStore.fetchAll()
+  ])
   if (taskStore.list.length > 0) {
     // 1. 优先找上周任务
     let defaultTask = taskStore.list.find(t => taskIsLastWeek(t))
@@ -91,7 +106,8 @@ onMounted(async () => {
     selectedTaskId.value = defaultTask.id
   }
   // 监听工时变更广播，自动刷新报表
-  cleanupSync = onDataChange(SYNC_EVENTS.WORK_RECORD_CHANGED, () => {
+  cleanupSync = onDataChange(SYNC_EVENTS.WORK_RECORD_CHANGED, (payload = {}) => {
+    if (payload.source === pageSyncId) return
     if (selectedTaskId.value) {
       reportStore.fetchByTask(selectedTaskId.value)
     }
@@ -115,6 +131,8 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  for (const timer of autoSaveTimers.values()) clearTimeout(timer)
+  autoSaveTimers.clear()
   if (cleanupSync) cleanupSync()
 })
 
@@ -197,13 +215,96 @@ function formatPeopleCell(people) {
 /** 拆分：仅获取姓名列表 */
 function formatNames(people) {
   if (!Array.isArray(people) || people.length === 0) return []
-  return people.map(p => p.staffName)
+  return people.map(p => String(p.staffName || '').trim()).filter(Boolean)
 }
 
 /** 拆分：仅获取工时列表 */
 function formatHoursList(people) {
   if (!Array.isArray(people) || people.length === 0) return []
-  return people.map(p => p.hours)
+  return people
+    .filter(p => String(p.staffName || '').trim() || Number(p.hours || 0) > 0)
+    .map(p => p.hours)
+}
+
+function isManualRow(row) {
+  return row?.status === 'manual_merged'
+}
+
+function canEditRow(row) {
+  return editMode.value && isManualRow(row)
+}
+
+function roleOptions(role) {
+  return staffStore.byRole(role)
+}
+
+function editableRoleRows(row, field) {
+  if (!Array.isArray(row[field])) row[field] = []
+  if (row[field].length === 0) row[field].push({ staffName: '', hours: null })
+  return row[field]
+}
+
+function normalizeNameArray(value) {
+  return Array.isArray(value)
+    ? value.map(item => String(item || '').trim()).filter(Boolean)
+    : []
+}
+
+function normalizeRoleRows(value) {
+  return Array.isArray(value)
+    ? value
+      .map(item => ({
+        staffName: String(item?.staffName || '').trim(),
+        hours: Number(item?.hours || 0)
+      }))
+      .filter(item => item.staffName || item.hours > 0)
+    : []
+}
+
+function buildRowPayload(row) {
+  return {
+    merged_title: row.merged_title || '',
+    version: row.version || '',
+    product_managers: normalizeNameArray(row.product_managers),
+    frontend: normalizeRoleRows(row.frontend),
+    backend: normalizeRoleRows(row.backend),
+    test_role: normalizeRoleRows(row.test_role),
+    remark: row.remark || ''
+  }
+}
+
+function broadcastReportChange(reason) {
+  broadcastDataChange(SYNC_EVENTS.WORK_RECORD_CHANGED, {
+    taskId: selectedTaskId.value,
+    source: pageSyncId,
+    sourcePage: 'report',
+    reason
+  })
+}
+
+function scheduleRowAutoSave(row) {
+  if (!isManualRow(row)) return
+  if (autoSaveTimers.has(row.id)) clearTimeout(autoSaveTimers.get(row.id))
+  autoSaveTimers.set(row.id, setTimeout(() => {
+    autoSaveTimers.delete(row.id)
+    saveRowEdit(row, { silent: true })
+  }, 500))
+}
+
+async function flushRowAutoSave(row) {
+  if (!isManualRow(row)) return
+  if (autoSaveTimers.has(row.id)) {
+    clearTimeout(autoSaveTimers.get(row.id))
+    autoSaveTimers.delete(row.id)
+  }
+  await saveRowEdit(row, { silent: true })
+}
+
+function removeRolePerson(row, field, index) {
+  if (!Array.isArray(row[field])) return
+  row[field].splice(index, 1)
+  if (row[field].length === 0) row[field].push({ staffName: '', hours: null })
+  scheduleRowAutoSave(row)
 }
 
 const sortedGroups = computed(() => {
@@ -237,7 +338,11 @@ const pagedGroups = computed(() => {
 async function addManualRow() {
   if (!selectedTaskId.value) return
   try {
-    await reportStore.addManualRow(selectedTaskId.value)
+    const row = await reportStore.addManualRow(selectedTaskId.value)
+    ROLE_EDITORS.forEach(({ field }) => editableRoleRows(row, field))
+    editMode.value = true
+    currentPage.value = 1
+    broadcastReportChange('report_manual_row_added')
     ElMessage.success('已添加空白行')
   } catch {
     ElMessage.error('添加失败')
@@ -248,6 +353,7 @@ async function deleteRow(row) {
   try {
     await ElMessageBox.confirm(`确认删除此行？`, '删除', { type: 'warning' })
     await reportStore.deleteRow(row.id)
+    broadcastReportChange('report_manual_row_deleted')
     ElMessage.success('已删除')
   } catch {
     // 用户取消
@@ -256,22 +362,25 @@ async function deleteRow(row) {
 
 async function saveRemark(group) {
   try {
+    if (isManualRow(group)) {
+      await flushRowAutoSave(group)
+      return
+    }
     await reportStore.updateRemark(group.id, group.remark)
+    broadcastReportChange('report_remark_saved')
   } catch {
     // 静默
   }
 }
 
-async function saveRowEdit(row) {
+async function saveRowEdit(row, options = {}) {
+  if (!isManualRow(row)) return
   try {
-    await reportStore.updateRow(row.id, {
-      merged_title: row.merged_title,
-      version: row.version,
-      product_managers: row.product_managers
-    })
-    ElMessage.success('已保存')
+    await reportStore.updateRow(row.id, buildRowPayload(row))
+    broadcastReportChange('report_manual_row_saved')
+    if (!options.silent) ElMessage.success('已保存')
   } catch {
-    ElMessage.error('保存失败')
+    if (!options.silent) ElMessage.error('保存失败')
   }
 }
 
@@ -388,6 +497,7 @@ async function handleImportFile(event) {
 
     // 刷新页面数据
     await reportStore.fetchByTask(selectedTaskId.value)
+    broadcastReportChange('report_imported')
     ElMessage.success(res.message || `导入成功，共 ${rows.length} 条`)
   } catch (err) {
     ElMessage.error(err.response?.data?.message || err.message || '导入失败')
@@ -476,36 +586,72 @@ function handleDownloadTemplate() {
         <el-table-column type="index" label="序号" width="50" align="center" />
         <el-table-column prop="version" label="版本号" width="110">
           <template #default="{ row }">
-            <el-input v-if="editMode && row.status === 'manual_merged'" v-model="row.version" size="small" @blur="saveRowEdit(row)" />
+            <el-input v-if="canEditRow(row)" v-model="row.version" size="small" @input="scheduleRowAutoSave(row)" @blur="flushRowAutoSave(row)" />
             <span v-else style="font-family:var(--font-mono);">{{ row.version || '-' }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="merged_title" label="需求名称" min-width="260">
           <template #default="{ row }">
-            <el-input v-if="editMode && row.status === 'manual_merged'" v-model="row.merged_title" size="small" @blur="saveRowEdit(row)" />
+            <el-input v-if="canEditRow(row)" v-model="row.merged_title" size="small" @input="scheduleRowAutoSave(row)" @blur="flushRowAutoSave(row)" />
             <span v-else style="font-weight:500;">{{ row.merged_title || '(空)' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="产品经理" width="120">
+        <el-table-column label="产品经理" width="150">
           <template #default="{ row }">
-            <div v-if="Array.isArray(row.product_managers) && row.product_managers.length">
+            <el-select
+              v-if="canEditRow(row)"
+              v-model="row.product_managers"
+              multiple
+              filterable
+              collapse-tags
+              collapse-tags-tooltip
+              size="small"
+              placeholder="产品经理"
+              class="manual-cell-select"
+              @change="scheduleRowAutoSave(row)"
+            >
+              <el-option v-for="pm in pmStore.nameList" :key="pm" :label="pm" :value="pm" />
+            </el-select>
+            <div v-else-if="Array.isArray(row.product_managers) && row.product_managers.length">
               <div v-for="(pm, i) in row.product_managers" :key="i" style="line-height:1.6;">{{ pm }}</div>
             </div>
             <span v-else style="color:var(--color-text-4);">-</span>
           </template>
         </el-table-column>
         <el-table-column label="前端" align="center">
-          <el-table-column label="姓名" width="90">
+          <el-table-column label="姓名" width="130">
             <template #default="{ row }">
-              <div v-if="formatNames(row.frontend).length">
+              <div v-if="canEditRow(row)" class="role-editor">
+                <div v-for="(person, i) in editableRoleRows(row, 'frontend')" :key="i" class="role-editor-row">
+                  <el-select v-model="person.staffName" filterable clearable size="small" placeholder="前端" class="role-staff-select" @change="scheduleRowAutoSave(row)">
+                    <el-option v-for="staff in roleOptions('frontend')" :key="staff.id" :label="staff.name" :value="staff.name" />
+                  </el-select>
+                  <el-button link type="danger" size="small" class="role-remove-btn" @click="removeRolePerson(row, 'frontend', i)">×</el-button>
+                </div>
+              </div>
+              <div v-else-if="formatNames(row.frontend).length">
                 <div v-for="(n, i) in formatNames(row.frontend)" :key="i" style="line-height:1.6;">{{ n }}</div>
               </div>
               <span v-else style="color:var(--color-text-4);">-</span>
             </template>
           </el-table-column>
-          <el-table-column label="工时/H" width="80" align="center" header-class-name="dt-nowrap-header">
+          <el-table-column label="工时/H" width="88" align="center" header-class-name="dt-nowrap-header">
             <template #default="{ row }">
-              <div v-if="formatHoursList(row.frontend).length">
+              <div v-if="canEditRow(row)" class="hours-editor">
+                <el-input-number
+                  v-for="(person, i) in editableRoleRows(row, 'frontend')"
+                  :key="i"
+                  v-model="person.hours"
+                  :controls="false"
+                  :min="0"
+                  :precision="1"
+                  size="small"
+                  class="manual-hours-input"
+                  @change="scheduleRowAutoSave(row)"
+                  @blur="flushRowAutoSave(row)"
+                />
+              </div>
+              <div v-else-if="formatHoursList(row.frontend).length">
                 <div v-for="(h, i) in formatHoursList(row.frontend)" :key="i" style="line-height:1.6; font-weight:700; color:#165DFF;">{{ h }}</div>
               </div>
               <span v-else style="color:var(--color-text-4);">-</span>
@@ -513,17 +659,39 @@ function handleDownloadTemplate() {
           </el-table-column>
         </el-table-column>
         <el-table-column label="后端" align="center">
-          <el-table-column label="姓名" width="100">
+          <el-table-column label="姓名" width="130">
             <template #default="{ row }">
-              <div v-if="formatNames(row.backend).length">
+              <div v-if="canEditRow(row)" class="role-editor">
+                <div v-for="(person, i) in editableRoleRows(row, 'backend')" :key="i" class="role-editor-row">
+                  <el-select v-model="person.staffName" filterable clearable size="small" placeholder="后端" class="role-staff-select" @change="scheduleRowAutoSave(row)">
+                    <el-option v-for="staff in roleOptions('backend')" :key="staff.id" :label="staff.name" :value="staff.name" />
+                  </el-select>
+                  <el-button link type="danger" size="small" class="role-remove-btn" @click="removeRolePerson(row, 'backend', i)">×</el-button>
+                </div>
+              </div>
+              <div v-else-if="formatNames(row.backend).length">
                 <div v-for="(n, i) in formatNames(row.backend)" :key="i" style="line-height:1.6;">{{ n }}</div>
               </div>
               <span v-else style="color:var(--color-text-4);">-</span>
             </template>
           </el-table-column>
-          <el-table-column label="工时/H" width="80" align="center" header-class-name="dt-nowrap-header">
+          <el-table-column label="工时/H" width="88" align="center" header-class-name="dt-nowrap-header">
             <template #default="{ row }">
-              <div v-if="formatHoursList(row.backend).length">
+              <div v-if="canEditRow(row)" class="hours-editor">
+                <el-input-number
+                  v-for="(person, i) in editableRoleRows(row, 'backend')"
+                  :key="i"
+                  v-model="person.hours"
+                  :controls="false"
+                  :min="0"
+                  :precision="1"
+                  size="small"
+                  class="manual-hours-input"
+                  @change="scheduleRowAutoSave(row)"
+                  @blur="flushRowAutoSave(row)"
+                />
+              </div>
+              <div v-else-if="formatHoursList(row.backend).length">
                 <div v-for="(h, i) in formatHoursList(row.backend)" :key="i" style="line-height:1.6; font-weight:700; color:#00B42A;">{{ h }}</div>
               </div>
               <span v-else style="color:var(--color-text-4);">-</span>
@@ -531,17 +699,39 @@ function handleDownloadTemplate() {
           </el-table-column>
         </el-table-column>
         <el-table-column label="测试" align="center">
-          <el-table-column label="姓名" width="90">
+          <el-table-column label="姓名" width="130">
             <template #default="{ row }">
-              <div v-if="formatNames(row.test_role).length">
+              <div v-if="canEditRow(row)" class="role-editor">
+                <div v-for="(person, i) in editableRoleRows(row, 'test_role')" :key="i" class="role-editor-row">
+                  <el-select v-model="person.staffName" filterable clearable size="small" placeholder="测试" class="role-staff-select" @change="scheduleRowAutoSave(row)">
+                    <el-option v-for="staff in roleOptions('test')" :key="staff.id" :label="staff.name" :value="staff.name" />
+                  </el-select>
+                  <el-button link type="danger" size="small" class="role-remove-btn" @click="removeRolePerson(row, 'test_role', i)">×</el-button>
+                </div>
+              </div>
+              <div v-else-if="formatNames(row.test_role).length">
                 <div v-for="(n, i) in formatNames(row.test_role)" :key="i" style="line-height:1.6;">{{ n }}</div>
               </div>
               <span v-else style="color:var(--color-text-4);">-</span>
             </template>
           </el-table-column>
-          <el-table-column label="工时/H" width="80" align="center" header-class-name="dt-nowrap-header">
+          <el-table-column label="工时/H" width="88" align="center" header-class-name="dt-nowrap-header">
             <template #default="{ row }">
-              <div v-if="formatHoursList(row.test_role).length">
+              <div v-if="canEditRow(row)" class="hours-editor">
+                <el-input-number
+                  v-for="(person, i) in editableRoleRows(row, 'test_role')"
+                  :key="i"
+                  v-model="person.hours"
+                  :controls="false"
+                  :min="0"
+                  :precision="1"
+                  size="small"
+                  class="manual-hours-input"
+                  @change="scheduleRowAutoSave(row)"
+                  @blur="flushRowAutoSave(row)"
+                />
+              </div>
+              <div v-else-if="formatHoursList(row.test_role).length">
                 <div v-for="(h, i) in formatHoursList(row.test_role)" :key="i" style="line-height:1.6; font-weight:700; color:#FF7D00;">{{ h }}</div>
               </div>
               <span v-else style="color:var(--color-text-4);">-</span>
@@ -555,13 +745,16 @@ function handleDownloadTemplate() {
         </el-table-column>
         <el-table-column label="备注" width="150">
           <template #default="{ row }">
-            <el-input v-model="row.remark" size="small" placeholder="备注" @blur="saveRemark(row)" />
+            <el-input v-model="row.remark" size="small" placeholder="备注" @input="isManualRow(row) && scheduleRowAutoSave(row)" @blur="saveRemark(row)" />
           </template>
         </el-table-column>
         <!-- 编辑模式操作列 -->
         <el-table-column v-if="editMode" label="操作" width="100" align="center" fixed="right">
           <template #default="{ row }">
-            <el-button v-if="row.status === 'manual_merged' && authStore.hasPermission('btn:report:delete_row', 'view')" type="danger" link size="small" @click="deleteRow(row)">删除</el-button>
+            <div v-if="row.status === 'manual_merged'" class="manual-action-cell">
+              <span class="dt-tag dt-tag-blue" style="font-size:11px;">自动保存</span>
+              <el-button v-if="authStore.hasPermission('btn:report:delete_row', 'view')" type="danger" link size="small" @click="deleteRow(row)">删除</el-button>
+            </div>
             <span v-else class="dt-tag dt-tag-gray" style="font-size:11px;">不可编辑</span>
           </template>
         </el-table-column>
@@ -633,5 +826,41 @@ export default {
 /* REQ-29: 工时/H列头不换行 */
 :deep(.dt-nowrap-header .cell) {
   white-space: nowrap;
+}
+
+.manual-cell-select {
+  width: 100%;
+}
+
+.role-editor,
+.hours-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.role-editor-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18px;
+  gap: 4px;
+  align-items: center;
+}
+
+.role-staff-select,
+.manual-hours-input {
+  width: 100%;
+}
+
+.role-remove-btn {
+  padding: 0;
+  min-height: 24px;
+}
+
+.manual-action-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
 }
 </style>

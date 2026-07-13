@@ -222,6 +222,10 @@ function isValidPhone(phone) {
   return PHONE_PATTERN.test(String(phone || '').trim())
 }
 
+function isActiveLike(person) {
+  return (person?.employment_status || (person?.is_active === false ? 'resigned' : 'active')) !== 'resigned'
+}
+
 function normalizeActionMode(value) {
   return actionModeOptions.some(item => item.value === value) ? value : 'run_and_notify'
 }
@@ -429,7 +433,7 @@ async function ensureStaffList() {
   staffLoading.value = true
   try {
     const res = await api.get('/staff')
-    staffList.value = res.data || []
+    staffList.value = (res.data || []).filter(isActiveLike)
   } catch {
     ElMessage.error('加载团队人员失败')
   } finally {
@@ -722,7 +726,7 @@ async function openRecipients(rule, index) {
   recipientStaffLoading.value = true
   try {
     const res = await api.get('/staff')
-    recipientStaffList.value = res.data || []
+    recipientStaffList.value = (res.data || []).filter(isActiveLike)
     const config = normalizeRecipientConfig(rule.dingtalk_recipients)
     recipientConfig.value = {
       ...config,

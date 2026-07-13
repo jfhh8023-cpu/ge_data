@@ -6,10 +6,19 @@
 const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
-const { ProductManager, WorkRecord, MatchGroup, CollectionTask } = require('../models');
+const { ProductManager, WorkRecord, MatchGroup, CollectionTask, Staff } = require('../models');
 const { Op } = require('sequelize');
 const sequelize = require('../config/database');
 const { safeParseJsonArray } = require('../utils/parseJson');
+const {
+  PM_RESIGNED_MESSAGE,
+  buildCurrentStatusPayload,
+  filterRecordsByStaffStatus,
+  filterRecordsForPm,
+  isNonResigned,
+  normalizeStatusDate,
+  setProductManagerStatus
+} = require('../services/PersonStatusService');
 
 /* 常量 */
 const MIN_NAME_LENGTH = 2;
@@ -32,7 +41,7 @@ router.get('/', async (req, res, next) => {
     const list = await ProductManager.findAll({
       order: [['sort_order', 'ASC'], ['created_at', 'ASC']]
     });
-    res.json({ code: 0, data: list });
+    res.json({ code: 0, data: list.map(pm => ({ ...pm.toJSON(), ...buildCurrentStatusPayload(pm) })) });
   } catch (err) { next(err); }
 });
 
@@ -58,7 +67,8 @@ router.post('/', async (req, res, next) => {
       name: trimmedName,
       token
     });
-    res.json({ code: 0, data: pm });
+    await setProductManagerStatus(pm, 'active', pm.created_at || new Date());
+    res.json({ code: 0, data: { ...pm.toJSON(), ...buildCurrentStatusPayload(pm) } });
   } catch (err) { next(err); }
 });
 
@@ -74,6 +84,25 @@ router.put('/sort', async (req, res, next) => {
     }
     res.json({ code: 0, message: '排序已保存' });
   } catch (err) { next(err); }
+});
+
+/* ========== PUT /api/pm/:id/status — 切换在职/离职/留职/长假 ========== */
+router.put('/:id/status', async (req, res, next) => {
+  const t = await sequelize.transaction();
+  try {
+    const pm = await ProductManager.findByPk(req.params.id, { transaction: t });
+    if (!pm) {
+      await t.rollback();
+      return res.status(404).json({ code: 1, message: '产品经理不存在' });
+    }
+    const effectiveAt = normalizeStatusDate(req.body.effective_date || req.body.status_changed_at);
+    await setProductManagerStatus(pm, req.body.employment_status || req.body.status, effectiveAt, t);
+    await t.commit();
+    res.json({ code: 0, data: { ...pm.toJSON(), ...buildCurrentStatusPayload(pm) }, message: '状态已更新' });
+  } catch (err) {
+    await t.rollback();
+    next(err);
+  }
 });
 
 /* ========== PUT /api/pm/:id — 修改 PM（名称全局同步） ========== */
@@ -109,11 +138,16 @@ router.put('/:id', async (req, res, next) => {
       pm.name = trimmedName;
     }
 
-    if (is_active !== undefined) pm.is_active = is_active;
+    if (is_active !== undefined) {
+      await setProductManagerStatus(pm, is_active ? 'active' : 'resigned', req.body.status_changed_at || new Date());
+    }
+    if (req.body.employment_status !== undefined || req.body.status !== undefined) {
+      await setProductManagerStatus(pm, req.body.employment_status || req.body.status, req.body.status_changed_at || new Date());
+    }
     pm.updated_at = new Date();
     await pm.save();
 
-    res.json({ code: 0, data: pm, message: '更新成功' });
+    res.json({ code: 0, data: { ...pm.toJSON(), ...buildCurrentStatusPayload(pm) }, message: '更新成功' });
   } catch (err) { next(err); }
 });
 
@@ -189,6 +223,10 @@ router.post('/:id/transfer', async (req, res, next) => {
     const toPm = await ProductManager.findByPk(to_pm_id, { transaction: t });
     if (!fromPm) { await t.rollback(); return res.status(404).json({ code: 1, message: '被交接的产品经理不存在' }); }
     if (!toPm) { await t.rollback(); return res.status(404).json({ code: 1, message: '目标产品经理不存在' }); }
+    if (!isNonResigned(toPm)) {
+      await t.rollback();
+      return res.status(400).json({ code: 1, message: '交接目标产品经理已离职，不能作为接收人' });
+    }
 
     // 全局替换：work_records + match_groups 中的 PM 名称（事务内执行）
     const wrCount = await syncPmNameInJsonColumn('work_records', 'product_managers', fromPm.name, toPm.name, t);
@@ -212,6 +250,17 @@ router.get('/view/:token', async (req, res, next) => {
   try {
     const pm = await ProductManager.findOne({ where: { token: req.params.token } });
     if (!pm) return res.status(404).json({ code: 1, message: '链接无效' });
+    if (!isNonResigned(pm)) {
+      return res.json({
+        code: 0,
+        data: {
+          blocked: true,
+          reason: 'pm_resigned',
+          message: PM_RESIGNED_MESSAGE,
+          pm: { id: pm.id, name: pm.name, ...buildCurrentStatusPayload(pm) }
+        }
+      });
+    }
 
     // 筛选参数
     const year = parseInt(req.query.year) || new Date().getFullYear();
@@ -242,6 +291,7 @@ router.get('/view/:token', async (req, res, next) => {
     }
 
     const taskIds = filteredTasks.map(t => t.id);
+    const taskById = new Map(filteredTasks.map(t => [t.id, t]));
 
     if (taskIds.length === 0) {
       return res.json({
@@ -252,11 +302,12 @@ router.get('/view/:token', async (req, res, next) => {
 
     const allRecords = await WorkRecord.findAll({
       where: { task_id: { [Op.in]: taskIds } },
-      include: [{ model: require('../models/Staff'), as: 'staff', attributes: ['id', 'name', 'role'] }]
+      include: [{ model: Staff, as: 'staff', attributes: ['id', 'name', 'role', 'employment_status', 'is_active', 'status_changed_at'] }]
     });
 
-    // 过滤出包含该 PM 的记录
-    const pmRecords = allRecords.filter(r => recordBelongsToPmName(r, pm.name));
+    // 过滤出包含该 PM 且人员/PM 状态在任务日期允许统计的记录
+    const statusAllowedRecords = await filterRecordsByStaffStatus(allRecords, taskById);
+    const pmRecords = await filterRecordsForPm(statusAllowedRecords, pm, taskById);
 
     // 按任务分组
     const taskMap = {};

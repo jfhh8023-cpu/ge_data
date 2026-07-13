@@ -8,9 +8,44 @@
 const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
-const { MatchGroup, WorkRecord, Staff } = require('../models');
+const { MatchGroup, WorkRecord, Staff, CollectionTask } = require('../models');
 const { matchRecords } = require('../services/MatchService');
 const { safeParseJsonArray } = require('../utils/parseJson');
+const {
+  collectPmNamesFromRecords,
+  filterPmNamesForRecord,
+  filterRecordsByStaffStatus,
+  getPmStatusContextByName
+} = require('../services/PersonStatusService');
+
+function normalizeNameArray(value) {
+  const source = Array.isArray(value)
+    ? value
+    : (typeof value === 'string' ? value.split(/[,，、\s]+/) : safeParseJsonArray(value));
+  return source.map(item => String(item || '').trim()).filter(Boolean);
+}
+
+function normalizeRoleArray(value) {
+  const source = Array.isArray(value) ? value : safeParseJsonArray(value);
+  return source
+    .map(item => {
+      if (typeof item === 'string') return { staffName: item.trim(), hours: 0 };
+      return {
+        staffName: String(item?.staffName || item?.name || '').trim(),
+        hours: Number(item?.hours || 0)
+      };
+    })
+    .filter(item => item.staffName || item.hours > 0);
+}
+
+function parseMatchGroup(group) {
+  const plain = group.toJSON ? group.toJSON() : { ...group };
+  plain.frontend = safeParseJsonArray(plain.frontend);
+  plain.backend = safeParseJsonArray(plain.backend);
+  plain.test_role = safeParseJsonArray(plain.test_role);
+  plain.product_managers = safeParseJsonArray(plain.product_managers);
+  return plain;
+}
 
 /* GET /api/report?taskId=xxx */
 router.get('/', async (req, res, next) => {
@@ -18,15 +53,23 @@ router.get('/', async (req, res, next) => {
     const where = {};
     if (req.query.taskId) where.task_id = req.query.taskId;
     const list = await MatchGroup.findAll({ where, order: [['created_at', 'ASC']] });
+    const task = req.query.taskId ? await CollectionTask.findByPk(req.query.taskId) : null;
+    const pmNames = new Set();
+    for (const group of list) {
+      for (const name of safeParseJsonArray(group.product_managers)) pmNames.add(name);
+    }
+    const pmContextByName = await getPmStatusContextByName([...pmNames]);
     // 解析 JSON 字段
-    const parsed = list.map(g => {
+    const parsed = await Promise.all(list.map(async g => {
       const plain = g.toJSON();
       plain.frontend = safeParseJsonArray(plain.frontend);
       plain.backend = safeParseJsonArray(plain.backend);
       plain.test_role = safeParseJsonArray(plain.test_role);
-      plain.product_managers = safeParseJsonArray(plain.product_managers);
+      plain.product_managers = task
+        ? await filterPmNamesForRecord(plain, task, pmContextByName)
+        : safeParseJsonArray(plain.product_managers);
       return plain;
-    });
+    }));
     res.json({ code: 0, data: parsed });
   } catch (err) { next(err); }
 });
@@ -37,11 +80,22 @@ router.post('/match', async (req, res, next) => {
     const { taskId } = req.query;
     if (!taskId) return res.status(400).json({ code: 1, message: 'taskId 必填' });
 
+    const task = await CollectionTask.findByPk(taskId);
+    if (!task) return res.status(404).json({ code: 1, message: '任务不存在' });
+
     // 获取原始记录
     const records = await WorkRecord.findAll({
       where: { task_id: taskId },
-      include: [{ model: Staff, as: 'staff', attributes: ['name', 'role'] }]
+      include: [{ model: Staff, as: 'staff', attributes: ['id', 'name', 'role', 'employment_status', 'is_active', 'status_changed_at'] }]
     });
+    const taskById = new Map([[task.id, task]]);
+    const statusAllowedRecords = await filterRecordsByStaffStatus(records, taskById);
+    const pmContextByName = await getPmStatusContextByName(collectPmNamesFromRecords(statusAllowedRecords));
+    const matchInput = await Promise.all(statusAllowedRecords.map(async record => {
+      const plain = record.toJSON();
+      plain.product_managers = await filterPmNamesForRecord(record, task, pmContextByName);
+      return plain;
+    }));
 
     // 保存旧匹配组的备注和状态，以便重建后回填
     const oldGroups = await MatchGroup.findAll({ where: { task_id: taskId } });
@@ -55,7 +109,7 @@ router.post('/match', async (req, res, next) => {
     }
 
     // 执行匹配
-    const groups = matchRecords(records.map(r => r.toJSON()));
+    const groups = matchRecords(matchInput);
 
     // 清除旧匹配组
     await MatchGroup.destroy({ where: { task_id: taskId } });
@@ -82,10 +136,14 @@ router.put('/:id', async (req, res, next) => {
   try {
     const mg = await MatchGroup.findByPk(req.params.id);
     if (!mg) return res.status(404).json({ code: 1, message: '匹配组不存在' });
-    const fields = ['merged_title', 'version', 'product_managers', 'remark', 'status'];
-    fields.forEach(f => { if (req.body[f] !== undefined) mg[f] = req.body[f]; });
+    const textFields = ['merged_title', 'version', 'remark', 'status'];
+    textFields.forEach(f => { if (req.body[f] !== undefined) mg[f] = req.body[f]; });
+    if (req.body.product_managers !== undefined) mg.product_managers = normalizeNameArray(req.body.product_managers);
+    if (req.body.frontend !== undefined) mg.frontend = normalizeRoleArray(req.body.frontend);
+    if (req.body.backend !== undefined) mg.backend = normalizeRoleArray(req.body.backend);
+    if (req.body.test_role !== undefined) mg.test_role = normalizeRoleArray(req.body.test_role);
     await mg.save();
-    res.json({ code: 0, data: mg });
+    res.json({ code: 0, data: parseMatchGroup(mg) });
   } catch (err) { next(err); }
 });
 
@@ -98,15 +156,15 @@ router.post('/manual-row', async (req, res, next) => {
       id: uuidv4(), task_id,
       merged_title: merged_title || '',
       version: version || '',
-      product_managers: JSON.stringify(product_managers || []),
-      frontend: JSON.stringify(frontend || []),
-      backend: JSON.stringify(backend || []),
-      test_role: JSON.stringify(test_role || []),
+      product_managers: normalizeNameArray(product_managers),
+      frontend: normalizeRoleArray(frontend),
+      backend: normalizeRoleArray(backend),
+      test_role: normalizeRoleArray(test_role),
       remark: remark || '',
       confidence: 1,
       status: 'manual_merged'
     });
-    res.json({ code: 0, data: mg });
+    res.json({ code: 0, data: parseMatchGroup(mg) });
   } catch (err) { next(err); }
 });
 

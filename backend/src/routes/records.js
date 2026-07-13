@@ -8,8 +8,20 @@
 const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
-const { WorkRecord, Staff } = require('../models');
+const { Op } = require('sequelize');
+const { WorkRecord, Staff, CollectionTask } = require('../models');
 const { safeParseJsonArray } = require('../utils/parseJson');
+const {
+  STAFF_RESIGNED_MESSAGE,
+  collectPmNamesFromRecords,
+  filterPmNamesForRecord,
+  filterRecordsByStaffStatus,
+  getPmStatusContextByName,
+  getStaffHistoryMap,
+  getTaskBusinessDate,
+  isResignedAt,
+  normalizeEmploymentStatus
+} = require('../services/PersonStatusService');
 
 function normalizeProductManagers(value) {
   if (Array.isArray(value)) {
@@ -38,6 +50,50 @@ function requireProductManagers(value, label = '记录') {
   return productManagers;
 }
 
+async function assertRecordParticipantsWritable({ task_id, staff_id, product_managers }) {
+  const [task, staff] = await Promise.all([
+    CollectionTask.findByPk(task_id),
+    Staff.findByPk(staff_id)
+  ]);
+  if (!task) {
+    const err = new Error('任务不存在');
+    err.status = 404;
+    throw err;
+  }
+  if (!staff) {
+    const err = new Error('人员不存在');
+    err.status = 404;
+    throw err;
+  }
+
+  const businessDate = getTaskBusinessDate(task);
+  const staffHistoryMap = await getStaffHistoryMap([staff_id]);
+  if (isResignedAt(
+    staffHistoryMap.get(staff_id) || [],
+    businessDate,
+    normalizeEmploymentStatus(staff.employment_status, staff.is_active !== false)
+  )) {
+    const err = new Error(STAFF_RESIGNED_MESSAGE);
+    err.status = 403;
+    throw err;
+  }
+
+  const pmContext = await getPmStatusContextByName(product_managers);
+  for (const pmName of product_managers) {
+    const ctx = pmContext.get(pmName);
+    if (!ctx) continue;
+    if (isResignedAt(
+      ctx.histories,
+      businessDate,
+      normalizeEmploymentStatus(ctx.pm.employment_status, ctx.pm.is_active !== false)
+    )) {
+      const err = new Error(STAFF_RESIGNED_MESSAGE);
+      err.status = 403;
+      throw err;
+    }
+  }
+}
+
 /* GET /api/records?taskId=xxx */
 router.get('/', async (req, res, next) => {
   try {
@@ -46,14 +102,21 @@ router.get('/', async (req, res, next) => {
     if (req.query.staffId) where.staff_id = req.query.staffId;
     const list = await WorkRecord.findAll({
       where,
-      include: [{ model: Staff, as: 'staff', attributes: ['name', 'role'] }],
+      include: [{ model: Staff, as: 'staff', attributes: ['id', 'name', 'role', 'employment_status', 'is_active', 'status_changed_at'] }],
       order: [['staff_id', 'ASC'], ['created_at', 'ASC']]
     });
-    const parsed = list.map(r => {
+    const taskIds = [...new Set(list.map(r => r.task_id).filter(Boolean))];
+    const tasks = taskIds.length
+      ? await CollectionTask.findAll({ where: { id: { [Op.in]: taskIds } } })
+      : [];
+    const taskById = new Map(tasks.map(task => [task.id, task]));
+    const statusAllowedRecords = await filterRecordsByStaffStatus(list, taskById);
+    const pmContextByName = await getPmStatusContextByName(collectPmNamesFromRecords(statusAllowedRecords));
+    const parsed = await Promise.all(statusAllowedRecords.map(async r => {
       const plain = r.toJSON();
-      plain.product_managers = safeParseJsonArray(plain.product_managers);
+      plain.product_managers = await filterPmNamesForRecord(r, taskById.get(r.task_id), pmContextByName);
       return plain;
-    });
+    }));
     res.json({ code: 0, data: parsed });
   } catch (err) { next(err); }
 });
@@ -66,6 +129,7 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ code: 1, message: '必填字段缺失' });
     }
     const normalizedPms = requireProductManagers(product_managers);
+    await assertRecordParticipantsWritable({ task_id, staff_id, product_managers: normalizedPms });
     const record = await WorkRecord.create({
       id: uuidv4(), link_id, task_id, staff_id,
       requirement_title, version, product_managers: normalizedPms, hours
@@ -84,6 +148,14 @@ router.put('/:id', async (req, res, next) => {
     if (req.body.product_managers !== undefined) {
       rec.product_managers = requireProductManagers(req.body.product_managers);
     }
+    const normalizedPms = req.body.product_managers !== undefined
+      ? rec.product_managers
+      : safeParseJsonArray(rec.product_managers);
+    await assertRecordParticipantsWritable({
+      task_id: rec.task_id,
+      staff_id: rec.staff_id,
+      product_managers: normalizedPms
+    });
     rec.updated_at = new Date();
     await rec.save();
     res.json({ code: 0, data: rec });
@@ -113,6 +185,7 @@ router.post('/import', async (req, res, next) => {
       const staff = staffMap[row.staff_name];
       if (!staff) continue;
       const productManagers = requireProductManagers(row.product_managers, `第 ${rowIndex + 1} 条记录`);
+      await assertRecordParticipantsWritable({ task_id, staff_id: staff.id, product_managers: productManagers });
       const rec = await WorkRecord.create({
         id: uuidv4(),
         task_id,

@@ -40,6 +40,36 @@ const ROLE_OPTIONS = [
 ]
 const ROLE_TAG_CLASS = { frontend: 'dt-tag-blue', backend: 'dt-tag-green', test: 'dt-tag-orange' }
 const ROLE_LABEL = { frontend: '前端', backend: '后端', test: '测试' }
+const EMPLOYMENT_STATUS_OPTIONS = [
+  { value: 'active', label: '在职' },
+  { value: 'resigned', label: '离职' },
+  { value: 'retained', label: '留职' },
+  { value: 'long_leave', label: '长假' }
+]
+const EMPLOYMENT_STATUS_LABEL = EMPLOYMENT_STATUS_OPTIONS.reduce((acc, item) => {
+  acc[item.value] = item.label
+  return acc
+}, {})
+const EMPLOYMENT_STATUS_BADGE = {
+  active: 'dt-badge-active',
+  resigned: 'dt-badge-closed',
+  retained: 'dt-badge-draft',
+  long_leave: 'dt-badge-warning'
+}
+
+function normalizedEmploymentStatus(person) {
+  return person?.employment_status || (person?.is_active === false ? 'resigned' : 'active')
+}
+
+function isActiveLike(person) {
+  return normalizedEmploymentStatus(person) !== 'resigned'
+}
+
+function todayYmd() {
+  const d = new Date()
+  const p = n => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
 
 /* ========== 交接弹窗状态 ========== */
 const transferDialogVisible = ref(false)
@@ -52,7 +82,7 @@ const transferSubmitting = ref(false)
 /** 下拉候选（去掉自身） */
 const transferTargetOptions = computed(() => {
   if (!transferSource.value) return []
-  return staffStore.list.filter(s => s.id !== transferSource.value.id && s.is_active)
+  return staffStore.list.filter(s => s.id !== transferSource.value.id && isActiveLike(s))
 })
 
 onMounted(async () => {
@@ -182,6 +212,28 @@ async function handleSubmit() {
   }
 }
 
+async function updateStaffStatus(staff, status) {
+  if (status === normalizedEmploymentStatus(staff)) return
+  try {
+    if (status === 'resigned') {
+      await ElMessageBox.confirm(
+        `确认将「${staff.name}」设为离职？生效后该人员不可填写，后续周期不再统计。`,
+        '切换为离职',
+        { confirmButtonText: '确认', cancelButtonText: '取消', type: 'warning' }
+      )
+    }
+    await api.put(`/staff/${staff.id}/status`, {
+      employment_status: status,
+      effective_date: todayYmd()
+    })
+    await staffStore.fetchAll()
+    ElMessage.success('状态已更新')
+  } catch (err) {
+    if (err === 'cancel') return
+    ElMessage.error(err.response?.data?.message || '状态更新失败')
+  }
+}
+
 async function handleDelete(staff) {
   try {
     await ElMessageBox.confirm(`确认删除「${staff.name}」？`, '删除人员', {
@@ -277,7 +329,7 @@ const pmTransferSubmitting = ref(false)
 
 const pmTransferTargetOptions = computed(() => {
   if (!pmTransferSource.value) return []
-  return pmStore.list.filter(p => p.id !== pmTransferSource.value.id && p.is_active)
+  return pmStore.list.filter(p => p.id !== pmTransferSource.value.id && isActiveLike(p))
 })
 
 function getPmViewUrl(token) {
@@ -380,6 +432,28 @@ function openPmLink(token) {
   if (!url) return ElMessage.warning('该产品经理暂无专属链接')
   window.open(url, '_blank')
 }
+
+async function updatePmStatus(pm, status) {
+  if (status === normalizedEmploymentStatus(pm)) return
+  try {
+    if (status === 'resigned') {
+      await ElMessageBox.confirm(
+        `确认将产品经理「${pm.name}」设为离职？生效后专属查看链接会被阻断，后续周期不再统计该产品经理。`,
+        '切换为离职',
+        { confirmButtonText: '确认', cancelButtonText: '取消', type: 'warning' }
+      )
+    }
+    await api.put(`/pm/${pm.id}/status`, {
+      employment_status: status,
+      effective_date: todayYmd()
+    })
+    await pmStore.fetchAll()
+    ElMessage.success('状态已更新')
+  } catch (err) {
+    if (err === 'cancel') return
+    ElMessage.error(err.response?.data?.message || '状态更新失败')
+  }
+}
 </script>
 
 <template>
@@ -447,8 +521,8 @@ function openPmLink(token) {
               </el-table-column>
               <el-table-column label="状态" width="70">
                 <template #default="{ row }">
-                  <span class="dt-badge" :class="row.is_active ? 'dt-badge-active' : 'dt-badge-closed'">
-                    {{ row.is_active ? '在职' : '离职' }}
+                  <span class="dt-badge" :class="EMPLOYMENT_STATUS_BADGE[normalizedEmploymentStatus(row)] || 'dt-badge-active'">
+                    {{ EMPLOYMENT_STATUS_LABEL[normalizedEmploymentStatus(row)] || '在职' }}
                   </span>
                 </template>
               </el-table-column>
@@ -476,11 +550,21 @@ function openPmLink(token) {
                 </template>
               </el-table-column>
               <!-- 管理列 -->
-              <el-table-column label="管理" width="160" align="center">
+              <el-table-column label="管理" width="270" align="center">
                 <template #default="{ row }">
-                  <el-button v-if="authStore.hasPermission('btn:personnel:edit', 'view')" type="warning" link size="small" @click="openEdit(row)">编辑</el-button>
-                  <el-button v-if="authStore.hasPermission('btn:personnel:transfer', 'view')" type="info" link size="small" @click="openTransfer(row)">交接</el-button>
-                  <el-button v-if="authStore.hasPermission('btn:personnel:delete', 'view')" type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
+                  <div class="dt-management-ops">
+                    <el-select
+                      class="dt-status-select"
+                      size="small"
+                      :model-value="normalizedEmploymentStatus(row)"
+                      @change="value => updateStaffStatus(row, value)"
+                    >
+                      <el-option v-for="item in EMPLOYMENT_STATUS_OPTIONS" :key="item.value" :label="item.label" :value="item.value" />
+                    </el-select>
+                    <el-button v-if="authStore.hasPermission('btn:personnel:edit', 'view')" type="warning" link size="small" @click="openEdit(row)">编辑</el-button>
+                    <el-button v-if="authStore.hasPermission('btn:personnel:transfer', 'view')" type="info" link size="small" @click="openTransfer(row)">交接</el-button>
+                    <el-button v-if="authStore.hasPermission('btn:personnel:delete', 'view')" type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
+                  </div>
                 </template>
               </el-table-column>
             </el-table>
@@ -508,8 +592,8 @@ function openPmLink(token) {
               </el-table-column>
               <el-table-column label="状态" width="70">
                 <template #default="{ row }">
-                  <span class="dt-badge" :class="row.is_active ? 'dt-badge-active' : 'dt-badge-closed'">
-                    {{ row.is_active ? '在职' : '离职' }}
+                  <span class="dt-badge" :class="EMPLOYMENT_STATUS_BADGE[normalizedEmploymentStatus(row)] || 'dt-badge-active'">
+                    {{ EMPLOYMENT_STATUS_LABEL[normalizedEmploymentStatus(row)] || '在职' }}
                   </span>
                 </template>
               </el-table-column>
@@ -536,11 +620,21 @@ function openPmLink(token) {
                 </template>
               </el-table-column>
               <!-- PM 管理列 -->
-              <el-table-column label="管理" width="160" align="center">
+              <el-table-column label="管理" width="270" align="center">
                 <template #default="{ row }">
-                  <el-button type="warning" link size="small" @click="openPmEdit(row)">编辑</el-button>
-                  <el-button type="info" link size="small" @click="openPmTransfer(row)">交接</el-button>
-                  <el-button type="danger" link size="small" @click="handlePmDelete(row)">删除</el-button>
+                  <div class="dt-management-ops">
+                    <el-select
+                      class="dt-status-select"
+                      size="small"
+                      :model-value="normalizedEmploymentStatus(row)"
+                      @change="value => updatePmStatus(row, value)"
+                    >
+                      <el-option v-for="item in EMPLOYMENT_STATUS_OPTIONS" :key="item.value" :label="item.label" :value="item.value" />
+                    </el-select>
+                    <el-button type="warning" link size="small" @click="openPmEdit(row)">编辑</el-button>
+                    <el-button type="info" link size="small" @click="openPmTransfer(row)">交接</el-button>
+                    <el-button type="danger" link size="small" @click="handlePmDelete(row)">删除</el-button>
+                  </div>
                 </template>
               </el-table-column>
             </el-table>
@@ -738,6 +832,24 @@ function openPmLink(token) {
   font-weight: 700 !important;
   white-space: nowrap;
   padding: 0 6px !important;
+}
+.dt-management-ops {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+.dt-status-select {
+  width: 78px;
+  flex: 0 0 78px;
+}
+.dt-badge-warning {
+  background: #FFF7E8;
+  color: #D25F00;
+}
+.dt-badge-warning::before {
+  background: #FF7D00;
 }
 
 /* 交接弹窗提示 */

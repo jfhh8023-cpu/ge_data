@@ -13,6 +13,14 @@ const { v4: uuidv4 } = require('uuid');
 const { CollectionTask, FillLink, WorkRecord, MatchGroup, Staff, StaffFillLink } = require('../models');
 const { Op } = require('sequelize');
 const { createPreferredTask } = require('../services/TaskService');
+const {
+  RESIGNED_STATUS,
+  collectPmNamesFromRecords,
+  filterPmNamesForRecord,
+  filterRecordsByStaffStatus,
+  getPmStatusContextByName,
+  isNonResigned
+} = require('../services/PersonStatusService');
 
 /* GET /api/tasks */
 router.get('/', async (req, res, next) => {
@@ -49,8 +57,23 @@ router.get('/:id', async (req, res, next) => {
   try {
     const task = await CollectionTask.findByPk(req.params.id);
     if (!task) return res.status(404).json({ code: 1, message: '任务不存在' });
-    const records = await WorkRecord.findAll({ where: { task_id: req.params.id }, include: [{ model: Staff, as: 'staff', attributes: ['name', 'role'] }] });
-    const links = await FillLink.findAll({ where: { task_id: req.params.id }, include: [{ model: Staff, as: 'staff', attributes: ['name', 'role'] }] });
+    const allRecords = await WorkRecord.findAll({
+      where: { task_id: req.params.id },
+      include: [{ model: Staff, as: 'staff', attributes: ['id', 'name', 'role', 'employment_status', 'is_active', 'status_changed_at'] }]
+    });
+    const taskById = new Map([[task.id, task]]);
+    const statusAllowedRecords = await filterRecordsByStaffStatus(allRecords, taskById);
+    const pmContextByName = await getPmStatusContextByName(collectPmNamesFromRecords(statusAllowedRecords));
+    const records = await Promise.all(statusAllowedRecords.map(async record => {
+      const plain = record.toJSON();
+      plain.product_managers = await filterPmNamesForRecord(record, task, pmContextByName);
+      return plain;
+    }));
+    const allLinks = await FillLink.findAll({
+      where: { task_id: req.params.id },
+      include: [{ model: Staff, as: 'staff', attributes: ['name', 'role', 'employment_status', 'is_active'] }]
+    });
+    const links = allLinks.filter(link => isNonResigned(link.staff));
     const matchGroups = await MatchGroup.findAll({ where: { task_id: req.params.id } });
     res.json({ code: 0, data: { task, records, links, matchGroups } });
   } catch (err) { next(err); }
@@ -82,7 +105,7 @@ router.post('/:id/generate-links', async (req, res, next) => {
   try {
     const task = await CollectionTask.findByPk(req.params.id);
     if (!task) return res.status(404).json({ code: 1, message: '任务不存在' });
-    const staffList = await Staff.findAll({ where: { is_active: true } });
+    const staffList = await Staff.findAll({ where: { employment_status: { [Op.ne]: RESIGNED_STATUS } } });
     const links = [];
     for (const s of staffList) {
       const existing = await FillLink.findOne({ where: { task_id: req.params.id, staff_id: s.id } });
@@ -130,9 +153,10 @@ router.get('/:id/activity', async (req, res, next) => {
     // 新体系：从 staff_fill_links 中查当前任务的活动
     const sflLinks = await StaffFillLink.findAll({
       where: { editing_task_id: req.params.id },
-      include: [{ model: Staff, as: 'staff', attributes: ['name', 'role'] }]
+      include: [{ model: Staff, as: 'staff', attributes: ['name', 'role', 'employment_status', 'is_active'] }]
     });
     for (const sfl of sflLinks) {
+      if (!isNonResigned(sfl.staff)) continue;
       const staffName = sfl.staff?.name || '未知';
       if (sfl.editing_at && (now - new Date(sfl.editing_at).getTime()) < EDITING_TIMEOUT_MS) {
         editing.push(staffName);

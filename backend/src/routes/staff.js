@@ -8,6 +8,14 @@ const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
 const { Staff, StaffFillLink, WorkRecord, CollectionTask } = require('../models');
 const { Op } = require('sequelize');
+const sequelize = require('../config/database');
+const {
+  RESIGNED_STATUS,
+  buildCurrentStatusPayload,
+  isNonResigned,
+  normalizeStatusDate,
+  setStaffStatus
+} = require('../services/PersonStatusService');
 
 /* 常量 */
 const MIN_NAME_LENGTH = 2;
@@ -35,6 +43,7 @@ router.get('/', async (req, res, next) => {
     });
     const data = list.map(s => ({
       ...s.toJSON(),
+      ...buildCurrentStatusPayload(s),
       fillToken: s.fillLink?.token ?? null
     }));
     res.json({ code: 0, data });
@@ -44,7 +53,7 @@ router.get('/', async (req, res, next) => {
 /* POST /api/staff/ensure-links — v1.6.0: 幂等生成所有 active 人员的系统级链接 */
 router.post('/ensure-links', async (req, res, next) => {
   try {
-    const activeStaff = await Staff.findAll({ where: { is_active: true } });
+    const activeStaff = await Staff.findAll({ where: { employment_status: { [Op.ne]: RESIGNED_STATUS } } });
     let created = 0;
     for (const s of activeStaff) {
       const exists = await StaffFillLink.findOne({ where: { staff_id: s.id } });
@@ -91,7 +100,6 @@ router.get('/:id/records-summary', async (req, res, next) => {
 
 /* POST /api/staff/:id/transfer — v1.6.1: 将工时数据交接给指定人员（事务保护） */
 router.post('/:id/transfer', async (req, res, next) => {
-  const sequelize = require('../config/database');
   const t = await sequelize.transaction();
   try {
     const { to_staff_id } = req.body;
@@ -102,6 +110,10 @@ router.post('/:id/transfer', async (req, res, next) => {
     const toStaff = await Staff.findByPk(to_staff_id, { transaction: t });
     if (!fromStaff) { await t.rollback(); return res.status(404).json({ code: 1, message: '被交接人员不存在' }); }
     if (!toStaff) { await t.rollback(); return res.status(404).json({ code: 1, message: '目标人员不存在' }); }
+    if (!isNonResigned(toStaff)) {
+      await t.rollback();
+      return res.status(400).json({ code: 1, message: '交接目标人员已离职，不能作为接收人' });
+    }
 
     const [affectedRows] = await WorkRecord.update(
       { staff_id: to_staff_id },
@@ -130,6 +142,25 @@ router.put('/sort', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/* PUT /api/staff/:id/status — 切换在职/离职/留职/长假 */
+router.put('/:id/status', async (req, res, next) => {
+  const t = await sequelize.transaction();
+  try {
+    const staff = await Staff.findByPk(req.params.id, { transaction: t });
+    if (!staff) {
+      await t.rollback();
+      return res.status(404).json({ code: 1, message: '人员不存在' });
+    }
+    const effectiveAt = normalizeStatusDate(req.body.effective_date || req.body.status_changed_at);
+    await setStaffStatus(staff, req.body.employment_status || req.body.status, effectiveAt, t);
+    await t.commit();
+    res.json({ code: 0, data: { ...staff.toJSON(), ...buildCurrentStatusPayload(staff) }, message: '状态已更新' });
+  } catch (err) {
+    await t.rollback();
+    next(err);
+  }
+});
+
 /* POST /api/staff */
 router.post('/', async (req, res, next) => {
   try {
@@ -143,10 +174,11 @@ router.post('/', async (req, res, next) => {
     }
     const staffId = uuidv4();
     const staff = await Staff.create({ id: staffId, name: name.trim(), role, phone });
+    await setStaffStatus(staff, 'active', staff.created_at || new Date());
     // v1.6.0: 自动生成系统级专属链接
     const token = `${staffId.substring(0, 8)}_${uuidv4().replace(/-/g, '').substring(0, 12)}`;
     await StaffFillLink.create({ id: uuidv4(), staff_id: staffId, token });
-    res.json({ code: 0, data: { ...staff.toJSON(), fillToken: token } });
+    res.json({ code: 0, data: { ...staff.toJSON(), ...buildCurrentStatusPayload(staff), fillToken: token } });
   } catch (err) { next(err); }
 });
 
@@ -162,9 +194,14 @@ router.put('/:id', async (req, res, next) => {
     }
     if (role !== undefined && VALID_ROLES.includes(role)) staff.role = role;
     if (req.body.phone !== undefined) staff.phone = normalizePhone(req.body.phone);
-    if (is_active !== undefined) staff.is_active = is_active;
+    if (is_active !== undefined) {
+      await setStaffStatus(staff, is_active ? 'active' : 'resigned', req.body.status_changed_at || new Date());
+    }
+    if (req.body.employment_status !== undefined || req.body.status !== undefined) {
+      await setStaffStatus(staff, req.body.employment_status || req.body.status, req.body.status_changed_at || new Date());
+    }
     await staff.save();
-    res.json({ code: 0, data: staff });
+    res.json({ code: 0, data: { ...staff.toJSON(), ...buildCurrentStatusPayload(staff) } });
   } catch (err) { next(err); }
 });
 

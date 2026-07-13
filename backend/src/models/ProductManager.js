@@ -9,6 +9,11 @@ const ProductManager = sequelize.define('product_managers', {
   id:         { type: DataTypes.CHAR(36), primaryKey: true },
   name:       { type: DataTypes.STRING(50), allowNull: false, unique: true },
   token:      { type: DataTypes.STRING(100), unique: true },
+  employment_status: {
+    type: DataTypes.ENUM('active', 'resigned', 'retained', 'long_leave'),
+    defaultValue: 'active'
+  },
+  status_changed_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
   is_active:  { type: DataTypes.BOOLEAN, defaultValue: true },
   sort_order: { type: DataTypes.INTEGER, defaultValue: 0 },
   created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },

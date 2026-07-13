@@ -10,9 +10,19 @@
  */
 const express = require('express');
 const router = express.Router();
-const { CollectionTask, WorkRecord, MatchGroup, Staff, FillLink } = require('../models');
+const { CollectionTask, WorkRecord, MatchGroup, Staff, ProductManager } = require('../models');
 const { Op, fn, col } = require('sequelize');
 const { safeParseJsonArray } = require('../utils/parseJson');
+const {
+  RESIGNED_STATUS,
+  buildCurrentStatusPayload,
+  collectPmNamesFromRecords,
+  filterPmNamesForRecord,
+  filterRecordsByStaffStatus,
+  filterRecordsForPm,
+  getPmStatusContextByName,
+  isNonResigned
+} = require('../services/PersonStatusService');
 
 /* 季度月份映射 */
 const QUARTER_MONTHS = { Q1: [1,2,3], Q2: [4,5,6], Q3: [7,8,9], Q4: [10,11,12] };
@@ -85,15 +95,20 @@ router.get('/', async (req, res, next) => {
     const taskIdOutOfRange = taskId && taskId !== 'all' && !taskIds.includes(taskId);
     if (taskId && taskId !== 'all' && !taskIdOutOfRange) taskIds = [taskId];
 
-    const staff = await Staff.findAll({ where: { is_active: true } });
+    const currentStaffRows = await Staff.findAll({
+      where: { employment_status: { [Op.ne]: RESIGNED_STATUS } },
+      order: [['sort_order', 'ASC'], ['created_at', 'ASC']]
+    });
+    const currentStaff = currentStaffRows.map(s => ({ ...s.toJSON(), ...buildCurrentStatusPayload(s) }));
 
     // 空数组保护
     if (taskIds.length === 0 || taskIdOutOfRange) {
       return res.json({
         code: 0,
         data: {
-          tasks, records: [], matchGroups: [], staff,
-          summary: { totalHours: 0, recordCount: 0, staffCount: staff.length, taskCount: 0 },
+          tasks, records: [], matchGroups: [], staff: currentStaff,
+          currentStaff,
+          summary: { totalHours: 0, recordCount: 0, staffCount: currentStaff.length, taskCount: 0 },
           roleSummary: { frontend: 0, backend: 0, test: 0 },
           pmDistribution: []
         }
@@ -101,10 +116,23 @@ router.get('/', async (req, res, next) => {
     }
 
     // 获取 WorkRecord（关联 Staff 信息用于角色聚合）
-    const records = await WorkRecord.findAll({
+    const allRecords = await WorkRecord.findAll({
       where: { task_id: { [Op.in]: taskIds } },
-      include: [{ model: Staff, as: 'staff', attributes: ['id', 'name', 'role'] }]
+      include: [{ model: Staff, as: 'staff', attributes: ['id', 'name', 'role', 'employment_status', 'is_active', 'status_changed_at'] }]
     });
+    const taskById = new Map(tasks.map(t => [t.id, t]));
+    const records = await filterRecordsByStaffStatus(allRecords, taskById);
+    const pmContextByName = await getPmStatusContextByName(collectPmNamesFromRecords(records));
+
+    const staffById = new Map(currentStaff.map(s => [s.id, s]));
+    for (const record of records) {
+      const staffPlain = record.staff?.toJSON ? record.staff.toJSON() : record.staff;
+      if (staffPlain?.id && !staffById.has(staffPlain.id)) {
+        staffById.set(staffPlain.id, { ...staffPlain, ...buildCurrentStatusPayload(staffPlain) });
+      }
+    }
+    const visibleStaff = [...staffById.values()]
+      .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0) || String(a.name || '').localeCompare(String(b.name || ''), 'zh-Hans-CN'));
 
     // matchGroups 仍用于明细表展示
     const matchGroups = await MatchGroup.findAll({ where: { task_id: { [Op.in]: taskIds } } });
@@ -121,24 +149,26 @@ router.get('/', async (req, res, next) => {
     }
 
     // === 按 PM 分组统计（REQ-13） ===
-    // v3.2.1: 先从 product_managers 表预初始化所有活跃 PM（确保柱状图/明细表包含全部活跃产品经理）
-    const { ProductManager } = require('../models');
+    // v3.2.1: 先从 product_managers 表预初始化所有当前非离职 PM
     const activePms = await ProductManager.findAll({
-      where: { is_active: true },
-      attributes: ['name', 'sort_order'],
+      where: { employment_status: { [Op.ne]: RESIGNED_STATUS } },
+      attributes: ['id', 'name', 'sort_order', 'employment_status', 'is_active', 'status_changed_at'],
       order: [['sort_order', 'ASC']]
     });
     const pmMap = {};
     for (const pm of activePms) {
-      pmMap[pm.name] = { name: pm.name, frontend: 0, backend: 0, test: 0, total: 0, records: [] };
+      pmMap[pm.name] = { id: pm.id, name: pm.name, frontend: 0, backend: 0, test: 0, total: 0, records: [] };
     }
 
     // 每条 WorkRecord 有 product_managers 字段（JSON 数组），按第一个 PM 分组
     for (const r of records) {
-      const pms = safeParseJsonArray(r.product_managers);
-      const pmName = pms.length > 0 ? pms[0] : PM_DEFAULT_NAME;
+      const rawPms = safeParseJsonArray(r.product_managers);
+      const visiblePms = await filterPmNamesForRecord(r, taskById.get(r.task_id), pmContextByName);
+      if (rawPms.length > 0 && visiblePms.length === 0) continue;
+      const pmName = visiblePms.length > 0 ? visiblePms[0] : PM_DEFAULT_NAME;
       if (!pmMap[pmName]) {
-        pmMap[pmName] = { name: pmName, frontend: 0, backend: 0, test: 0, total: 0, records: [] };
+        const pmEntity = pmContextByName.get(pmName)?.pm;
+        pmMap[pmName] = { id: pmEntity?.id || null, name: pmName, frontend: 0, backend: 0, test: 0, total: 0, records: [] };
       }
       const hours = parseFloat(r.hours || 0);
       const role = r.staff?.role;
@@ -183,16 +213,16 @@ router.get('/', async (req, res, next) => {
       code: 0,
       data: {
         tasks,
-        records: records.map(r => {
+        records: await Promise.all(records.map(async r => {
           const plain = r.toJSON();
-          plain.product_managers = safeParseJsonArray(plain.product_managers);
+          plain.product_managers = await filterPmNamesForRecord(r, taskById.get(r.task_id), pmContextByName);
           return plain;
-        }),
-        matchGroups, staff,
+        })),
+        matchGroups, staff: visibleStaff, currentStaff,
         summary: {
           totalHours,
           recordCount: records.length,
-          staffCount: staff.length,
+          staffCount: currentStaff.length,
           taskCount: tasks.length
         },
         roleSummary,
@@ -253,14 +283,29 @@ router.get('/personal/:staffId', async (req, res, next) => {
       });
     }
 
-    // 获取该人员在这些任务下的全部工时记录
-    const records = await WorkRecord.findAll({
+    // 获取该人员在这些任务下的全部工时记录，并按人员/PM 状态过滤
+    const allRecords = await WorkRecord.findAll({
       where: {
         staff_id: staffId,
         task_id: { [Op.in]: taskIds }
       },
       order: [['created_at', 'DESC']]
     });
+    const taskById = new Map(tasks.map(t => [t.id, t]));
+    const records = await filterRecordsByStaffStatus(allRecords, taskById);
+    if (!isNonResigned(staff) && records.length === 0) {
+      return res.json({
+        code: 0,
+        data: {
+          staff: null,
+          totalHours: 0,
+          recordCount: 0,
+          taskCount: 0,
+          tasks: []
+        }
+      });
+    }
+    const pmContextByName = await getPmStatusContextByName(collectPmNamesFromRecords(records));
 
     // 按任务分组
     const taskMap = {};
@@ -271,7 +316,7 @@ router.get('/personal/:staffId', async (req, res, next) => {
     for (const r of records) {
       if (taskMap[r.task_id]) {
         const plain = r.toJSON();
-        plain.product_managers = safeParseJsonArray(plain.product_managers);
+        plain.product_managers = await filterPmNamesForRecord(r, taskById.get(r.task_id), pmContextByName);
         taskMap[r.task_id].records.push(plain);
       }
     }
@@ -304,7 +349,6 @@ router.get('/pm/:pmId', async (req, res, next) => {
     const { startFrom, startTo } = getDateRange(yearNum, quarter);
 
     // 获取 PM 信息
-    const { ProductManager } = require('../models');
     const pm = await ProductManager.findByPk(pmId);
     if (!pm) return res.status(404).json({ code: 1, message: '产品经理不存在' });
 
@@ -336,15 +380,20 @@ router.get('/pm/:pmId', async (req, res, next) => {
     // 获取这些任务下的全部工时记录（关联 Staff 信息）
     const allRecords = await WorkRecord.findAll({
       where: { task_id: { [Op.in]: taskIds } },
-      include: [{ model: Staff, as: 'staff', attributes: ['id', 'name', 'role'] }],
+      include: [{ model: Staff, as: 'staff', attributes: ['id', 'name', 'role', 'employment_status', 'is_active', 'status_changed_at'] }],
       order: [['created_at', 'DESC']]
     });
+    const taskById = new Map(tasks.map(t => [t.id, t]));
+    const statusAllowedRecords = await filterRecordsByStaffStatus(allRecords, taskById);
 
-    // 过滤出包含该 PM 名称的记录
-    const pmRecords = allRecords.filter(r => {
-      const pms = safeParseJsonArray(r.product_managers);
-      return recordBelongsToPm(pms, pm.name);
-    });
+    // 过滤出包含该 PM 名称且 PM 状态在任务日期允许统计的记录
+    const pmRecords = await filterRecordsForPm(statusAllowedRecords, pm, taskById);
+    if (!isNonResigned(pm) && pmRecords.length === 0) {
+      return res.json({
+        code: 0,
+        data: { pm: null, totalHours: 0, recordCount: 0, taskCount: 0, tasks: [] }
+      });
+    }
 
     // 按任务分组
     const taskMap = {};

@@ -9,6 +9,7 @@ const cors = require('cors');
 const { sequelize } = require('./models');
 const errorHandler = require('./middleware/errorHandler');
 const { ensureAutoTaskTables, startAutoTaskScheduler } = require('./services/AutoTaskService');
+const { ensurePersonStatusTables } = require('./services/PersonStatusService');
 
 const app = express();
 const PORT = parseInt(process.env.PORT, 10) || 3001;
@@ -30,6 +31,9 @@ app.use('/api/excel',       require('./routes/excel'));
 app.use('/api/settings',    require('./routes/settings'));
 app.use('/api/pm',          require('./routes/pm'));
 app.use('/api/quotes',      require('./routes/quotes'));
+const workloadReportsRouter = require('./routes/workloadReports');
+app.use('/local-reports/workload-analysis', workloadReportsRouter);
+app.use('/api/local-reports/workload-analysis', workloadReportsRouter);
 const localReportsStatic = express.static(path.join(__dirname, '..', '..', '.codex-local', 'reports'), {
   index: false,
   extensions: ['html']
@@ -50,6 +54,7 @@ async function start() {
   try {
     await sequelize.authenticate();
     console.log('[DB] MySQL 连接成功');
+    await ensurePersonStatusTables();
     await ensureAutoTaskTables();
     app.listen(PORT, () => {
       console.log(`[API] DevTracker v3.0.0 运行在 http://localhost:${PORT}`);

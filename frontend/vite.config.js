@@ -7,7 +7,8 @@ export default defineConfig({
   base: isProd ? '/devtracker/' : '/',
   plugins: [vue()],
   server: {
-    port: 5173,
+    port: 5176,
+    strictPort: true,
     proxy: {
       '/api': {
         target: 'http://localhost:3001',

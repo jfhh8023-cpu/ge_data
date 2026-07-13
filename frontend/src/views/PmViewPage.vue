@@ -14,6 +14,8 @@ const token = computed(() => route.params.token)
 const loading = ref(true)
 const error = ref('')
 const pmData = ref(null)
+const isBlocked = computed(() => pmData.value?.blocked === true)
+const blockMessage = computed(() => pmData.value?.message || '用户已离职，无法查看页面数据')
 
 /* ========== 筛选状态 ========== */
 const now = new Date()
@@ -144,6 +146,24 @@ const roleSummary = computed(() => pmData.value?.roleSummary || { frontend: 0, b
       <h2>链接无效</h2>
       <p>{{ error }}</p>
     </div>
+
+    <template v-else-if="isBlocked">
+      <div class="pm-blocked-shell"></div>
+      <el-dialog
+        :model-value="true"
+        width="380px"
+        align-center
+        append-to-body
+        :show-close="false"
+        :close-on-click-modal="false"
+        :close-on-press-escape="false"
+        class="pm-blocked-dialog"
+      >
+        <div class="pm-blocked-content">
+          <div class="pm-blocked-title">{{ blockMessage }}</div>
+        </div>
+      </el-dialog>
+    </template>
 
     <!-- 数据 -->
     <template v-else-if="pmData">
@@ -280,6 +300,22 @@ const roleSummary = computed(() => pmData.value?.roleSummary || { frontend: 0, b
 
 .pm-loading, .pm-error {
   display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 300px;
+}
+.pm-blocked-shell {
+  min-height: 70vh;
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #F2F3F5;
+}
+.pm-blocked-content {
+  padding: 18px 8px 22px;
+  text-align: center;
+}
+.pm-blocked-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1D2129;
+  line-height: 1.6;
 }
 .pm-error-icon { font-size: 48px; margin-bottom: 16px; }
 .pm-error h2 { font-size: 20px; color: #1D2129; margin-bottom: 8px; }
