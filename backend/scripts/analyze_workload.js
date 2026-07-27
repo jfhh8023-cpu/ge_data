@@ -15,10 +15,23 @@ const path = require('path');
 const mysql = require('mysql2/promise');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env'), quiet: true });
 
-const ROLE_KEYS = ['frontend', 'backend', 'test'];
-const ROLE_TEXT = { frontend: '前端', backend: '后端', test: '测试' };
-const ROLE_CLASS = { frontend: 'fe', backend: 'be', test: 'qa' };
-const ROLE_COLORS = { frontend: '#2563eb', backend: '#16a34a', test: '#f97316' };
+const ROLE_KEYS = ['frontend', 'test'];
+const ROLE_TEXT = {
+  frontend: 'AI开发工程师',
+  backend: 'AI开发工程师',
+  ai_dev: 'AI开发工程师',
+  test: 'AI质量工程师',
+  ai_quality: 'AI质量工程师'
+};
+const ROLE_CHART_TEXT = {
+  frontend: 'AI开发',
+  backend: 'AI开发',
+  ai_dev: 'AI开发',
+  test: 'AI质量',
+  ai_quality: 'AI质量'
+};
+const ROLE_CLASS = { frontend: 'fe', backend: 'fe', ai_dev: 'fe', test: 'qa', ai_quality: 'qa' };
+const ROLE_COLORS = { frontend: '#2563eb', backend: '#2563eb', ai_dev: '#2563eb', test: '#f97316', ai_quality: '#f97316' };
 const DEFAULT_PM = '不在上述';
 const RESIGNED_STATUS = 'resigned';
 
@@ -31,9 +44,16 @@ const KEYWORD_DEFS = [
   ['性能/优化', /优化|性能|压测|卡顿|稳定|改进|升级/],
   ['部署/运维', /部署|服务器|环境|网关|TLS|证书|服务|运维/],
   ['短信', /短信|SMS/i],
-  ['前端界面', /前端|页面|界面|列表|按钮|展示|排序|UI/i],
-  ['测试问题', /测试|问题|缺陷|bug|修复|异常|定位/i]
+  ['界面体验', /前端|页面|界面|列表|按钮|展示|排序|UI/i],
+  ['质量问题', /测试|质量|问题|缺陷|bug|修复|异常|定位/i]
 ];
+
+function normalizeRoleKey(role) {
+  const value = String(role || '').trim();
+  if (value === 'frontend' || value === 'backend' || value === 'ai_dev') return 'frontend';
+  if (value === 'test' || value === 'ai_quality') return 'test';
+  return 'frontend';
+}
 
 function parseArgs(argv) {
   const args = {};
@@ -220,7 +240,8 @@ function isCurrentVisiblePerson(person) {
 }
 
 function staffDisplayName(person) {
-  return `${person.name}（${ROLE_TEXT[person.role] || person.role}）`;
+  const role = normalizeRoleKey(person.role);
+  return `${person.name}（${ROLE_TEXT[role] || person.role}）`;
 }
 
 function ensureZeroGroup(map, name) {
@@ -241,11 +262,12 @@ function seedCurrentVisiblePeopleGroups(byStaff, byPm, staff, pms) {
 }
 
 function addWork(group, row, hours, reqKey) {
+  const role = normalizeRoleKey(row.role);
   group.total += hours;
   group.records += 1;
   group.tasks.add(row.task_id);
   group.requirements.add(reqKey);
-  if (ROLE_KEYS.includes(row.role)) group[row.role] += hours;
+  if (ROLE_KEYS.includes(role)) group[role] += hours;
 }
 
 function round(value, digits = 1) {
@@ -341,6 +363,26 @@ function roleCell(row, role) {
   return `<td class="num ${ROLE_CLASS[role]}-text">${fmt(row[role])}</td>`;
 }
 
+function roleHeaderLabels() {
+  return ROLE_KEYS.map(role => ROLE_TEXT[role]);
+}
+
+function roleShareHeaderLabels() {
+  return ROLE_KEYS.map(role => `${ROLE_TEXT[role]}占比`);
+}
+
+function roleCells(row) {
+  return ROLE_KEYS.map(role => roleCell(row, role)).join('');
+}
+
+function roleShareCells(row) {
+  return ROLE_KEYS.map(role => `<td class="num">${row[`${role}Share`]}%</td>`).join('');
+}
+
+function roleHoursDetail(row) {
+  return ROLE_KEYS.map(role => `${ROLE_TEXT[role]} ${fmt(row[role] || 0)}`).join(' / ');
+}
+
 function tableHeaders(headers) {
   return headers.map((header, index) => {
     const config = typeof header === 'string' ? { label: header } : header;
@@ -378,7 +420,7 @@ function chartLabel(row) {
 function segmentText(row, role) {
   const hours = Number(row[role] || 0);
   const share = pct(hours, row.total);
-  return `${ROLE_TEXT[role]} ${fmt(hours)}h / ${share}%`;
+  return `${ROLE_CHART_TEXT[role] || ROLE_TEXT[role]} ${fmt(hours)}h / ${share}%`;
 }
 
 function stackedBarChart(rows, title, options = {}) {
@@ -423,9 +465,7 @@ function stackedBarChart(rows, title, options = {}) {
       <div class="section-head">
         <h2>${escapeHtml(title)}</h2>
         <div class="legend">
-          <span><i class="dot fe"></i>前端</span>
-          <span><i class="dot be"></i>后端</span>
-          <span><i class="dot qa"></i>测试</span>
+          ${ROLE_KEYS.map(role => `<span><i class="dot ${ROLE_CLASS[role]}"></i>${escapeHtml(ROLE_CHART_TEXT[role] || ROLE_TEXT[role])}</span>`).join('')}
         </div>
       </div>
       <div class="bar-list">${rowsHtml || '<p class="muted">无数据</p>'}</div>
@@ -619,7 +659,8 @@ function analyze(data) {
     const firstPm = pmsForRow[0] || DEFAULT_PM;
     const version = String(row.version || '').trim() || '未填版本';
     const weekName = weekPeriodName(row);
-    const staffName = `${row.staff_name}（${ROLE_TEXT[row.role] || row.role}）`;
+    const role = normalizeRoleKey(row.role);
+    const staffName = `${row.staff_name}（${ROLE_TEXT[role] || row.role}）`;
     const reqKey = `${row.task_id}||${String(row.requirement_title || '').trim()}||${version}`;
     const q = quarterOf(row.end_date);
     const m = monthOf(row.end_date);
@@ -633,8 +674,8 @@ function analyze(data) {
       month: m,
       staff: row.staff_name,
       staffLabel: staffName,
-      role: row.role,
-      roleText: ROLE_TEXT[row.role] || row.role,
+      role,
+      roleText: ROLE_TEXT[role] || row.role,
       pm: firstPm,
       title: String(row.requirement_title || '').trim(),
       version,
@@ -686,7 +727,7 @@ function analyze(data) {
     req.total += hours;
     req.records += 1;
     req.staff.add(row.staff_name);
-    if (ROLE_KEYS.includes(row.role)) req[row.role] += hours;
+    if (ROLE_KEYS.includes(role)) req[role] += hours;
 
     if (pmsForRow.length === 0) {
       quality.emptyPm.count += 1;
@@ -721,7 +762,7 @@ function analyze(data) {
   const totalHours = totalGroup.total;
   const requirements = Object.values(reqMap)
     .map(req => {
-      const roleCombo = ROLE_KEYS.filter(role => req[role] > 0).map(role => ROLE_TEXT[role]).join('+') || '无角色';
+      const roleCombo = ROLE_KEYS.filter(role => req[role] > 0).map(role => ROLE_CHART_TEXT[role] || ROLE_TEXT[role]).join('+') || '无角色';
       return {
         title: req.title,
         version: req.version,
@@ -1130,10 +1171,10 @@ function formulasHtml() {
       <ol>
         <li><strong>周期归属</strong>：先按任务结束日期，把每条工时归到对应的年、季度、月份和周。</li>
         <li><strong>工时合计</strong>：把当前范围内符合条件的每条填报工时相加。</li>
-        <li><strong>岗位工时</strong>：分别把前端、后端、测试人员填写的工时相加。</li>
+        <li><strong>岗位工时</strong>：分别把AI开发工程师、AI质量工程师填写的工时相加；历史前端/后端岗位统一并入AI开发工程师。</li>
         <li><strong>岗位占比</strong>：用某个岗位的工时除以当前范围总工时，再换算成百分比。</li>
         <li><strong>需求数量</strong>：同一个周期内，需求名称和版本相同的内容视为同一个需求。</li>
-        <li><strong>产品经理归属</strong>：优先使用填报时选择的第一个产品经理；没有填写时归入“不在上述”。</li>
+        <li><strong>AI产品经理归属</strong>：优先使用填报时选择的第一个AI产品经理；没有填写时归入“不在上述”。</li>
         <li><strong>平均单条工时</strong>：用当前范围总工时除以填报记录数。</li>
         <li><strong>平均需求工时</strong>：用当前范围总工时除以需求数量。</li>
         <li><strong>关键词分类</strong>：按固定关键词识别需求特征；同一条需求可以命中多个关键词，关键词只用于分析特征，不用于相加还原总工时。</li>
@@ -1192,14 +1233,12 @@ function lineChart(rows, title, options = {}) {
   const pad = { left: 54, right: 26, top: 28, bottom: 58 };
   const plotW = width - pad.left - pad.right;
   const plotH = height - pad.top - pad.bottom;
-  const max = Math.max(...data.flatMap(row => [row.total, row.frontend, row.backend, row.test].map(Number)), 1);
+  const max = Math.max(...data.flatMap(row => [row.total, ...ROLE_KEYS.map(role => row[role])].map(Number)), 1);
   const x = index => pad.left + (data.length === 1 ? plotW / 2 : (index * plotW) / (data.length - 1));
   const y = value => pad.top + plotH - (Number(value || 0) / max) * plotH;
   const series = [
     { key: 'total', label: '总计', color: '#111827', width: 3 },
-    { key: 'frontend', label: '前端', color: ROLE_COLORS.frontend, width: 2 },
-    { key: 'backend', label: '后端', color: ROLE_COLORS.backend, width: 2 },
-    { key: 'test', label: '测试', color: ROLE_COLORS.test, width: 2 }
+    ...ROLE_KEYS.map(role => ({ key: role, label: ROLE_CHART_TEXT[role] || ROLE_TEXT[role], color: ROLE_COLORS[role], width: 2 }))
   ];
   const labelStep = Math.max(1, Math.ceil(data.length / 8));
   const grid = [0, 0.25, 0.5, 0.75, 1].map(ratio => {
@@ -1237,9 +1276,7 @@ function roleValueBarChart(row, title, options = {}) {
   const source = row || {};
   const data = [
     { key: 'total', label: '总计', color: '#111827', value: Number(source.total || 0) },
-    { key: 'frontend', label: '前端', color: ROLE_COLORS.frontend, value: Number(source.frontend || 0) },
-    { key: 'backend', label: '后端', color: ROLE_COLORS.backend, value: Number(source.backend || 0) },
-    { key: 'test', label: '测试', color: ROLE_COLORS.test, value: Number(source.test || 0) }
+    ...ROLE_KEYS.map(role => ({ key: role, label: ROLE_CHART_TEXT[role] || ROLE_TEXT[role], color: ROLE_COLORS[role], value: Number(source[role] || 0) }))
   ];
   const max = Math.max(...data.map(item => item.value), 1);
   return `
@@ -1266,7 +1303,7 @@ function roleValueBarChart(row, title, options = {}) {
 
 function trendChart(report, rows, title, options = {}) {
   if (report.dataset.periodGrain === 'week') {
-    const weekTitle = options.weekTitle || (title.includes('月份') ? '当前周维度对比' : title.replace('趋势：总工时与三端变化', '周维度对比：总计与三端'));
+    const weekTitle = options.weekTitle || (title.includes('月份') ? '当前周维度对比' : title.replace('趋势：总工时与岗位变化', '周维度对比：总计与岗位'));
     return roleValueBarChart(report.weeks[0] || rows[0], weekTitle, { note: '当前周不同数据维度工时对比。' });
   }
   const startYear = String(report.dataset.dateStart || '').slice(0, 4);
@@ -1353,7 +1390,7 @@ function renderHtml(report, options = {}) {
   const topReq = requirements[0];
   const topKeyword = report.keywords[0];
   const qualityRows = [
-    ['emptyPm', '空产品经理数组（页面归不在上述）', report.dataQuality.emptyPm],
+    ['emptyPm', '空AI产品经理数组（页面归不在上述）', report.dataQuality.emptyPm],
     ['explicitDefaultPm', '显式填写不在上述', report.dataQuality.explicitDefaultPm],
     ['missingVersion', '未填版本', report.dataQuality.missingVersion],
     ['zeroHours', '0 或负工时', report.dataQuality.zeroHours],
@@ -1364,18 +1401,18 @@ function renderHtml(report, options = {}) {
   const generatedAt = new Date(report.generatedAt).toLocaleString('zh-CN', { hour12: false });
 
   const pmSummaryTable = table(
-    ['产品经理', '总工时', '占比', '前端', '后端', '测试', '记录数', '需求数'],
+    ['AI产品经理', '总工时', '占比', ...roleHeaderLabels(), '记录数', '需求数'],
     report.productManagers,
     row => `<tr class="clickable-row" data-jump-tab="pm" data-filter-tab="pm" data-filter-value="${escapeHtml(row.name)}">
       <td>${escapeHtml(row.name)}</td><td class="num strong">${fmt(row.total)}</td><td class="num">${row.share}%</td>
-      ${roleCell(row, 'frontend')}${roleCell(row, 'backend')}${roleCell(row, 'test')}
+      ${roleCells(row)}
       <td class="num">${fmt(row.records)}</td><td class="num">${fmt(row.requirementCount)}</td>
     </tr>`
   );
 
   const pmDetailRows = detailRequirements.map(row => `<tr class="pm-detail-row" data-pm="${escapeHtml(row.pm)}">
     <td>${escapeHtml(row.pm)}</td><td class="text-left demand-cell">${escapeHtml(row.title)}</td><td>${escapeHtml(row.version)}</td><td class="period-cell">${escapeHtml(row.task)}</td><td class="combo-cell">${escapeHtml(row.roleCombo)}</td>
-    <td class="num strong">${fmt(row.total)}</td>${roleCell(row, 'frontend')}${roleCell(row, 'backend')}${roleCell(row, 'test')}
+    <td class="num strong">${fmt(row.total)}</td>${roleCells(row)}
     <td class="num">${fmt(row.staffCount)}</td>
   </tr>`).join('');
 
@@ -1397,7 +1434,7 @@ function renderHtml(report, options = {}) {
     const roleKeys = attrList(roleKeysFor(row));
     return `<tr class="requirement-row" data-role-keys="${escapeHtml(roleKeys)}" data-pm="${escapeHtml(row.pm)}">
       <td class="text-left demand-cell">${escapeHtml(row.title)}</td><td>${escapeHtml(row.version)}</td><td class="period-cell">${escapeHtml(row.task)}</td><td>${escapeHtml(row.pm)}</td><td class="combo-cell">${escapeHtml(row.roleCombo)}</td>
-      <td class="num strong">${fmt(row.total)}</td>${roleCell(row, 'frontend')}${roleCell(row, 'backend')}${roleCell(row, 'test')}
+      <td class="num strong">${fmt(row.total)}</td>${roleCells(row)}
       <td class="num">${fmt(row.records)}</td><td class="num">${fmt(row.staffCount)}</td>
     </tr>`;
   }).join('');
@@ -1408,27 +1445,25 @@ function renderHtml(report, options = {}) {
       { label: '版本名称', className: 'version-title-col' },
       '总工时',
       '占比',
-      '前端',
-      '后端',
-      '测试',
+      ...roleHeaderLabels(),
       '记录数',
       '需求数'
     ],
     report.versions,
     row => `<tr>
       <td class="version-code-cell">${escapeHtml(row.name)}</td><td class="text-left version-title-cell">${escapeHtml(row.versionName || '——')}</td><td class="num strong">${fmt(row.total)}</td><td class="num">${row.share}%</td>
-      ${roleCell(row, 'frontend')}${roleCell(row, 'backend')}${roleCell(row, 'test')}
+      ${roleCells(row)}
       <td class="num">${fmt(row.records)}</td><td class="num">${fmt(row.requirementCount)}</td>
     </tr>`,
     { className: 'version-table' }
   );
 
   const keywordTable = table(
-    ['关键词', '命中工时', '占总工时', '前端', '后端', '测试', '记录数', '需求数'],
+    ['关键词', '命中工时', '占总工时', ...roleHeaderLabels(), '记录数', '需求数'],
     report.keywords,
     row => `<tr>
       <td>${escapeHtml(row.name)}</td><td class="num strong">${fmt(row.total)}</td><td class="num">${row.share}%</td>
-      ${roleCell(row, 'frontend')}${roleCell(row, 'backend')}${roleCell(row, 'test')}
+      ${roleCells(row)}
       <td class="num">${fmt(row.records)}</td><td class="num">${fmt(row.requirementCount)}</td>
     </tr>`
   );
@@ -1445,7 +1480,7 @@ function renderHtml(report, options = {}) {
     .map(row => {
       const issueKeys = [];
       const issueNames = [];
-      if (row.emptyProductManager) { issueKeys.push('emptyPm'); issueNames.push('空产品经理'); }
+      if (row.emptyProductManager) { issueKeys.push('emptyPm'); issueNames.push('空AI产品经理'); }
       if (row.missingVersion) { issueKeys.push('missingVersion'); issueNames.push('未填版本'); }
       if (Number(row.hours || 0) <= 0) { issueKeys.push('zeroHours'); issueNames.push('0 或负工时'); }
       if (!issueKeys.length) return '';
@@ -1457,13 +1492,13 @@ function renderHtml(report, options = {}) {
     .filter(Boolean)
     .join('');
 
-  const rolePieRows = ROLE_KEYS.map(role => ({ name: ROLE_TEXT[role], total: report.summary[role] }));
+  const rolePieRows = ROLE_KEYS.map(role => ({ name: ROLE_CHART_TEXT[role] || ROLE_TEXT[role], total: report.summary[role] }));
   const titleScopeText = reportTitleScopeText(report);
   const referenceNoticeLines = [
     '当前数据统计依据，为人工每周填写数据所统计，存在一定的统一性偏差，工时填写预估性为主等因素，因此数据仅供参考；详细可查看~',
-    'AI Agent需求对应开发测试工时在AI组占相当一部分未被统计进当前数据分析；'
+    'AI Agent需求对应AI开发和AI质量工时在AI组占相当一部分未被统计进当前数据分析；'
   ];
-  const referenceTip = '1，需求存在如：工单需求，有多个产品负责，单个开发负责开发，单个测试负责测试，最后填写工时只选择了其中一个产品人员，因此存在偏差；\n2，工时都是人工自己预估，存在不绝对准确的情况，因此不具备绝对工时参考，仅做相对数据参考；';
+  const referenceTip = '1，需求存在如：工单需求，有多个AI产品经理负责，单个AI开发工程师负责开发，单个AI质量工程师负责验证，最后填写工时只选择了其中一个AI产品经理，因此存在偏差；\n2，工时都是人工自己预估，存在不绝对准确的情况，因此不具备绝对工时参考，仅做相对数据参考；';
 
   const periodReports = Array.isArray(options.periodReports) ? options.periodReports : null;
   const naturalWeeks = Array.isArray(options.naturalWeeks) ? options.naturalWeeks : [];
@@ -1925,7 +1960,7 @@ function renderHtml(report, options = {}) {
     <nav class="tabs" aria-label="分析维度页签">
       <button type="button" class="tab-btn active" data-open-tab="overview">总览</button>
       <button type="button" class="tab-btn" data-open-tab="trend">周期趋势</button>
-      <button type="button" class="tab-btn" data-open-tab="pm">产品经理归属</button>
+      <button type="button" class="tab-btn" data-open-tab="pm">AI产品经理归属</button>
       <button type="button" class="tab-btn" data-open-tab="staff">人员投入</button>
       <button type="button" class="tab-btn" data-open-tab="requirements">需求明细</button>
       <button type="button" class="tab-btn" data-open-tab="versions">版本</button>
@@ -1937,30 +1972,29 @@ function renderHtml(report, options = {}) {
     <section class="tab-panel active" id="tab-overview">
       <section class="grid">
         <button type="button" class="card" data-jump-tab="trend"><div class="label">总工时</div><div class="value">${fmt(report.summary.total)}</div><div class="sub">${fmt(report.dataset.recordCount)} 条记录 / ${fmt(report.dataset.requirementCount)} 个需求</div></button>
-        <button type="button" class="card" data-jump-tab="requirements" data-filter-tab="requirements" data-filter-value="frontend"><div class="label">前端总工时</div><div class="value fe-text">${fmt(report.summary.frontend)}</div><div class="sub">${report.summary.frontendShare}% · 点击看前端相关需求</div></button>
-        <button type="button" class="card" data-jump-tab="requirements" data-filter-tab="requirements" data-filter-value="backend"><div class="label">后端总工时</div><div class="value be-text">${fmt(report.summary.backend)}</div><div class="sub">${report.summary.backendShare}% · 点击看后端相关需求</div></button>
-        <button type="button" class="card" data-jump-tab="requirements" data-filter-tab="requirements" data-filter-value="test"><div class="label">测试总工时</div><div class="value qa-text">${fmt(report.summary.test)}</div><div class="sub">${report.summary.testShare}% · 点击看测试相关需求</div></button>
+        <button type="button" class="card" data-jump-tab="requirements" data-filter-tab="requirements" data-filter-value="frontend"><div class="label">AI开发工程师总工时</div><div class="value fe-text">${fmt(report.summary.frontend)}</div><div class="sub">${report.summary.frontendShare}% · 点击看AI开发相关需求</div></button>
+        <button type="button" class="card" data-jump-tab="requirements" data-filter-tab="requirements" data-filter-value="test"><div class="label">AI质量工程师总工时</div><div class="value qa-text">${fmt(report.summary.test)}</div><div class="sub">${report.summary.testShare}% · 点击看AI质量相关需求</div></button>
       </section>
       <section class="dimension-grid">
         ${insightCard({ tab: 'trend', title: '周期峰值', value: `${fmt(topWeek?.total || 0)}h`, detail: topWeek?.name || '-', filterTab: '', filterValue: '' })}
-        ${insightCard({ tab: 'pm', filterTab: 'pm', filterValue: topPm?.name, title: '产品经理归属最高', value: topPm?.name || '-', detail: `${fmt(topPm?.total || 0)}h · 前端 ${fmt(topPm?.frontend || 0)} / 后端 ${fmt(topPm?.backend || 0)} / 测试 ${fmt(topPm?.test || 0)}` })}
+        ${insightCard({ tab: 'pm', filterTab: 'pm', filterValue: topPm?.name, title: 'AI产品经理归属最高', value: topPm?.name || '-', detail: `${fmt(topPm?.total || 0)}h · ${roleHoursDetail(topPm || {})}` })}
         ${insightCard({ tab: 'staff', filterTab: 'staff', filterValue: topStaffRow?.name, title: '人员投入最高', value: topStaffRow?.name || '-', detail: `${fmt(topStaffRow?.total || 0)}h · ${fmt(topStaffRow?.records || 0)} 条记录` })}
         ${insightCard({ tab: 'requirements', title: '单需求最高投入', value: `${fmt(topReq?.total || 0)}h`, detail: topReq?.title || '-' })}
         ${insightCard({ tab: 'keywords', title: '关键词命中最高', value: topKeyword?.name || '-', detail: `${fmt(topKeyword?.total || 0)}h · ${topKeyword?.share || 0}%` })}
         ${insightCard({ tab: 'quality', filterTab: 'quality', filterValue: 'missingVersion', title: '数据质量重点', value: `${fmt(report.dataQuality.missingVersion.hours)}h`, detail: `未填版本 ${fmt(report.dataQuality.missingVersion.count)} 条` })}
-        ${insightCard({ tab: 'pm', filterTab: 'pm', filterValue: DEFAULT_PM, title: '不在上述归属', value: `${fmt((report.productManagers.find(row => row.name === DEFAULT_PM) || {}).total)}h`, detail: '未填写产品经理时按页面口径归入不在上述' })}
+        ${insightCard({ tab: 'pm', filterTab: 'pm', filterValue: DEFAULT_PM, title: '不在上述归属', value: `${fmt((report.productManagers.find(row => row.name === DEFAULT_PM) || {}).total)}h`, detail: '未填写AI产品经理时按页面口径归入不在上述' })}
         ${insightCard({ tab: 'requirements', title: '协作形态最高', value: roleCombos[0]?.combo || '-', detail: `${fmt(roleCombos[0]?.total || 0)}h · ${fmt(roleCombos[0]?.requirementCount || 0)} 个需求` })}
       </section>
       <section class="chart-grid">
-        ${trendChart(report, report.months.length > 1 ? report.months : report.weeks, '主页趋势：总工时与三端变化')}
-        ${pieChart(rolePieRows, '主页构成：三端工时占比')}
+        ${trendChart(report, report.months.length > 1 ? report.months : report.weeks, '主页趋势：总工时与岗位变化')}
+        ${pieChart(rolePieRows, '主页构成：岗位工时占比')}
       </section>
       <section class="summary">
         <section class="panel">
           <div class="section-head"><h2>总览解读</h2></div>
           <ul class="finding-list">
             <li>当前范围共有 <strong class="metric-value">${fmt(report.dataset.recordCount)}</strong> 条填报记录、<strong class="metric-value">${fmt(report.dataset.requirementCount)}</strong> 个需求粒度、<strong class="metric-value">${fmt(report.dataset.taskCount)}</strong> 个采集周期。</li>
-            <li>后端投入最高：<strong class="metric-be">${fmt(report.summary.backend)}h</strong>，占 <strong class="metric-be">${report.summary.backendShare}%</strong>；测试 <strong class="metric-qa">${fmt(report.summary.test)}h</strong>，占 <strong class="metric-qa">${report.summary.testShare}%</strong>；前端 <strong class="metric-fe">${fmt(report.summary.frontend)}h</strong>，占 <strong class="metric-fe">${report.summary.frontendShare}%</strong>。</li>
+            <li>AI开发工程师投入 <strong class="metric-fe">${fmt(report.summary.frontend)}h</strong>，占 <strong class="metric-fe">${report.summary.frontendShare}%</strong>；AI质量工程师投入 <strong class="metric-qa">${fmt(report.summary.test)}h</strong>，占 <strong class="metric-qa">${report.summary.testShare}%</strong>。</li>
             <li>平均每条记录 <strong class="metric-value">${fmt(report.summary.avgRecordHours)}h</strong>，平均每个需求粒度 <strong class="metric-value">${fmt(report.summary.avgRequirementHours)}h</strong>。</li>
             <li>点击上方卡片会进入对应页签，并按卡片维度自动筛选明细。</li>
           </ul>
@@ -1971,32 +2005,32 @@ function renderHtml(report, options = {}) {
 
     <section class="tab-panel" id="tab-trend">
       <section class="chart-grid">
-        ${trendChart(report, report.months, '月份折线趋势', { note: '折线同时展示总计、前端、后端、测试；季度报告中月线更适合看结构变化。' })}
+        ${trendChart(report, report.months, '月份折线趋势', { note: '折线同时展示总计、AI开发工程师、AI质量工程师；季度报告中月线更适合看结构变化。' })}
         ${pieChart(report.quarters, '季度总工时占比')}
       </section>
-      ${stackedBarChart(report.weeks, '按周期堆叠趋势：三端工时')}
+      ${stackedBarChart(report.weeks, '按周期堆叠趋势：岗位工时')}
       ${table(
-        ['周期', '总工时', '前端', '后端', '测试', '记录数', '需求数', '前端占比', '后端占比', '测试占比'],
+        ['周期', '总工时', ...roleHeaderLabels(), '记录数', '需求数', ...roleShareHeaderLabels()],
         report.weeks,
-        row => `<tr><td>${escapeHtml(row.name)}</td><td class="num strong">${fmt(row.total)}</td>${roleCell(row, 'frontend')}${roleCell(row, 'backend')}${roleCell(row, 'test')}<td class="num">${fmt(row.records)}</td><td class="num">${fmt(row.requirementCount)}</td><td class="num">${row.frontendShare}%</td><td class="num">${row.backendShare}%</td><td class="num">${row.testShare}%</td></tr>`
+        row => `<tr><td>${escapeHtml(row.name)}</td><td class="num strong">${fmt(row.total)}</td>${roleCells(row)}<td class="num">${fmt(row.records)}</td><td class="num">${fmt(row.requirementCount)}</td>${roleShareCells(row)}</tr>`
       )}
     </section>
 
     <section class="tab-panel" id="tab-pm">
       <section class="chart-grid">
-        ${stackedBarChart(topPms, '产品经理归属 Top：三端拆分（未包含AI_Agent需求开发测试工时）', { limit: 12 })}
-        ${pieChart(report.productManagers, '产品经理工时占比', { limit: 8 })}
+        ${stackedBarChart(topPms, 'AI产品经理归属 Top：岗位拆分', { limit: 12 })}
+        ${pieChart(report.productManagers, 'AI产品经理工时占比', { limit: 8 })}
       </section>
       ${pmSummaryTable}
       <section class="panel">
         <div class="section-head">
-          <h2>产品经理下需求三端明细</h2>
+          <h2>AI产品经理下需求岗位明细</h2>
           <span class="filter-status" data-status-for="pm">当前：全部</span>
         </div>
         ${chips(report.productManagers, 'pm', 'name', 24)}
         <div class="table-wrap">
           <table class="sortable-table pm-detail-table">
-            <thead><tr>${tableHeaders(['产品经理', { label: '需求', className: 'demand-col' }, '版本', { label: '周期', className: 'period-col' }, { label: '角色组合', className: 'combo-col' }, '总工时', '前端', '后端', '测试', '人数'])}</tr></thead>
+            <thead><tr>${tableHeaders(['AI产品经理', { label: '需求', className: 'demand-col' }, '版本', { label: '周期', className: 'period-col' }, { label: '岗位组合', className: 'combo-col' }, '总工时', ...roleHeaderLabels(), '人数'])}</tr></thead>
             <tbody>${pmDetailRows}</tbody>
           </table>
         </div>
@@ -2017,7 +2051,7 @@ function renderHtml(report, options = {}) {
         ${chips(report.staff, 'staff', 'name', 24)}
         <div class="table-wrap">
           <table class="sortable-table staff-record-table">
-            <thead><tr>${tableHeaders(['人员', '角色', { label: '周期', className: 'period-col' }, '产品经理', { label: '需求', className: 'demand-col' }, '版本', '工时'])}</tr></thead>
+            <thead><tr>${tableHeaders(['人员', '角色', { label: '周期', className: 'period-col' }, 'AI产品经理', { label: '需求', className: 'demand-col' }, '版本', '工时'])}</tr></thead>
             <tbody>${staffRecordRows}</tbody>
           </table>
         </div>
@@ -2028,24 +2062,23 @@ function renderHtml(report, options = {}) {
       <section class="chart-grid">
         ${simpleBarChart(topRequirements, '需求投入 Top 20', {
           limit: 20,
-          tip: '统计的是需求在单个填写周期内，即某一周内的工时占用总量排行；存在一个需求三端協作总计时间较大，或者单个需求在不同周期都出现，也在列表排行，这是正常的；'
+          tip: '统计的是需求在单个填写周期内，即某一周内的工时占用总量排行；存在一个需求多岗位协作总计时间较大，或者单个需求在不同周期都出现，也在列表排行，这是正常的；'
         })}
         ${pieChart(roleCombos.map(row => ({ name: row.combo, total: row.total })), '需求协作形态占比', { limit: 8 })}
       </section>
       <section class="panel">
         <div class="section-head">
-          <h2>需求明细：总工时与三端拆分</h2>
+          <h2>需求明细：总工时与岗位拆分</h2>
           <span class="filter-status" data-status-for="requirements">当前：全部</span>
         </div>
         <div class="filter-row" data-filter-group="requirements">
           <button type="button" class="chip active" data-filter-tab="requirements" data-filter-value="__all">全部</button>
-          <button type="button" class="chip" data-filter-tab="requirements" data-filter-value="frontend">包含前端</button>
-          <button type="button" class="chip" data-filter-tab="requirements" data-filter-value="backend">包含后端</button>
-          <button type="button" class="chip" data-filter-tab="requirements" data-filter-value="test">包含测试</button>
+          <button type="button" class="chip" data-filter-tab="requirements" data-filter-value="frontend">包含AI开发工程师</button>
+          <button type="button" class="chip" data-filter-tab="requirements" data-filter-value="test">包含AI质量工程师</button>
         </div>
         <div class="table-wrap">
           <table class="sortable-table requirement-detail-table">
-            <thead><tr>${tableHeaders([{ label: '需求', className: 'demand-col' }, '版本', { label: '周期', className: 'period-col' }, '产品经理', { label: '角色组合', className: 'combo-col' }, '总工时', '前端', '后端', '测试', '记录数', '人数'])}</tr></thead>
+            <thead><tr>${tableHeaders([{ label: '需求', className: 'demand-col' }, '版本', { label: '周期', className: 'period-col' }, 'AI产品经理', { label: '岗位组合', className: 'combo-col' }, '总工时', ...roleHeaderLabels(), '记录数', '人数'])}</tr></thead>
             <tbody>${requirementRows}</tbody>
           </table>
         </div>
@@ -2062,7 +2095,7 @@ function renderHtml(report, options = {}) {
 
     <section class="tab-panel" id="tab-keywords">
       <section class="chart-grid">
-        ${stackedBarChart(topKeywords, '关键词特征：三端拆分', { limit: 12 })}
+        ${stackedBarChart(topKeywords, '关键词特征：岗位拆分', { limit: 12 })}
         ${pieChart(report.keywords, '关键词命中工时占比', { limit: 10 })}
       </section>
       <section class="panel">
@@ -2080,13 +2113,13 @@ function renderHtml(report, options = {}) {
         </div>
         <div class="filter-row" data-filter-group="quality">
           <button type="button" class="chip active" data-filter-tab="quality" data-filter-value="__all">全部</button>
-          <button type="button" class="chip" data-filter-tab="quality" data-filter-value="emptyPm">空产品经理</button>
+          <button type="button" class="chip" data-filter-tab="quality" data-filter-value="emptyPm">空AI产品经理</button>
           <button type="button" class="chip" data-filter-tab="quality" data-filter-value="missingVersion">未填版本</button>
           <button type="button" class="chip" data-filter-tab="quality" data-filter-value="zeroHours">0 或负工时</button>
         </div>
         <div class="table-wrap">
           <table class="sortable-table quality-record-table">
-            <thead><tr>${tableHeaders(['问题', { label: '周期', className: 'period-col' }, '产品经理归属', '人员', { label: '需求', className: 'demand-col' }, '版本', '工时'])}</tr></thead>
+            <thead><tr>${tableHeaders(['问题', { label: '周期', className: 'period-col' }, 'AI产品经理归属', '人员', { label: '需求', className: 'demand-col' }, '版本', '工时'])}</tr></thead>
             <tbody>${qualityRecordRows || '<tr><td colspan="7" class="muted">无质量问题记录</td></tr>'}</tbody>
           </table>
         </div>
@@ -2575,7 +2608,7 @@ async function main() {
   console.log(`[OK] 最新 HTML: ${latestHtmlPath}`);
   console.log(`[OK] 最新 JSON: ${latestJsonPath}`);
   console.log(`[OK] 周期页面: ${shouldWriteSharedPeriodPages ? periodReports.length - 1 : 0} 个${shouldWriteSharedPeriodPages ? '' : '（筛选报告不覆盖共享周期页）'}`);
-  console.log(`[OK] 总工时: ${report.summary.total}h；前端: ${report.summary.frontend}h；后端: ${report.summary.backend}h；测试: ${report.summary.test}h`);
+  console.log(`[OK] 总工时: ${report.summary.total}h；AI开发工程师: ${report.summary.frontend}h；AI质量工程师: ${report.summary.test}h`);
 }
 
 main().catch(err => {

@@ -17,6 +17,10 @@ function roleTotal(list) {
   return safeParseJsonArray(list).reduce((sum, item) => sum + (Number(item.hours) || 0), 0);
 }
 
+function mergeRoleLists(...lists) {
+  return lists.flatMap(list => safeParseJsonArray(list));
+}
+
 function pmText(value) {
   return safeParseJsonArray(value).join('、');
 }
@@ -37,22 +41,20 @@ function buildTaskRows(task) {
       结束日期: task.end_date,
       需求名称: '暂无需求工时统计数据',
       版本: '',
-      产品经理: '',
-      前端: '',
-      前端工时: 0,
-      后端: '',
-      后端工时: 0,
-      测试: '',
-      测试工时: 0,
+      AI产品经理: '',
+      AI开发工程师: '',
+      AI开发工程师工时: 0,
+      AI质量工程师: '',
+      AI质量工程师工时: 0,
       合计工时: 0,
       备注: ''
     }];
   }
 
   return groups.map(group => {
-    const frontendHours = roleTotal(group.frontend);
-    const backendHours = roleTotal(group.backend);
-    const testHours = roleTotal(group.test_role);
+    const aiDevelopers = mergeRoleLists(group.frontend, group.backend);
+    const aiDevHours = roleTotal(aiDevelopers);
+    const aiQualityHours = roleTotal(group.test_role);
     return {
       周期: task.title,
       年份: task.year,
@@ -61,14 +63,12 @@ function buildTaskRows(task) {
       结束日期: task.end_date,
       需求名称: group.merged_title || '',
       版本: group.version || '',
-      产品经理: pmText(group.product_managers),
-      前端: roleText(group.frontend),
-      前端工时: frontendHours,
-      后端: roleText(group.backend),
-      后端工时: backendHours,
-      测试: roleText(group.test_role),
-      测试工时: testHours,
-      合计工时: frontendHours + backendHours + testHours,
+      AI产品经理: pmText(group.product_managers),
+      AI开发工程师: roleText(aiDevelopers),
+      AI开发工程师工时: aiDevHours,
+      AI质量工程师: roleText(group.test_role),
+      AI质量工程师工时: aiQualityHours,
+      合计工时: aiDevHours + aiQualityHours,
       备注: group.remark || ''
     };
   });
@@ -170,10 +170,10 @@ function buildMarkdown(tasks) {
       return section.join('\n');
     }
 
-    section.push('| 需求名称 | 版本 | 产品经理 | 前端 | 前端工时 | 后端 | 后端工时 | 测试 | 测试工时 | 合计工时 | 备注 |');
-    section.push('| --- | --- | --- | --- | ---: | --- | ---: | --- | ---: | ---: | --- |');
+    section.push('| 需求名称 | 版本 | AI产品经理 | AI开发工程师 | AI开发工程师工时 | AI质量工程师 | AI质量工程师工时 | 合计工时 | 备注 |');
+    section.push('| --- | --- | --- | --- | ---: | --- | ---: | ---: | --- |');
     for (const row of rows) {
-      section.push(`| ${row.需求名称} | ${row.版本} | ${row.产品经理} | ${row.前端} | ${row.前端工时} | ${row.后端} | ${row.后端工时} | ${row.测试} | ${row.测试工时} | ${row.合计工时} | ${String(row.备注 || '').replace(/\|/g, '\\|')} |`);
+      section.push(`| ${row.需求名称} | ${row.版本} | ${row.AI产品经理} | ${row.AI开发工程师} | ${row.AI开发工程师工时} | ${row.AI质量工程师} | ${row.AI质量工程师工时} | ${row.合计工时} | ${String(row.备注 || '').replace(/\|/g, '\\|')} |`);
     }
     section.push('');
     return section.join('\n');

@@ -32,12 +32,19 @@ function normalizeRoleList(value) {
 }
 
 function normalizeGroup(group) {
+  const frontend = normalizeRoleList(group.frontend)
+  const backend = normalizeRoleList(group.backend)
+  const testRole = normalizeRoleList(group.test_role)
+  const aiDevelopers = normalizeRoleList(group.ai_developers)
+  const aiQuality = normalizeRoleList(group.ai_quality)
   return {
     ...group,
     product_managers: parseJsonArray(group.product_managers).map(item => String(item || '').trim()).filter(Boolean),
-    frontend: normalizeRoleList(group.frontend),
-    backend: normalizeRoleList(group.backend),
-    test_role: normalizeRoleList(group.test_role)
+    frontend,
+    backend,
+    test_role: testRole,
+    ai_developers: aiDevelopers.length ? aiDevelopers : [...frontend, ...backend],
+    ai_quality: aiQuality.length ? aiQuality : testRole
   }
 }
 
@@ -50,18 +57,18 @@ export const useReportStore = defineStore('report', {
     /** 计算每行工时总计 */
     groupsWithTotal: (state) => {
       return state.matchGroups.map(g => {
-        const fe = Array.isArray(g.frontend) ? g.frontend : []
-        const be = Array.isArray(g.backend) ? g.backend : []
-        const te = Array.isArray(g.test_role) ? g.test_role : []
-        const frontendTotal = fe.reduce((s, p) => s + (parseFloat(p.hours) || 0), 0)
-        const backendTotal = be.reduce((s, p) => s + (parseFloat(p.hours) || 0), 0)
-        const testTotal = te.reduce((s, p) => s + (parseFloat(p.hours) || 0), 0)
+        const dev = Array.isArray(g.ai_developers) ? g.ai_developers : []
+        const qa = Array.isArray(g.ai_quality) ? g.ai_quality : []
+        const aiDevTotal = dev.reduce((s, p) => s + (parseFloat(p.hours) || 0), 0)
+        const aiQualityTotal = qa.reduce((s, p) => s + (parseFloat(p.hours) || 0), 0)
         return {
           ...g,
-          _frontendTotal: frontendTotal,
-          _backendTotal: backendTotal,
-          _testTotal: testTotal,
-          _rowTotal: frontendTotal + backendTotal + testTotal
+          _aiDevTotal: aiDevTotal,
+          _aiQualityTotal: aiQualityTotal,
+          _frontendTotal: aiDevTotal,
+          _backendTotal: 0,
+          _testTotal: aiQualityTotal,
+          _rowTotal: aiDevTotal + aiQualityTotal
         }
       })
     },
@@ -69,9 +76,11 @@ export const useReportStore = defineStore('report', {
     columnTotals() {
       const groups = this.groupsWithTotal
       return {
-        frontend: groups.reduce((s, g) => s + g._frontendTotal, 0),
-        backend: groups.reduce((s, g) => s + g._backendTotal, 0),
-        test: groups.reduce((s, g) => s + g._testTotal, 0),
+        ai_dev: groups.reduce((s, g) => s + g._aiDevTotal, 0),
+        ai_quality: groups.reduce((s, g) => s + g._aiQualityTotal, 0),
+        frontend: groups.reduce((s, g) => s + g._aiDevTotal, 0),
+        backend: 0,
+        test: groups.reduce((s, g) => s + g._aiQualityTotal, 0),
         total: groups.reduce((s, g) => s + g._rowTotal, 0)
       }
     }

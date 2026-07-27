@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS collection_tasks (
 CREATE TABLE IF NOT EXISTS staff (
   id CHAR(36) PRIMARY KEY,
   name VARCHAR(50) NOT NULL COMMENT '姓名',
-  role ENUM('frontend','backend','test') NOT NULL COMMENT '角色',
+  role ENUM('ai_dev','ai_quality') NOT NULL COMMENT '岗位：AI开发工程师/AI质量工程师',
   is_active BOOLEAN DEFAULT TRUE COMMENT '在职状态',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_role (role),
@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS work_records (
   staff_id CHAR(36) NOT NULL COMMENT '关联人员ID',
   requirement_title VARCHAR(200) NOT NULL COMMENT '需求标题',
   version VARCHAR(50) COMMENT '版本号',
-  product_managers JSON COMMENT '产品经理列表',
+  product_managers JSON COMMENT 'AI产品经理列表',
   hours DECIMAL(6,2) NOT NULL COMMENT '工时(小时)',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -72,10 +72,10 @@ CREATE TABLE IF NOT EXISTS match_groups (
   task_id CHAR(36) NOT NULL COMMENT '关联任务ID',
   merged_title VARCHAR(200) COMMENT '合并后的需求标题',
   version VARCHAR(50) COMMENT '版本号',
-  product_managers JSON COMMENT '产品经理列表',
-  frontend JSON COMMENT '前端人员工时 [{staffName,hours}]',
-  backend JSON COMMENT '后端人员工时',
-  test_role JSON COMMENT '测试人员工时',
+  product_managers JSON COMMENT 'AI产品经理列表',
+  frontend JSON COMMENT 'AI开发工程师工时 [{staffName,hours}]，兼容历史frontend列',
+  backend JSON COMMENT '历史后端兼容列；重构后新增数据置空',
+  test_role JSON COMMENT 'AI质量工程师工时',
   remark TEXT COMMENT '备注',
   confidence DECIMAL(3,2) DEFAULT 0 COMMENT '匹配置信度',
   status ENUM('auto_merged','pending_review','manual_merged') DEFAULT 'auto_merged',
@@ -88,12 +88,12 @@ CREATE TABLE IF NOT EXISTS match_groups (
 
 -- 人员
 INSERT INTO staff (id, name, role, is_active, created_at) VALUES
-('s1', '张三', 'frontend', TRUE, '2026-01-01'),
-('s2', '赵六', 'frontend', TRUE, '2026-01-01'),
-('s3', '李四', 'backend',  TRUE, '2026-01-01'),
-('s4', '钱七', 'backend',  TRUE, '2026-01-01'),
-('s5', '王五', 'test',     TRUE, '2026-01-01'),
-('s6', '孙八', 'test',     TRUE, '2026-01-01');
+('s1', '张三', 'ai_dev', TRUE, '2026-01-01'),
+('s2', '赵六', 'ai_dev', TRUE, '2026-01-01'),
+('s3', '李四', 'ai_dev', TRUE, '2026-01-01'),
+('s4', '钱七', 'ai_dev', TRUE, '2026-01-01'),
+('s5', '王五', 'ai_quality', TRUE, '2026-01-01'),
+('s6', '孙八', 'ai_quality', TRUE, '2026-01-01');
 
 -- 收集任务
 INSERT INTO collection_tasks (id, title, time_dimension, start_date, end_date, week_number, year, status) VALUES
@@ -118,6 +118,6 @@ INSERT INTO work_records (id, link_id, task_id, staff_id, requirement_title, ver
 
 -- 匹配组
 INSERT INTO match_groups (id, task_id, merged_title, version, product_managers, frontend, backend, test_role, confidence, status) VALUES
-('mg1','t1','用户中心改版','V4.633.0','["杨瑞"]','[{"staffName":"张三","hours":5},{"staffName":"赵六","hours":4}]','[{"staffName":"李四","hours":6}]','[{"staffName":"王五","hours":9}]',0.95,'auto_merged'),
-('mg2','t1','AI Agent 优化','V4.633.0','["钟冠"]','[{"staffName":"张三","hours":3}]','[{"staffName":"李四","hours":8}]','[{"staffName":"孙八","hours":4}]',0.90,'auto_merged'),
-('mg3','t1','支付系统升级','V4.634.0','["吴浩鑫"]','[]','[{"staffName":"钱七","hours":10}]','[]',1.0,'auto_merged');
+('mg1','t1','用户中心改版','V4.633.0','["杨瑞"]','[{"staffName":"张三","hours":5},{"staffName":"赵六","hours":4},{"staffName":"李四","hours":6}]','[]','[{"staffName":"王五","hours":9}]',0.95,'auto_merged'),
+('mg2','t1','AI Agent 优化','V4.633.0','["钟冠"]','[{"staffName":"张三","hours":3},{"staffName":"李四","hours":8}]','[]','[{"staffName":"孙八","hours":4}]',0.90,'auto_merged'),
+('mg3','t1','支付系统升级','V4.634.0','["吴浩鑫"]','[{"staffName":"钱七","hours":10}]','[]','[]',1.0,'auto_merged');

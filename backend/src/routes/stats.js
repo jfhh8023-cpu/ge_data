@@ -23,12 +23,18 @@ const {
   getPmStatusContextByName,
   isNonResigned
 } = require('../services/PersonStatusService');
+const {
+  addRoleHours,
+  createRoleSummary,
+  normalizeStaffRole,
+  withRoleAliases
+} = require('../services/RoleService');
 
 /* 季度月份映射 */
 const QUARTER_MONTHS = { Q1: [1,2,3], Q2: [4,5,6], Q3: [7,8,9], Q4: [10,11,12] };
 
 /* 角色常量 */
-const ROLE_KEYS = ['frontend', 'backend', 'test'];
+const ROLE_KEYS = ['ai_dev', 'ai_quality'];
 const PM_DEFAULT_NAME = '不在上述';
 
 function recordBelongsToPm(pms, pmName) {
@@ -109,7 +115,7 @@ router.get('/', async (req, res, next) => {
           tasks, records: [], matchGroups: [], staff: currentStaff,
           currentStaff,
           summary: { totalHours: 0, recordCount: 0, staffCount: currentStaff.length, taskCount: 0 },
-          roleSummary: { frontend: 0, backend: 0, test: 0 },
+          roleSummary: withRoleAliases(createRoleSummary()),
           pmDistribution: []
         }
       });
@@ -140,12 +146,9 @@ router.get('/', async (req, res, next) => {
     // === 基于 WorkRecord + Staff.role 的聚合统计（REQ-11） ===
     const totalHours = records.reduce((s, r) => s + parseFloat(r.hours || 0), 0);
 
-    const roleSummary = { frontend: 0, backend: 0, test: 0 };
+    const roleSummary = createRoleSummary();
     for (const r of records) {
-      const role = r.staff?.role;
-      if (role && roleSummary[role] !== undefined) {
-        roleSummary[role] += parseFloat(r.hours || 0);
-      }
+      addRoleHours(roleSummary, r.staff?.role, parseFloat(r.hours || 0));
     }
 
     // === 按 PM 分组统计（REQ-13） ===
@@ -157,7 +160,7 @@ router.get('/', async (req, res, next) => {
     });
     const pmMap = {};
     for (const pm of activePms) {
-      pmMap[pm.name] = { id: pm.id, name: pm.name, frontend: 0, backend: 0, test: 0, total: 0, records: [] };
+      pmMap[pm.name] = { id: pm.id, name: pm.name, ...withRoleAliases(createRoleSummary()), total: 0, records: [] };
     }
 
     // 每条 WorkRecord 有 product_managers 字段（JSON 数组），按第一个 PM 分组
@@ -168,20 +171,19 @@ router.get('/', async (req, res, next) => {
       const pmName = visiblePms.length > 0 ? visiblePms[0] : PM_DEFAULT_NAME;
       if (!pmMap[pmName]) {
         const pmEntity = pmContextByName.get(pmName)?.pm;
-        pmMap[pmName] = { id: pmEntity?.id || null, name: pmName, frontend: 0, backend: 0, test: 0, total: 0, records: [] };
+        pmMap[pmName] = { id: pmEntity?.id || null, name: pmName, ...withRoleAliases(createRoleSummary()), total: 0, records: [] };
       }
       const hours = parseFloat(r.hours || 0);
-      const role = r.staff?.role;
-      if (role && pmMap[pmName][role] !== undefined) {
-        pmMap[pmName][role] += hours;
-      }
+      const role = normalizeStaffRole(r.staff?.role);
+      addRoleHours(pmMap[pmName], role, hours);
+      Object.assign(pmMap[pmName], withRoleAliases(pmMap[pmName]));
       pmMap[pmName].total += hours;
       pmMap[pmName].records.push({
         id: r.id,
         version: r.version,
         requirement_title: r.requirement_title,
         hours: r.hours,
-        role: role,
+        role,
         staffName: r.staff?.name || '-'
       });
     }
@@ -223,9 +225,9 @@ router.get('/', async (req, res, next) => {
           totalHours,
           recordCount: records.length,
           staffCount: currentStaff.length,
-          taskCount: tasks.length
+          taskCount: taskIds.length
         },
-        roleSummary,
+        roleSummary: withRoleAliases(roleSummary),
         pmDistribution
       }
     });
@@ -350,7 +352,7 @@ router.get('/pm/:pmId', async (req, res, next) => {
 
     // 获取 PM 信息
     const pm = await ProductManager.findByPk(pmId);
-    if (!pm) return res.status(404).json({ code: 1, message: '产品经理不存在' });
+    if (!pm) return res.status(404).json({ code: 1, message: 'AI产品经理不存在' });
 
     // 获取时间范围内的任务
     const tasks = await CollectionTask.findAll({
@@ -412,7 +414,7 @@ router.get('/pm/:pmId', async (req, res, next) => {
           version: plain.version,
           hours: plain.hours,
           staffName: r.staff?.name || '-',
-          role: r.staff?.role || '-',
+          role: normalizeStaffRole(r.staff?.role, '-'),
           product_managers: plain.product_managers
         });
       }
@@ -425,12 +427,9 @@ router.get('/pm/:pmId', async (req, res, next) => {
     const totalHours = pmRecords.reduce((s, r) => s + parseFloat(r.hours || 0), 0);
 
     // 按角色汇总
-    const roleSummary = { frontend: 0, backend: 0, test: 0 };
+    const roleSummary = createRoleSummary();
     for (const r of pmRecords) {
-      const role = r.staff?.role;
-      if (role && roleSummary[role] !== undefined) {
-        roleSummary[role] += parseFloat(r.hours || 0);
-      }
+      addRoleHours(roleSummary, r.staff?.role, parseFloat(r.hours || 0));
     }
 
     res.json({
@@ -440,7 +439,7 @@ router.get('/pm/:pmId', async (req, res, next) => {
         totalHours,
         recordCount: pmRecords.length,
         taskCount: tasksWithRecords.length,
-        roleSummary,
+        roleSummary: withRoleAliases(roleSummary),
         tasks: allTasks
       }
     });

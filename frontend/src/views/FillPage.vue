@@ -13,6 +13,7 @@ import { ElMessage } from 'element-plus'
 import api from '../api'
 import { broadcastDataChange, SYNC_EVENTS } from '../utils/sync'
 import { parseExcelFile, validateHeaders, generateAndDownloadExcel, uploadExcelToServer, downloadTemplate } from '../utils/excel'
+import { ROLE_LABEL } from '../utils/roles'
 
 const route = useRoute()
 const loading = ref(true)
@@ -25,9 +26,6 @@ const blockMessage = computed(() => fillData.value?.message || '用户已离职�
 
 /** 产品经理选项列表（从 API 动态获取） */
 const pmOptions = ref([])
-
-/** 角色标签 */
-const ROLE_LABEL = { frontend: '前端', backend: '后端', test: '测试' }
 
 /** 表格行数据 */
 const rows = ref([])
@@ -58,6 +56,10 @@ const isEditable = computed(() => {
 /** 创建空行 */
 function createEmptyRow() {
   return { requirement_title: '', version: '', product_managers: [], hours: null }
+}
+
+function pickPmValue(row) {
+  return row['AI产品经理'] ?? row['产品经理'] ?? ''
 }
 
 onMounted(async () => {
@@ -180,7 +182,7 @@ async function handleSubmit() {
   }
   const missingPm = validRows.find(({ row }) => !hasSelectedProductManager(row))
   if (missingPm) {
-    ElMessage.warning(`第 ${missingPm.index + 1} 行请选择产品经理`)
+    ElMessage.warning(`第 ${missingPm.index + 1} 行请选择AI产品经理`)
     return
   }
   const records = validRows.map(({ row }) => ({
@@ -423,8 +425,9 @@ async function handleFillImport(event) {
 
   try {
     const { headers, rows: excelRows } = await parseExcelFile(file)
-    const expectedHeaders = ['需求标题', '版本号', '产品经理', '工时(小时)']
-    if (!validateHeaders(headers, expectedHeaders)) {
+    const expectedHeaders = ['需求标题', '版本号', 'AI产品经理', '工时(小时)']
+    const legacyHeaders = ['需求标题', '版本号', '产品经理', '工时(小时)']
+    if (!validateHeaders(headers, expectedHeaders) && !validateHeaders(headers, legacyHeaders)) {
       ElMessage.error('页面数据格式不匹配，请重新导入')
       return
     }
@@ -436,8 +439,8 @@ async function handleFillImport(event) {
     const parsed = excelRows.map(r => ({
       requirement_title: String(r['需求标题'] || '').trim(),
       version: String(r['版本号'] || '').trim(),
-      product_managers: String(r['产品经理'] || '').trim()
-        ? String(r['产品经理']).split(/[,，、\s]+/).filter(Boolean)
+      product_managers: String(pickPmValue(r) || '').trim()
+        ? String(pickPmValue(r)).split(/[,，、\s]+/).filter(Boolean)
         : [],
       hours: parseFloat(r['工时(小时)']) || 0
     }))
@@ -445,7 +448,7 @@ async function handleFillImport(event) {
     // 追加到当前行（若当前仅一空行则替换）
     const missingPmIndex = parsed.findIndex(r => r.requirement_title && r.hours > 0 && !hasSelectedProductManager(r))
     if (missingPmIndex >= 0) {
-      ElMessage.warning(`Excel 第 ${missingPmIndex + 2} 行未填写产品经理`)
+      ElMessage.warning(`Excel 第 ${missingPmIndex + 2} 行未填写AI产品经理`)
       return
     }
 
@@ -493,7 +496,7 @@ function exportHistory() {
   }
 
   for (const [sheetName, tasks] of Object.entries(quarterGroups)) {
-    const header = ['任务周期', '需求标题', '版本号', '产品经理', '工时(小时)', '日期范围']
+    const header = ['任务周期', '需求标题', '版本号', 'AI产品经理', '工时(小时)', '日期范围']
     const data = [header]
     for (const task of tasks) {
       const dateRange = `${task.start_date || ''} ~ ${task.end_date || ''}`
@@ -647,9 +650,9 @@ function exportHistory() {
                       :disabled="!isEditable" @focus="handleInputFocus" />
                   </template>
                 </el-table-column>
-                <el-table-column label="产品经理" width="160">
+                <el-table-column label="AI产品经理" width="160">
                   <template #header>
-                    <span>产品经理 <span style="color:#F53F3F;">*</span></span>
+                    <span>AI产品经理 <span style="color:#F53F3F;">*</span></span>
                   </template>
                   <template #default="{ row }">
                     <el-select v-model="row.product_managers" multiple collapse-tags collapse-tags-tooltip

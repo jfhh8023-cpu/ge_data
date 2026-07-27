@@ -9,6 +9,7 @@ import { Delete, Download, Plus, Promotion } from '@element-plus/icons-vue'
 import api from '../api'
 import BackButton from '../components/BackButton.vue'
 import { useAuthStore } from '../stores/auth'
+import { ROLE_LABEL, ROLE_SHORT_LABEL } from '../utils/roles'
 
 const authStore = useAuthStore()
 const loading = ref(true)
@@ -99,7 +100,6 @@ const TASK_TYPE_CREATE_NOTIFY = 'task_create_notify'
 const TASK_TYPE_DUTY_NOTIFY = 'duty_notify'
 const DUTY_SEND_MODE_START = 'start_only'
 const DUTY_SEND_MODE_BOTH = 'start_and_end'
-const ROLE_LABEL = { frontend: '前端', backend: '后端', test: '测试' }
 const PHONE_PATTERN = /^\d{5,20}$/
 
 const canEditAutoTasks = computed(() =>
@@ -2731,7 +2731,7 @@ onUnmounted(() => {
                     />
                   </td>
                   <td>{{ staff.name }}</td>
-                  <td>{{ ROLE_LABEL[staff.role] || staff.role || '' }}</td>
+                  <td class="dt-recipient-role">{{ ROLE_SHORT_LABEL[staff.role] || ROLE_LABEL[staff.role] || staff.role || '' }}</td>
                   <td>{{ staff.phone || '' }}</td>
                 </tr>
               </tbody>
@@ -3961,6 +3961,10 @@ onUnmounted(() => {
   background: var(--color-bg-3);
   color: var(--color-text-1);
   font-weight: 600;
+}
+
+.dt-recipient-role {
+  white-space: nowrap;
 }
 
 .dt-extra-recipient-head {

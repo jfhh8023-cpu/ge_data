@@ -7,6 +7,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import api from '../api'
 import { ElMessage } from 'element-plus'
+import { ROLE_AI_DEV, ROLE_AI_QUALITY, ROLE_LABEL, ROLE_SHORT_LABEL, ROLE_TAG_CLASS } from '../utils/roles'
 
 const route = useRoute()
 const token = computed(() => route.params.token)
@@ -68,11 +69,11 @@ watch(filterQuarter, (val) => {
   if (!val) filterMonth.value = 0
 })
 
-const ROLE_LABEL = { frontend: '前端', backend: '后端', test: '测试' }
 const ROLE_TAG_STYLE = {
-  frontend: { background: '#E8F3FF', color: '#165DFF' },
-  backend: { background: '#E8FFEA', color: '#00B42A' },
-  test: { background: '#FFF7E8', color: '#FF7D00' }
+  ...Object.fromEntries(Object.entries(ROLE_TAG_CLASS).map(([key]) => [key, key === ROLE_AI_QUALITY || key === 'test'
+    ? { background: '#FFF7E8', color: '#FF7D00' }
+    : { background: '#E8F3FF', color: '#165DFF' }
+  ]))
 }
 
 /* ========== 金银铜牌 ========== */
@@ -129,7 +130,14 @@ function toggleFullYear() {
   handleSearch()
 }
 
-const roleSummary = computed(() => pmData.value?.roleSummary || { frontend: 0, backend: 0, test: 0 })
+const roleSummary = computed(() => {
+  const summary = pmData.value?.roleSummary || {}
+  const legacyAiDev = Number(summary.frontend || 0) + Number(summary.backend || 0)
+  return {
+    [ROLE_AI_DEV]: Number(summary[ROLE_AI_DEV] ?? legacyAiDev),
+    [ROLE_AI_QUALITY]: Number(summary[ROLE_AI_QUALITY] ?? summary.test ?? 0)
+  }
+})
 </script>
 
 <template>
@@ -171,7 +179,7 @@ const roleSummary = computed(() => pmData.value?.roleSummary || { frontend: 0, b
       <div class="pm-header">
         <div class="pm-avatar">{{ pmData.pm.name.charAt(pmData.pm.name.length - 1) }}</div>
         <div class="pm-info">
-          <h1 class="pm-name">{{ pmData.pm.name }}<span class="pm-badge">产品经理</span></h1>
+          <h1 class="pm-name">{{ pmData.pm.name }}<span class="pm-badge">AI产品经理</span></h1>
         </div>
         <div class="pm-stats">
           <div class="pm-stat-item">
@@ -180,16 +188,12 @@ const roleSummary = computed(() => pmData.value?.roleSummary || { frontend: 0, b
           </div>
           <div class="pm-stat-divider"></div>
           <div class="pm-stat-item pm-stat-fe">
-            <span class="pm-stat-val">{{ roleSummary.frontend.toFixed(1) }}</span>
-            <span class="pm-stat-label">前端</span>
-          </div>
-          <div class="pm-stat-item pm-stat-be">
-            <span class="pm-stat-val">{{ roleSummary.backend.toFixed(1) }}</span>
-            <span class="pm-stat-label">后端</span>
+            <span class="pm-stat-val">{{ roleSummary.ai_dev.toFixed(1) }}</span>
+            <span class="pm-stat-label">AI开发</span>
           </div>
           <div class="pm-stat-item pm-stat-te">
-            <span class="pm-stat-val">{{ roleSummary.test.toFixed(1) }}</span>
-            <span class="pm-stat-label">测试</span>
+            <span class="pm-stat-val">{{ roleSummary.ai_quality.toFixed(1) }}</span>
+            <span class="pm-stat-label">AI质量</span>
           </div>
           <div class="pm-stat-divider"></div>
           <div class="pm-stat-item">
@@ -258,11 +262,13 @@ const roleSummary = computed(() => pmData.value?.roleSummary || { frontend: 0, b
               <template #default="{ row }">
                 <span v-if="row.role && row.role !== '-'"
                   :style="{
-                    display:'inline-block', padding:'1px 5px', borderRadius:'9999px',
+                    display:'inline-flex', alignItems:'center', justifyContent:'center',
+                    padding:'1px 5px', borderRadius:'9999px',
+                    minWidth:'42px', lineHeight:'16px', whiteSpace:'nowrap',
                     fontSize:'10px', fontWeight:'500',
                     ...(ROLE_TAG_STYLE[row.role] || {background:'#F2F3F5',color:'#86909C'})
                   }"
-                >{{ ROLE_LABEL[row.role] || row.role }}</span>
+                >{{ ROLE_SHORT_LABEL[row.role] || ROLE_LABEL[row.role] || row.role }}</span>
                 <span v-else style="color:#C9CDD4;">-</span>
               </template>
             </el-table-column>

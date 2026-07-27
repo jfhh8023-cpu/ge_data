@@ -396,6 +396,9 @@ html, body {
   font-size: 12px;
   font-weight: 500;
   gap: 4px;
+  line-height: 1.4;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .dt-tag-blue { background: var(--color-primary-light); color: var(--color-primary); }

@@ -25,6 +25,7 @@ import { ArrowLeft, ArrowRight, ArrowUp } from '@element-plus/icons-vue'
 import { onDataChange, SYNC_EVENTS } from '../utils/sync'
 import { generateAndDownloadExcel, uploadExcelToServer } from '../utils/excel'
 import { useAuthStore } from '../stores/auth'
+import { ROLE_AI_DEV, ROLE_AI_QUALITY, ROLE_LABEL, ROLE_SHORT_LABEL, ROLE_DOT_COLOR, ROLE_TAG_CLASS, normalizeRole } from '../utils/roles'
 
 const statsStore = useStatsStore()
 const authStore = useAuthStore()
@@ -35,14 +36,13 @@ const router = useRouter()
 /* ========== 常量 ========== */
 const CURRENT_YEAR = new Date().getFullYear()
 const BAR_COLORS = {
-  frontend: '#165DFF',
-  backend: '#00B42A',
-  test: '#FF7D00',
+  ai_dev: '#165DFF',
+  ai_quality: '#FF7D00',
   total: '#F53F3F'
 }
 const CANVAS_HEIGHT = 360
-const BAR_LABELS = ['前端', '后端', '测试', '总计']
-const BAR_KEYS = ['frontend', 'backend', 'test', 'total']
+const BAR_LABELS = ['AI开发', 'AI质量', '总计']
+const BAR_KEYS = [ROLE_AI_DEV, ROLE_AI_QUALITY, 'total']
 const WEEK_WINDOW_SIZE = 9
 const WEEK_MIN_WINDOW_SIZE = 4
 const WEEK_FOCUS_INDEX = 4
@@ -50,14 +50,10 @@ const WEEK_WINDOW_STEP = 2
 const WEEK_CHIP_SLOT_WIDTH = 54
 const WEEK_NAV_SLOT_WIDTH = 72
 
-const ROLE_LABEL = { frontend: '前端', backend: '后端', test: '测试' }
-const ROLE_DOT_COLOR = { frontend: '#165DFF', backend: '#00B42A', test: '#FF7D00' }
-const ROLE_TAG_CLASS = { frontend: 'dt-tag-blue', backend: 'dt-tag-green', test: 'dt-tag-orange' }
 const PM_THEME_COLOR = '#722ED1'
 const ANALYSIS_ROLE_META = [
-  { key: 'frontend', label: '前端', itemClass: 'dt-analysis-fe', bgClass: 'dt-analysis-fe-bg' },
-  { key: 'backend', label: '后端', itemClass: 'dt-analysis-be', bgClass: 'dt-analysis-be-bg' },
-  { key: 'test', label: '测试', itemClass: 'dt-analysis-qa', bgClass: 'dt-analysis-qa-bg' }
+  { key: ROLE_AI_DEV, label: 'AI开发', itemClass: 'dt-analysis-fe', bgClass: 'dt-analysis-fe-bg' },
+  { key: ROLE_AI_QUALITY, label: 'AI质量', itemClass: 'dt-analysis-qa', bgClass: 'dt-analysis-qa-bg' }
 ]
 const WORKLOAD_REPORT_PATH = 'api/local-reports/workload-analysis/devtracker_workload_all_latest.html'
 const ANALYSIS_KEYWORD_DEFS = [
@@ -68,8 +64,8 @@ const ANALYSIS_KEYWORD_DEFS = [
   { name: '性能/优化', pattern: /优化|性能|压测|卡顿|稳定|改进|升级/ },
   { name: '部署/运维', pattern: /部署|服务器|环境|网关|TLS|证书|服务|运维/ },
   { name: '短信', pattern: /短信|SMS/i },
-  { name: '前端界面', pattern: /前端|页面|界面|列表|按钮|展示|排序|UI/i },
-  { name: '测试问题', pattern: /测试|问题|缺陷|bug|修复|异常|定位/i }
+  { name: '界面体验', pattern: /前端|页面|界面|列表|按钮|展示|排序|UI/i },
+  { name: '质量问题', pattern: /测试|质量|问题|缺陷|bug|修复|异常|定位/i }
 ]
 
 /* ========== 金银铜牌常量 ========== */
@@ -477,8 +473,49 @@ watch([selectedYear, selectedQuarter, selectedTaskId, selectedNaturalWeekTaskId]
 
 /* ========== 角色工时（基于后端 roleSummary，REQ-11/REQ-19） ========== */
 const roleTotals = computed(() => {
-  return statsStore.roleSummary || { frontend: 0, backend: 0, test: 0 }
+  const summary = statsStore.roleSummary || {}
+  const aiDev = summary[ROLE_AI_DEV] !== undefined
+    ? Number(summary[ROLE_AI_DEV] || 0)
+    : Number(summary.frontend || 0) + Number(summary.backend || 0)
+  return {
+    [ROLE_AI_DEV]: aiDev,
+    [ROLE_AI_QUALITY]: Number(summary[ROLE_AI_QUALITY] ?? summary.test ?? 0)
+  }
 })
+
+function roleSummaryAiDev(summary = {}) {
+  return summary[ROLE_AI_DEV] !== undefined
+    ? Number(summary[ROLE_AI_DEV] || 0)
+    : Number(summary.frontend || 0) + Number(summary.backend || 0)
+}
+
+function roleSummaryAiQuality(summary = {}) {
+  return Number(summary[ROLE_AI_QUALITY] ?? summary.test ?? 0)
+}
+
+function roleDisplay(role, compact = false) {
+  const normalized = normalizeRole(role)
+  return (compact ? ROLE_SHORT_LABEL[normalized] : ROLE_LABEL[normalized]) || role || '-'
+}
+
+function rolePillStyle(role, compact = false) {
+  const normalized = normalizeRole(role)
+  const isQuality = normalized === ROLE_AI_QUALITY
+  return {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: compact ? '1px 5px' : '2px 10px',
+    borderRadius: '9999px',
+    fontSize: compact ? '10px' : '11px',
+    fontWeight: '500',
+    lineHeight: compact ? '16px' : '18px',
+    minWidth: compact ? '42px' : '54px',
+    whiteSpace: 'nowrap',
+    background: isQuality ? '#FFF7E8' : '#E8F3FF',
+    color: isQuality ? '#FF7D00' : '#165DFF'
+  }
+}
 
 /* ========== 柱状图数据（基于后端 pmDistribution，REQ-13） ========== */
 const chartData = computed(() => {
@@ -551,9 +588,8 @@ function groupAnalysisRows(records, keyGetter, labelGetter) {
         key,
         label,
         total: 0,
-        frontend: 0,
-        backend: 0,
-        test: 0,
+        [ROLE_AI_DEV]: 0,
+        [ROLE_AI_QUALITY]: 0,
         recordCount: 0,
         requirementSet: new Set(),
         taskSet: new Set()
@@ -561,7 +597,7 @@ function groupAnalysisRows(records, keyGetter, labelGetter) {
     }
     const row = map.get(key)
     const hours = toNumber(rec.hours)
-    const role = rec.staff?.role || rec.role
+    const role = normalizeRole(rec.staff?.role || rec.role)
     row.total += hours
     row.recordCount += 1
     row.taskSet.add(rec.task_id)
@@ -572,9 +608,8 @@ function groupAnalysisRows(records, keyGetter, labelGetter) {
     .map(row => ({
       ...row,
       total: Number(row.total.toFixed(1)),
-      frontend: Number(row.frontend.toFixed(1)),
-      backend: Number(row.backend.toFixed(1)),
-      test: Number(row.test.toFixed(1)),
+      [ROLE_AI_DEV]: Number(row[ROLE_AI_DEV].toFixed(1)),
+      [ROLE_AI_QUALITY]: Number(row[ROLE_AI_QUALITY].toFixed(1)),
       taskCount: row.taskSet.size,
       requirementCount: row.requirementSet.size,
       share: 0
@@ -585,9 +620,8 @@ function groupAnalysisRows(records, keyGetter, labelGetter) {
 const analysisDimensionMeta = computed(() => {
   const meta = {
     total: { label: '总工时', role: '', color: '#F53F3F' },
-    frontend: { label: '前端总工时', role: 'frontend', color: '#165DFF' },
-    backend: { label: '后端总工时', role: 'backend', color: '#00B42A' },
-    test: { label: '测试总工时', role: 'test', color: '#FF7D00' }
+    [ROLE_AI_DEV]: { label: 'AI开发工程师总工时', role: ROLE_AI_DEV, color: '#165DFF' },
+    [ROLE_AI_QUALITY]: { label: 'AI质量工程师总工时', role: ROLE_AI_QUALITY, color: '#FF7D00' }
   }
   return meta[analysisDimension.value] || meta.total
 })
@@ -604,20 +638,20 @@ function showAnalysisRole(role) {
 const analysisRecords = computed(() => {
   const records = statsStore.records || []
   const role = analysisDimensionMeta.value.role
-  return role ? records.filter(r => r.staff?.role === role) : records
+  return role ? records.filter(r => normalizeRole(r.staff?.role || r.role) === role) : records
 })
 
 const analysisData = computed(() => {
   const records = analysisRecords.value
   const total = records.reduce((sum, rec) => sum + toNumber(rec.hours), 0)
-  const roleTotals = { frontend: 0, backend: 0, test: 0 }
+  const roleTotals = { [ROLE_AI_DEV]: 0, [ROLE_AI_QUALITY]: 0 }
   for (const rec of records) {
-    const role = rec.staff?.role || rec.role
+    const role = normalizeRole(rec.staff?.role || rec.role)
     if (roleTotals[role] !== undefined) roleTotals[role] += toNumber(rec.hours)
   }
   const requirementKey = rec => `${rec.task_id || ''}||${rec.requirement_title || ''}||${rec.version || ''}`
   const pmRows = groupAnalysisRows(records, rec => firstPmName(rec.product_managers)).map(row => ({ ...row, share: total ? Number((row.total * 100 / total).toFixed(1)) : 0 }))
-  const staffRows = groupAnalysisRows(records, rec => rec.staff?.name || '-', rec => `${rec.staff?.name || '-'}（${ROLE_LABEL[rec.staff?.role] || rec.staff?.role || '-'}）`).map(row => ({ ...row, share: total ? Number((row.total * 100 / total).toFixed(1)) : 0 }))
+  const staffRows = groupAnalysisRows(records, rec => rec.staff?.name || '-', rec => `${rec.staff?.name || '-'}（${ROLE_SHORT_LABEL[normalizeRole(rec.staff?.role)] || rec.staff?.role || '-'}）`).map(row => ({ ...row, share: total ? Number((row.total * 100 / total).toFixed(1)) : 0 }))
   const versionRows = groupAnalysisRows(records, rec => rec.version || '——').map(row => ({ ...row, share: total ? Number((row.total * 100 / total).toFixed(1)) : 0 }))
   const requirementRows = groupAnalysisRows(records, requirementKey, rec => rec.requirement_title || '-').map(row => ({ ...row, share: total ? Number((row.total * 100 / total).toFixed(1)) : 0 }))
   const taskRows = groupAnalysisRows(records, rec => rec.task_id || '-', rec => {
@@ -633,7 +667,7 @@ const analysisData = computed(() => {
   }).sort((a, b) => b.sortTime - a.sortTime)
   const roleComboRows = groupAnalysisRows(records, requirementKey, rec => rec.requirement_title || '-')
     .map(row => ({
-      combo: ['frontend', 'backend', 'test'].filter(role => row[role] > 0).map(role => ROLE_LABEL[role]).join('+') || '无角色',
+      combo: [ROLE_AI_DEV, ROLE_AI_QUALITY].filter(role => row[role] > 0).map(role => ROLE_SHORT_LABEL[role]).join('+') || '无角色',
       total: row.total,
       requirementCount: 1
     }))
@@ -664,7 +698,7 @@ const analysisData = computed(() => {
   const missingVersionRecords = records.filter(rec => !String(rec.version || '').trim() || rec.version === '-')
   const zeroHoursRecords = records.filter(rec => toNumber(rec.hours) <= 0)
   const qualityRows = [
-    { label: '空产品经理', records: emptyPmRecords },
+    { label: '空AI产品经理', records: emptyPmRecords },
     { label: '未填版本', records: missingVersionRecords },
     { label: '0 或负工时', records: zeroHoursRecords }
   ].map(item => {
@@ -684,9 +718,8 @@ const analysisData = computed(() => {
     avgRecordHours: records.length ? Number((total / records.length).toFixed(1)) : 0,
     avgRequirementHours: requirementRows.length ? Number((total / requirementRows.length).toFixed(1)) : 0,
     roleTotals: {
-      frontend: Number(roleTotals.frontend.toFixed(1)),
-      backend: Number(roleTotals.backend.toFixed(1)),
-      test: Number(roleTotals.test.toFixed(1))
+      [ROLE_AI_DEV]: Number(roleTotals[ROLE_AI_DEV].toFixed(1)),
+      [ROLE_AI_QUALITY]: Number(roleTotals[ROLE_AI_QUALITY].toFixed(1))
     },
     pmRows,
     staffRows,
@@ -730,7 +763,7 @@ const analysisRoleSummaryText = computed(() => {
     const row = analysisRoleRows.value[0]
     return row ? `${row.label} ${row.hours.toFixed(1)}h。` : ''
   }
-  return `后端 ${analysisData.value.roleTotals.backend.toFixed(1)}h，前端 ${analysisData.value.roleTotals.frontend.toFixed(1)}h，测试 ${analysisData.value.roleTotals.test.toFixed(1)}h。`
+  return `AI开发工程师 ${analysisData.value.roleTotals.ai_dev.toFixed(1)}h，AI质量工程师 ${analysisData.value.roleTotals.ai_quality.toFixed(1)}h。`
 })
 
 function openAnalysisDialog(dimension = 'total') {
@@ -803,6 +836,7 @@ const flatTableData = computed(() => {
       // 构建行数据
       const recRows = []
       for (let i = 0; i < sortedRecs.length; i++) {
+        const roleKey = normalizeRole(sortedRecs[i].role)
         recRows.push({
           pmName: pm.name,
           pmRowSpan: i === 0 ? totalRows : 0,
@@ -812,8 +846,8 @@ const flatTableData = computed(() => {
           version: sortedRecs[i].version || '-',
           requirement_title: sortedRecs[i].requirement_title || '-',
           staffName: sortedRecs[i].staffName || '-',
-          role: ROLE_LABEL[sortedRecs[i].role] || sortedRecs[i].role || '-',
-          roleRaw: sortedRecs[i].role || '-',
+          role: roleDisplay(roleKey, true),
+          roleRaw: roleKey,
           hours: parseFloat(sortedRecs[i].hours || 0).toFixed(1),
           pmTotal: '',
           isTotalRow: false
@@ -965,7 +999,7 @@ function drawChart() {
   const yScale = chartH / (maxVal * 1.2)
 
   const groupCount = data.length
-  const barTypes = 4
+  const barTypes = BAR_KEYS.length
   const groupWidth = chartW / groupCount
   const barWidth = Math.max(Math.min(groupWidth / (barTypes + 1.5), 40), 20)
   const groupGap = (groupWidth - barWidth * barTypes) / 2
@@ -989,7 +1023,7 @@ function drawChart() {
   }
 
   // 绘制柱形
-  const colors = [BAR_COLORS.frontend, BAR_COLORS.backend, BAR_COLORS.test, BAR_COLORS.total]
+  const colors = BAR_KEYS.map(key => BAR_COLORS[key])
 
   data.forEach((d, gi) => {
     const groupX = padding.left + gi * groupWidth + groupGap
@@ -1030,7 +1064,7 @@ function drawChart() {
     ctx.fillStyle = '#1D2129'
     ctx.font = '13px "Inter", "Microsoft YaHei", sans-serif'
     ctx.textAlign = 'center'
-    const labelX = groupX + barWidth * 2
+    const labelX = groupX + barWidth * ((barTypes - 1) / 2)
     const displayName = d.name.length > 5 ? d.name.substring(0, 5) + '...' : d.name
     const labelW = ctx.measureText(displayName).width
     const labelY = padding.top + chartH + 22
@@ -1042,7 +1076,7 @@ function drawChart() {
 
   // 图例
   const legendY = 18
-  let legendX = W - padding.right - 300
+  let legendX = W - padding.right - 260
   BAR_KEYS.forEach((_, i) => {
     ctx.fillStyle = colors[i]
     ctx.fillRect(legendX, legendY - 8, 12, 12)
@@ -1170,10 +1204,10 @@ watch(activeTab, async (tab) => {
 
 /* ========== 研发聚焦双模式 ========== */
 const viewMode = ref('individual')  // 'individual' | 'all'
-const allPersonalData = ref({ backend: [], frontend: [], test: [] })
+const allPersonalData = ref({ [ROLE_AI_DEV]: [], [ROLE_AI_QUALITY]: [] })
 
 async function loadAllPersonalData() {
-  const grouped = { backend: [], frontend: [], test: [] }
+  const grouped = { [ROLE_AI_DEV]: [], [ROLE_AI_QUALITY]: [] }
   for (const staff of statsStore.staff) {
     try {
       const res = await api.get(`/stats/personal/${staff.id}`, {
@@ -1185,8 +1219,9 @@ async function loadAllPersonalData() {
       if (data.tasks?.length) {
         data.tasks.sort((a, b) => new Date(b.start_date) - new Date(a.start_date))
       }
-      if (grouped[staff.role]) {
-        grouped[staff.role].push(data)
+      const role = normalizeRole(staff.role)
+      if (grouped[role]) {
+        grouped[role].push(data)
       }
     } catch { /* skip */ }
   }
@@ -1403,14 +1438,13 @@ function exportStatsData() {
   const summaryHeader = ['角色', '总工时(小时)']
   const summaryData = [summaryHeader]
   const rt = roleTotals.value
-  summaryData.push(['前端', rt.frontend || 0])
-  summaryData.push(['后端', rt.backend || 0])
-  summaryData.push(['测试', rt.test || 0])
-  summaryData.push(['合计', (rt.frontend || 0) + (rt.backend || 0) + (rt.test || 0)])
+  summaryData.push(['AI开发工程师', rt.ai_dev || 0])
+  summaryData.push(['AI质量工程师', rt.ai_quality || 0])
+  summaryData.push(['合计', (rt.ai_dev || 0) + (rt.ai_quality || 0)])
   sheets.push({ name: '角色工时汇总', data: summaryData, colWidths: [12, 14] })
 
-  // Sheet 2: PM明细表（与页面表格一致）
-  const detailHeader = ['序号', '产品经理', '版本号', '需求名称', '人员', '角色', '工时(小时)', '合计']
+  // Sheet 2: AI产品经理明细表（与页面表格一致）
+  const detailHeader = ['序号', 'AI产品经理', '版本号', '需求名称', '人员', '角色', '工时(小时)', '合计']
   const detailData = [detailHeader]
   let idx = 1
   for (const pm of pmDist) {
@@ -1425,7 +1459,7 @@ function exportStatsData() {
           rec.version || '-',
           rec.requirement_title || '-',
           rec.staffName || '-',
-          ROLE_LABEL[rec.role] || rec.role || '-',
+          roleDisplay(rec.role),
           parseFloat(rec.hours || 0).toFixed(1),
           ''
         ])
@@ -1433,15 +1467,15 @@ function exportStatsData() {
       detailData.push(['', pm.name + ' 合计', '', '', '', '', '', pm.total.toFixed(1)])
     }
   }
-  sheets.push({ name: 'PM工时明细', data: detailData, colWidths: [8, 14, 14, 30, 10, 8, 12, 10] })
+  sheets.push({ name: 'AI产品经理工时明细', data: detailData, colWidths: [8, 16, 14, 30, 10, 12, 12, 10] })
 
-  // Sheet 3: PM柱状图数据
-  const chartHeader = ['产品经理', '前端(小时)', '后端(小时)', '测试(小时)', '总计(小时)']
+  // Sheet 3: AI产品经理柱状图数据
+  const chartHeader = ['AI产品经理', 'AI开发工程师(小时)', 'AI质量工程师(小时)', '总计(小时)']
   const chartDataExport = [chartHeader]
   for (const d of pmDist) {
-    chartDataExport.push([d.name, d.frontend || 0, d.backend || 0, d.test || 0, d.total || 0])
+    chartDataExport.push([d.name, roleSummaryAiDev(d), roleSummaryAiQuality(d), d.total || 0])
   }
-  sheets.push({ name: 'PM柱状图数据', data: chartDataExport, colWidths: [14, 12, 12, 12, 12] })
+  sheets.push({ name: 'AI产品经理柱状图数据', data: chartDataExport, colWidths: [16, 18, 18, 12] })
 
   const filename = `周期统计_${selectedYear.value}年${selectedQuarter.value}.xlsx`
   const blob = generateAndDownloadExcel({ filename, sheets })
@@ -1533,24 +1567,17 @@ function exportStatsData() {
               <span class="dt-stat-card-unit">小时</span>
             </div>
           </div>
-          <div class="dt-stat-card dt-stat-card-clickable" @click="openAnalysisDialog('frontend')">
-            <div class="dt-stat-card-label">{{ filterLabel }} 前端总工时</div>
+          <div class="dt-stat-card dt-stat-card-clickable" @click="openAnalysisDialog('ai_dev')">
+            <div class="dt-stat-card-label">{{ filterLabel }} AI开发工程师总工时</div>
             <div class="dt-stat-card-value" style="color:#165DFF;">
-              {{ roleTotals.frontend?.toFixed(1) || '0' }}
+              {{ roleTotals.ai_dev?.toFixed(1) || '0' }}
               <span class="dt-stat-card-unit">小时</span>
             </div>
           </div>
-          <div class="dt-stat-card dt-stat-card-clickable" @click="openAnalysisDialog('backend')">
-            <div class="dt-stat-card-label">{{ filterLabel }} 后端总工时</div>
-            <div class="dt-stat-card-value" style="color:#00B42A;">
-              {{ roleTotals.backend?.toFixed(1) || '0' }}
-              <span class="dt-stat-card-unit">小时</span>
-            </div>
-          </div>
-          <div class="dt-stat-card dt-stat-card-clickable" @click="openAnalysisDialog('test')">
-            <div class="dt-stat-card-label">{{ filterLabel }} 测试总工时</div>
+          <div class="dt-stat-card dt-stat-card-clickable" @click="openAnalysisDialog('ai_quality')">
+            <div class="dt-stat-card-label">{{ filterLabel }} AI质量工程师总工时</div>
             <div class="dt-stat-card-value" style="color:#FF7D00;">
-              {{ roleTotals.test?.toFixed(1) || '0' }}
+              {{ roleTotals.ai_quality?.toFixed(1) || '0' }}
               <span class="dt-stat-card-unit">小时</span>
             </div>
           </div>
@@ -1575,7 +1602,7 @@ function exportStatsData() {
         <!-- 柱状图（REQ-13：按产品经理工时分布） -->
         <div class="dt-data-card" style="padding:24px; margin-bottom:24px;">
           <h3 style="font-size:15px; font-weight:600; color:var(--color-text-1); margin-bottom:16px;">
-            按产品经理工时分布 — {{ filterLabel }}
+            按AI产品经理工时分布 — {{ filterLabel }}
           </h3>
           <canvas ref="chartRef" :height="CANVAS_HEIGHT" @click="onChartClick" @mousemove="onChartMouseMove"></canvas>
         </div>
@@ -1584,7 +1611,7 @@ function exportStatsData() {
         <div class="dt-data-card">
           <!-- v3.2.0: PM 排序控件 -->
           <div v-if="flatTableData.length > 0" style="display:flex; justify-content:space-between; align-items:center; padding:12px 16px; border-bottom:1px solid var(--color-border-light, #F2F3F5);">
-            <span style="font-size:13px; font-weight:500; color:var(--color-text-2);">PM内数据排序：</span>
+            <span style="font-size:13px; font-weight:500; color:var(--color-text-2);">AI产品经理内数据排序：</span>
             <el-radio-group v-model="pmSortOrder" size="small" @change="loadDeptStats">
               <el-radio-button value="">按新增顺序</el-radio-button>
               <el-radio-button value="desc">工时降序 ↓</el-radio-button>
@@ -1604,7 +1631,7 @@ function exportStatsData() {
             border
           >
             <el-table-column type="index" label="序号" width="60" align="center" />
-            <el-table-column label="产品经理" width="130" align="center">
+            <el-table-column label="AI产品经理" width="130" align="center">
               <template #default="{ row }">
                 <span
                   style="font-weight:600; cursor:pointer; user-select:none;"
@@ -1637,15 +1664,7 @@ function exportStatsData() {
             <el-table-column label="角色" width="80" align="center">
               <template #default="{ row }">
                 <span v-if="row.role && row.role !== '-'"
-                  :style="{
-                    display: 'inline-block',
-                    padding: '2px 10px',
-                    borderRadius: '9999px',
-                    fontSize: '11px',
-                    fontWeight: '500',
-                    background: row.roleRaw === 'frontend' ? '#E8F3FF' : row.roleRaw === 'backend' ? '#E8FFEA' : row.roleRaw === 'test' ? '#FFF7E8' : '#F2F3F5',
-                    color: row.roleRaw === 'frontend' ? '#165DFF' : row.roleRaw === 'backend' ? '#00B42A' : row.roleRaw === 'test' ? '#FF7D00' : '#86909C'
-                  }"
+                  :style="rolePillStyle(row.roleRaw)"
                 >{{ row.role }}</span>
                 <span v-else style="color:var(--color-text-4);">-</span>
               </template>
@@ -1722,7 +1741,7 @@ function exportStatsData() {
                 <div class="dt-personal-name">
                   {{ personalInfo.staff?.name }}
                   <span class="dt-tag" :class="ROLE_TAG_CLASS[personalInfo.staff?.role]">
-                    {{ ROLE_LABEL[personalInfo.staff?.role] || '-' }}
+                    {{ ROLE_SHORT_LABEL[normalizeRole(personalInfo.staff?.role)] || ROLE_LABEL[personalInfo.staff?.role] || '-' }}
                   </span>
                 </div>
                 <div class="dt-personal-meta">
@@ -1771,7 +1790,7 @@ function exportStatsData() {
                         </template>
                       </el-table-column>
                       <el-table-column prop="requirement_title" label="需求标题" min-width="180" align="left" header-align="center" show-overflow-tooltip sortable />
-                      <el-table-column prop="product_managers" label="产品经理" min-width="130" sortable>
+                      <el-table-column prop="product_managers" label="AI产品经理" min-width="130" sortable>
                         <template #default="{ row }">
                           <span style="word-break:break-all;">{{ formatPM(row.product_managers) }}</span>
                         </template>
@@ -1798,43 +1817,11 @@ function exportStatsData() {
 
         <!-- ====== 一起查看模式（REQ-25 优化） ====== -->
         <template v-else>
-          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px;">
-            <!-- 后端列 -->
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+            <!-- AI开发工程师列 -->
             <div>
-              <h3 style="font-size:14px; font-weight:600; color:#00B42A; margin-bottom:12px; padding:8px 12px; background:#E8FFEA; border-radius:8px; text-align:center;">后端</h3>
-              <div v-for="(person, pIdx) in allPersonalData.backend" :key="person.staff?.id" :style="{ marginBottom:'16px', background: pIdx % 2 === 1 ? '#F0FAF0' : 'transparent', borderRadius:'10px', padding: pIdx % 2 === 1 ? '10px' : '0' }">
-                <div style="display:flex; align-items:center; gap:8px; padding:8px 12px; background:var(--color-bg-2); border-radius:8px; margin-bottom:4px;">
-                  <div style="width:28px; height:28px; border-radius:50%; background:#00B42A; color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600;">{{ getInitial(person.staff?.name) }}</div>
-                  <span style="font-weight:600; font-size:13px;">{{ person.staff?.name }}</span>
-                  <span style="margin-left:auto; font-weight:700; color:var(--color-primary); font-size:13px;">{{ person.totalHours?.toFixed(1) || 0 }}H</span>
-                </div>
-                <div v-if="person.tasks?.length" style="padding-left:8px;">
-                  <div v-for="task in person.tasks" :key="task.id" style="border-bottom:1px solid var(--color-border-light);">
-                    <div
-                      style="display:flex; justify-content:space-between; padding:4px 4px; cursor:pointer; font-size:13px;"
-                      @click="toggleAllTask(person.staff?.id, task.id)"
-                    >
-                      <span style="color:var(--color-text-2); display:flex; align-items:center; gap:4px;">
-                        <span :style="{ transform: isAllExpanded(person.staff?.id, task.id) ? 'rotate(90deg)' : 'rotate(0)', transition: 'transform 0.2s', fontSize: '10px', color: 'var(--color-text-4)' }">▶</span>
-                        {{ task.title.replace('语音业务线-2026年', '') }}
-                      </span>
-                      <span style="font-weight:700; color:var(--color-primary); font-size:13px;">{{ task.records.reduce((s,r) => s + parseFloat(r.hours || 0), 0).toFixed(1) }}H</span>
-                    </div>
-                    <div v-if="isAllExpanded(person.staff?.id, task.id)" style="padding:4px 8px 8px 20px; font-size:12px; color:var(--color-text-3);">
-                      <div v-for="(rec, ri) in task.records" :key="ri" style="display:flex; justify-content:space-between; padding:2px 0;">
-                        <span>{{ rec.requirement_title || '-' }}</span>
-                        <span style="font-weight:600; color:var(--color-text-2);">{{ rec.hours }}H</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div v-else style="font-size:12px; color:var(--color-text-4); padding:8px;">暂无数据</div>
-              </div>
-            </div>
-            <!-- 前端列 -->
-            <div>
-              <h3 style="font-size:14px; font-weight:600; color:#165DFF; margin-bottom:12px; padding:8px 12px; background:#E8F3FF; border-radius:8px; text-align:center;">前端</h3>
-              <div v-for="(person, pIdx) in allPersonalData.frontend" :key="person.staff?.id" :style="{ marginBottom:'16px', background: pIdx % 2 === 1 ? '#EDF4FF' : 'transparent', borderRadius:'10px', padding: pIdx % 2 === 1 ? '10px' : '0' }">
+              <h3 style="font-size:14px; font-weight:600; color:#165DFF; margin-bottom:12px; padding:8px 12px; background:#E8F3FF; border-radius:8px; text-align:center;">AI开发工程师</h3>
+              <div v-for="(person, pIdx) in allPersonalData.ai_dev" :key="person.staff?.id" :style="{ marginBottom:'16px', background: pIdx % 2 === 1 ? '#EDF4FF' : 'transparent', borderRadius:'10px', padding: pIdx % 2 === 1 ? '10px' : '0' }">
                 <div style="display:flex; align-items:center; gap:8px; padding:8px 12px; background:var(--color-bg-2); border-radius:8px; margin-bottom:4px;">
                   <div style="width:28px; height:28px; border-radius:50%; background:#165DFF; color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600;">{{ getInitial(person.staff?.name) }}</div>
                   <span style="font-weight:600; font-size:13px;">{{ person.staff?.name }}</span>
@@ -1863,10 +1850,10 @@ function exportStatsData() {
                 <div v-else style="font-size:12px; color:var(--color-text-4); padding:8px;">暂无数据</div>
               </div>
             </div>
-            <!-- 测试列 -->
+            <!-- AI质量工程师列 -->
             <div>
-              <h3 style="font-size:14px; font-weight:600; color:#FF7D00; margin-bottom:12px; padding:8px 12px; background:#FFF7E8; border-radius:8px; text-align:center;">测试</h3>
-              <div v-for="(person, pIdx) in allPersonalData.test" :key="person.staff?.id" :style="{ marginBottom:'16px', background: pIdx % 2 === 1 ? '#FFF7E8' : 'transparent', borderRadius:'10px', padding: pIdx % 2 === 1 ? '10px' : '0' }">
+              <h3 style="font-size:14px; font-weight:600; color:#FF7D00; margin-bottom:12px; padding:8px 12px; background:#FFF7E8; border-radius:8px; text-align:center;">AI质量工程师</h3>
+              <div v-for="(person, pIdx) in allPersonalData.ai_quality" :key="person.staff?.id" :style="{ marginBottom:'16px', background: pIdx % 2 === 1 ? '#FFF7E8' : 'transparent', borderRadius:'10px', padding: pIdx % 2 === 1 ? '10px' : '0' }">
                 <div style="display:flex; align-items:center; gap:8px; padding:8px 12px; background:var(--color-bg-2); border-radius:8px; margin-bottom:4px;">
                   <div style="width:28px; height:28px; border-radius:50%; background:#FF7D00; color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600;">{{ getInitial(person.staff?.name) }}</div>
                   <span style="font-weight:600; font-size:13px;">{{ person.staff?.name }}</span>
@@ -1899,8 +1886,8 @@ function exportStatsData() {
         </template>
       </el-tab-pane>
 
-      <!-- ===== Tab 3: 产品聚焦 ===== -->
-      <el-tab-pane label="产品聚焦" name="product">
+      <!-- ===== Tab 3: AI产品经理聚焦 ===== -->
+      <el-tab-pane label="AI产品经理聚焦" name="product">
         <!-- 模式切换按钮 -->
         <div style="display:flex; gap:8px; margin-bottom:16px;">
           <button
@@ -1928,14 +1915,14 @@ function exportStatsData() {
               {{ pm.name }}
             </span>
             <span v-if="!pmList.length" style="font-size:13px; color:var(--color-text-3);">
-              暂无产品经理数据
+              暂无AI产品经理数据
             </span>
           </div>
 
           <!-- 未选择 PM -->
           <div v-if="!selectedPmId" class="dt-empty" style="padding:60px;">
             <div class="dt-empty-icon">📦</div>
-            <p class="dt-empty-text">请选择一位产品经理查看聚焦统计</p>
+            <p class="dt-empty-text">请选择一位AI产品经理查看聚焦统计</p>
           </div>
 
           <!-- 加载中 -->
@@ -1951,7 +1938,7 @@ function exportStatsData() {
               <div class="dt-personal-info">
                 <div class="dt-personal-name">
                   {{ pmFocusInfo.pm?.name }}
-                  <span class="dt-tag dt-tag-purple">产品经理</span>
+                  <span class="dt-tag dt-tag-purple">AI产品经理</span>
                 </div>
                 <div class="dt-personal-meta">
                   <span class="dt-personal-meta-item">
@@ -1968,9 +1955,8 @@ function exportStatsData() {
                 </div>
                 <!-- 角色工时分布 -->
                 <div v-if="pmFocusInfo.roleSummary" style="margin-top:8px; display:flex; gap:16px; font-size:12px;">
-                  <span style="color:#165DFF;">前端 <strong>{{ pmFocusInfo.roleSummary.frontend?.toFixed(1) || '0' }}</strong>H</span>
-                  <span style="color:#00B42A;">后端 <strong>{{ pmFocusInfo.roleSummary.backend?.toFixed(1) || '0' }}</strong>H</span>
-                  <span style="color:#FF7D00;">测试 <strong>{{ pmFocusInfo.roleSummary.test?.toFixed(1) || '0' }}</strong>H</span>
+                  <span style="color:#165DFF;">AI开发 <strong>{{ roleSummaryAiDev(pmFocusInfo.roleSummary).toFixed(1) }}</strong>H</span>
+                  <span style="color:#FF7D00;">AI质量 <strong>{{ roleSummaryAiQuality(pmFocusInfo.roleSummary).toFixed(1) }}</strong>H</span>
                 </div>
               </div>
             </div>
@@ -2009,16 +1995,8 @@ function exportStatsData() {
                       <el-table-column prop="role" label="角色" width="80" align="center" sortable>
                         <template #default="{ row }">
                           <span v-if="row.role && row.role !== '-'"
-                            :style="{
-                              display: 'inline-block',
-                              padding: '2px 10px',
-                              borderRadius: '9999px',
-                              fontSize: '11px',
-                              fontWeight: '500',
-                              background: row.role === 'frontend' ? '#E8F3FF' : row.role === 'backend' ? '#E8FFEA' : row.role === 'test' ? '#FFF7E8' : '#F2F3F5',
-                              color: row.role === 'frontend' ? '#165DFF' : row.role === 'backend' ? '#00B42A' : row.role === 'test' ? '#FF7D00' : '#86909C'
-                            }"
-                          >{{ ROLE_LABEL[row.role] || row.role }}</span>
+                            :style="rolePillStyle(row.role)"
+                          >{{ roleDisplay(row.role, true) }}</span>
                           <span v-else style="color:var(--color-text-4);">-</span>
                         </template>
                       </el-table-column>
@@ -2042,7 +2020,7 @@ function exportStatsData() {
 
             <div v-else class="dt-empty" style="padding:40px;">
               <div class="dt-empty-icon">📊</div>
-              <p class="dt-empty-text">该产品经理在所选周期暂无相关工时记录</p>
+              <p class="dt-empty-text">该AI产品经理在所选周期暂无相关工时记录</p>
             </div>
           </template>
         </template>
@@ -2051,7 +2029,7 @@ function exportStatsData() {
         <template v-else>
           <div v-if="allPmFocusData.length === 0" class="dt-empty" style="padding:60px;">
             <div class="dt-empty-icon">📦</div>
-            <p class="dt-empty-text">暂无产品经理数据</p>
+            <p class="dt-empty-text">暂无AI产品经理数据</p>
           </div>
           <div v-else class="dt-pm-all-grid">
             <div
@@ -2069,9 +2047,8 @@ function exportStatsData() {
                     <span style="font-size:11px; color:var(--color-text-3);">{{ pmData.recordCount || 0 }}条</span>
                   </div>
                   <div v-if="pmData.roleSummary" style="display:flex; gap:10px; font-size:11px; margin-top:2px;">
-                    <span style="color:#165DFF;">前端 <strong>{{ pmData.roleSummary.frontend?.toFixed(1) || '0' }}</strong>H</span>
-                    <span style="color:#00B42A;">后端 <strong>{{ pmData.roleSummary.backend?.toFixed(1) || '0' }}</strong>H</span>
-                    <span style="color:#FF7D00;">测试 <strong>{{ pmData.roleSummary.test?.toFixed(1) || '0' }}</strong>H</span>
+                    <span style="color:#165DFF;">AI开发 <strong>{{ roleSummaryAiDev(pmData.roleSummary).toFixed(1) }}</strong>H</span>
+                    <span style="color:#FF7D00;">AI质量 <strong>{{ roleSummaryAiQuality(pmData.roleSummary).toFixed(1) }}</strong>H</span>
                   </div>
                 </div>
                 <router-link
@@ -2114,13 +2091,8 @@ function exportStatsData() {
                       <el-table-column prop="role" label="角色" width="55" align="center" sortable>
                         <template #default="{ row }">
                           <span v-if="row.role && row.role !== '-'"
-                            :style="{
-                              display:'inline-block', padding:'1px 5px', borderRadius:'9999px',
-                              fontSize:'10px', fontWeight:'500',
-                              background: row.role === 'frontend' ? '#E8F3FF' : row.role === 'backend' ? '#E8FFEA' : row.role === 'test' ? '#FFF7E8' : '#F2F3F5',
-                              color: row.role === 'frontend' ? '#165DFF' : row.role === 'backend' ? '#00B42A' : row.role === 'test' ? '#FF7D00' : '#86909C'
-                            }"
-                          >{{ ROLE_LABEL[row.role] || row.role }}</span>
+                            :style="rolePillStyle(row.role, true)"
+                          >{{ roleDisplay(row.role, true) }}</span>
                           <span v-else style="color:#C9CDD4;">-</span>
                         </template>
                       </el-table-column>
@@ -2221,7 +2193,7 @@ function exportStatsData() {
             <div class="dt-analysis-findings">
               <h4>重点维度</h4>
               <ul>
-                <li v-if="analysisTopRows.pm">产品经理最高：{{ analysisTopRows.pm.label }}，{{ analysisTopRows.pm.total }}h / {{ analysisTopRows.pm.share }}%。</li>
+                <li v-if="analysisTopRows.pm">AI产品经理最高：{{ analysisTopRows.pm.label }}，{{ analysisTopRows.pm.total }}h / {{ analysisTopRows.pm.share }}%。</li>
                 <li v-if="analysisTopRows.staff">人员最高：{{ analysisTopRows.staff.label }}，{{ analysisTopRows.staff.total }}h / {{ analysisTopRows.staff.share }}%。</li>
                 <li v-if="analysisTopRows.requirement">需求最高：{{ analysisTopRows.requirement.label }}，{{ analysisTopRows.requirement.total }}h / {{ analysisTopRows.requirement.share }}%。</li>
                 <li v-if="analysisTopRows.combo">协作形态最高：{{ analysisTopRows.combo.combo }}，{{ analysisTopRows.combo.total }}h / {{ analysisTopRows.combo.share }}%。</li>
@@ -2236,16 +2208,15 @@ function exportStatsData() {
             </div>
           </div>
         </el-tab-pane>
-        <el-tab-pane label="产品经理">
+        <el-tab-pane label="AI产品经理">
           <el-table :data="analysisData.pmRows.slice(0, 20)" border size="small" class="dt-analysis-table" table-layout="auto" style="width:100%;" :default-sort="{ prop: 'total', order: 'descending' }">
-            <el-table-column prop="label" label="产品经理" width="1" align="center" sortable class-name="dt-analysis-primary-cell" header-class-name="dt-analysis-primary-header" />
+            <el-table-column prop="label" label="AI产品经理" width="1" align="center" sortable class-name="dt-analysis-primary-cell" header-class-name="dt-analysis-primary-header" />
             <el-table-column prop="total" label="工时" align="center" sortable />
             <el-table-column prop="share" label="占比" align="center" sortable>
               <template #default="{ row }">{{ row.share }}%</template>
             </el-table-column>
-            <el-table-column v-if="showAnalysisRole('frontend')" prop="frontend" label="前端" align="center" sortable />
-            <el-table-column v-if="showAnalysisRole('backend')" prop="backend" label="后端" align="center" sortable />
-            <el-table-column v-if="showAnalysisRole('test')" prop="test" label="测试" align="center" sortable />
+            <el-table-column v-if="showAnalysisRole('ai_dev')" prop="ai_dev" label="AI开发" align="center" sortable />
+            <el-table-column v-if="showAnalysisRole('ai_quality')" prop="ai_quality" label="AI质量" align="center" sortable />
             <el-table-column prop="recordCount" label="记录数" align="center" sortable />
             <el-table-column prop="requirementCount" label="需求数" align="center" sortable />
           </el-table>
@@ -2271,9 +2242,8 @@ function exportStatsData() {
             <el-table-column prop="share" label="占比" align="center" sortable>
               <template #default="{ row }">{{ row.share }}%</template>
             </el-table-column>
-            <el-table-column v-if="showAnalysisRole('frontend')" prop="frontend" label="前端" align="center" sortable />
-            <el-table-column v-if="showAnalysisRole('backend')" prop="backend" label="后端" align="center" sortable />
-            <el-table-column v-if="showAnalysisRole('test')" prop="test" label="测试" align="center" sortable />
+            <el-table-column v-if="showAnalysisRole('ai_dev')" prop="ai_dev" label="AI开发" align="center" sortable />
+            <el-table-column v-if="showAnalysisRole('ai_quality')" prop="ai_quality" label="AI质量" align="center" sortable />
             <el-table-column prop="recordCount" label="记录数" align="center" sortable />
             <el-table-column prop="requirementCount" label="需求数" align="center" sortable />
           </el-table>
@@ -2296,9 +2266,8 @@ function exportStatsData() {
             <el-table-column prop="share" label="占比" align="center" sortable>
               <template #default="{ row }">{{ row.share }}%</template>
             </el-table-column>
-            <el-table-column v-if="showAnalysisRole('frontend')" prop="frontend" label="前端" align="center" sortable />
-            <el-table-column v-if="showAnalysisRole('backend')" prop="backend" label="后端" align="center" sortable />
-            <el-table-column v-if="showAnalysisRole('test')" prop="test" label="测试" align="center" sortable />
+            <el-table-column v-if="showAnalysisRole('ai_dev')" prop="ai_dev" label="AI开发" align="center" sortable />
+            <el-table-column v-if="showAnalysisRole('ai_quality')" prop="ai_quality" label="AI质量" align="center" sortable />
             <el-table-column prop="recordCount" label="记录数" align="center" sortable />
           </el-table>
         </el-tab-pane>
@@ -2328,12 +2297,12 @@ function exportStatsData() {
           <div class="dt-analysis-formula">
             <ol>
               <li>先按页面上选择的年份、季度或具体周期确定统计范围。</li>
-              <li>如果点击总工时卡片，就统计全部岗位；如果点击前端、后端或测试卡片，就只统计对应岗位。</li>
+              <li>如果点击总工时卡片，就统计全部岗位；如果点击AI开发工程师或AI质量工程师卡片，就只统计对应岗位。</li>
               <li>工时合计：把当前范围内符合条件的每条填报工时相加。</li>
               <li>占比：用当前行的工时除以当前弹窗的总工时，再换算成百分比。</li>
               <li>需求数量：同一个周期内，需求名称和版本相同的内容视为同一个需求。</li>
-              <li>产品经理归属：优先使用填报时选择的第一个产品经理；没有填写时归入“不在上述”。</li>
-              <li>产品经理、人员、周期、版本、需求、关键词和数据质量页签都沿用同一套周期范围和卡片岗位范围。</li>
+              <li>AI产品经理归属：优先使用填报时选择的第一个AI产品经理；没有填写时归入“不在上述”。</li>
+              <li>AI产品经理、人员、周期、版本、需求、关键词和数据质量页签都沿用同一套周期范围和卡片岗位范围。</li>
             </ol>
           </div>
         </el-tab-pane>
@@ -2353,9 +2322,9 @@ function exportStatsData() {
             <div style="font-size:24px; font-weight:700; color:#FF7D00;">{{ reqStats.totalNoVersion }}</div>
           </div>
         </div>
-        <div style="font-size:13px; font-weight:600; color:var(--color-text-1); margin-bottom:8px;">按产品经理分组：</div>
+        <div style="font-size:13px; font-weight:600; color:var(--color-text-1); margin-bottom:8px;">按AI产品经理分组：</div>
         <el-table :data="reqStats.perPm" border size="small" style="width:100%;" :default-sort="{ prop: 'versionCount', order: 'descending' }">
-          <el-table-column prop="name" label="产品经理" width="130" align="center" sortable />
+          <el-table-column prop="name" label="AI产品经理" width="130" align="center" sortable />
           <el-table-column prop="versionCount" label="去重版本数" width="120" align="center" sortable />
           <el-table-column prop="noVersionCount" label="无版本号数" width="120" align="center" sortable />
           <el-table-column label="小计" width="100" align="center" sortable :sort-method="(a, b) => (a.versionCount + a.noVersionCount) - (b.versionCount + b.noVersionCount)">
@@ -2379,13 +2348,8 @@ function exportStatsData() {
         <el-table-column prop="role" label="岗位" width="100" align="center" sortable>
           <template #default="{ row }">
             <span
-              :style="{
-                display: 'inline-block', padding: '2px 10px', borderRadius: '9999px',
-                fontSize: '12px', fontWeight: '500',
-                background: row.role === 'frontend' ? '#E8F3FF' : row.role === 'backend' ? '#E8FFEA' : '#FFF7E8',
-                color: row.role === 'frontend' ? '#165DFF' : row.role === 'backend' ? '#00B42A' : '#FF7D00'
-              }"
-            >{{ ROLE_LABEL[row.role] || row.role }}</span>
+              :style="rolePillStyle(row.role)"
+            >{{ roleDisplay(row.role, true) }}</span>
           </template>
         </el-table-column>
       </el-table>

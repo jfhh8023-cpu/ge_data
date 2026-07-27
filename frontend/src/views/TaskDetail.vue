@@ -18,6 +18,7 @@ import api from '../api'
 import { onDataChange, SYNC_EVENTS } from '../utils/sync'
 import { parseExcelFile, validateHeaders, uploadExcelToServer, downloadTemplate } from '../utils/excel'
 import { useAuthStore } from '../stores/auth'
+import { ROLE_LABEL, ROLE_SHORT_LABEL, ROLE_TAG_CLASS, normalizeRole } from '../utils/roles'
 
 const route = useRoute()
 const taskStore = useTaskStore()
@@ -85,17 +86,13 @@ onUnmounted(() => {
 /* ========== Tab 1: 提交数据 — 内联编辑 ========== */
 const editingRowId = ref('')
 
-/** 角色映射常量 */
-const ROLE_LABEL = { frontend: '前端', backend: '后端', test: '测试' }
-const ROLE_TAG_CLASS = { frontend: 'dt-tag-blue', backend: 'dt-tag-green', test: 'dt-tag-orange' }
-
-/* REQ-26a: 角色排序常量（后端→前端→测试） */
-const ROLE_SORT_ORDER = { backend: 0, frontend: 1, test: 2 }
+/* REQ-26a: 角色排序常量（AI开发→AI质量） */
+const ROLE_SORT_ORDER = { ai_dev: 0, ai_quality: 1 }
 
 const sortedRecords = computed(() => {
   return [...recordStore.list].sort((a, b) => {
-    const ra = ROLE_SORT_ORDER[a.staff?.role] ?? 99
-    const rb = ROLE_SORT_ORDER[b.staff?.role] ?? 99
+    const ra = ROLE_SORT_ORDER[normalizeRole(a.staff?.role)] ?? 99
+    const rb = ROLE_SORT_ORDER[normalizeRole(b.staff?.role)] ?? 99
     return ra - rb
   })
 })
@@ -119,6 +116,10 @@ function parsePM(val) {
     } catch { return [] }
   }
   return []
+}
+
+function pickPmValue(row) {
+  return row['AI产品经理'] ?? row['产品经理'] ?? ''
 }
 
 /** 编辑缓存 */
@@ -146,7 +147,7 @@ function cancelEdit() {
 async function saveEdit(row) {
   try {
     if (!Array.isArray(editForm.value.product_managers) || editForm.value.product_managers.length === 0) {
-      ElMessage.warning('请选择产品经理')
+      ElMessage.warning('请选择AI产品经理')
       return
     }
     await recordStore.update(row.id, {
@@ -192,8 +193,9 @@ async function handleImportFile(event) {
 
   try {
     const { headers, rows } = await parseExcelFile(file)
-    const expectedHeaders = ['人员姓名', '需求标题', '版本号', '产品经理', '工时(小时)']
-    if (!validateHeaders(headers, expectedHeaders)) {
+    const expectedHeaders = ['人员姓名', '需求标题', '版本号', 'AI产品经理', '工时(小时)']
+    const legacyHeaders = ['人员姓名', '需求标题', '版本号', '产品经理', '工时(小时)']
+    if (!validateHeaders(headers, expectedHeaders) && !validateHeaders(headers, legacyHeaders)) {
       ElMessage.error('页面数据格式不匹配，请重新导入')
       return
     }
@@ -202,9 +204,9 @@ async function handleImportFile(event) {
       ElMessage.warning('Excel 中无有效数据行')
       return
     }
-    const missingPmIndex = rows.findIndex(r => !String(r['产品经理'] || '').trim())
+    const missingPmIndex = rows.findIndex(r => !String(pickPmValue(r) || '').trim())
     if (missingPmIndex >= 0) {
-      ElMessage.warning(`Excel 第 ${missingPmIndex + 2} 行未填写产品经理`)
+      ElMessage.warning(`Excel 第 ${missingPmIndex + 2} 行未填写AI产品经理`)
       return
     }
 
@@ -214,7 +216,7 @@ async function handleImportFile(event) {
         staff_name: String(r['人员姓名'] || '').trim(),
         requirement_title: String(r['需求标题'] || '').trim(),
         version: String(r['版本号'] || '').trim(),
-        product_managers: String(r['产品经理'] || '').trim(),
+        product_managers: String(pickPmValue(r) || '').trim(),
         hours: parseFloat(r['工时(小时)']) || 0
       }))
     })
@@ -307,10 +309,10 @@ function handleDownloadTemplate() {
               </template>
             </el-table-column>
 
-            <el-table-column label="角色" width="80">
+            <el-table-column label="角色" width="82">
               <template #default="{ row }">
-                <span class="dt-tag" :class="ROLE_TAG_CLASS[row.staff?.role]">
-                  {{ ROLE_LABEL[row.staff?.role] || '-' }}
+                <span class="dt-tag dt-role-short-tag" :class="ROLE_TAG_CLASS[row.staff?.role]">
+                  {{ ROLE_SHORT_LABEL[row.staff?.role] || ROLE_LABEL[row.staff?.role] || '-' }}
                 </span>
               </template>
             </el-table-column>
@@ -333,7 +335,7 @@ function handleDownloadTemplate() {
               </template>
             </el-table-column>
 
-            <el-table-column prop="product_managers" label="产品经理" width="160">
+            <el-table-column prop="product_managers" label="AI产品经理" width="160">
               <template #default="{ row }">
                 <template v-if="editingRowId === row.id">
                   <el-select v-model="editForm.product_managers" multiple collapse-tags
@@ -380,6 +382,11 @@ function handleDownloadTemplate() {
 </template>
 
 <style scoped>
+.dt-role-short-tag {
+  min-width: 42px;
+  justify-content: center;
+}
+
 .dt-qr-fade-enter-active,
 .dt-qr-fade-leave-active {
   transition: opacity .2s ease, transform .2s ease;

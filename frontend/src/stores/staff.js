@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import api from '../api'
+import { ROLE_AI_DEV, ROLE_AI_QUALITY, normalizeRole } from '../utils/roles'
 
 function isActiveLike(person) {
   return (person?.employment_status || (person?.is_active === false ? 'resigned' : 'active')) !== 'resigned'
@@ -12,17 +13,19 @@ export const useStaffStore = defineStore('staff', {
   }),
   getters: {
     activeStaff: (state) => state.list.filter(isActiveLike),
-    byRole: (state) => (role) => state.list.filter(s => s.role === role && isActiveLike(s)),
-    frontendStaff() { return this.byRole('frontend') },
-    backendStaff() { return this.byRole('backend') },
-    testStaff() { return this.byRole('test') }
+    byRole: (state) => (role) => state.list.filter(s => normalizeRole(s.role) === normalizeRole(role) && isActiveLike(s)),
+    aiDevStaff() { return this.byRole(ROLE_AI_DEV) },
+    aiQualityStaff() { return this.byRole(ROLE_AI_QUALITY) },
+    frontendStaff() { return this.aiDevStaff },
+    backendStaff() { return this.aiDevStaff },
+    testStaff() { return this.aiQualityStaff }
   },
   actions: {
     async fetchAll() {
       this.loading = true
       try {
         const res = await api.get('/staff')
-        this.list = res.data
+        this.list = res.data.map(item => ({ ...item, role: normalizeRole(item.role) }))
       } finally { this.loading = false }
     },
     async create(data) {

@@ -14,6 +14,7 @@ import api from '../api'
 import { useAuthStore } from '../stores/auth'
 import Sortable from 'sortablejs'
 import { buildAppUrl, copyToClipboard } from '../utils/url'
+import { ROLE_AI_DEV, ROLE_LABEL, ROLE_OPTIONS, ROLE_TAG_CLASS } from '../utils/roles'
 
 const staffStore = useStaffStore()
 const pmStore = usePmStore()
@@ -27,19 +28,12 @@ const activeTab = ref('staff')
 const dialogVisible = ref(false)
 const isEditing = ref(false)
 const editingId = ref('')
-const form = ref({ name: '', phone: '', role: 'frontend' })
+const form = ref({ name: '', phone: '', role: ROLE_AI_DEV })
 
 /** 预设文本（带标题链接用） */
 const presetText = ref('请填写上周工作内容，您的专属链接如下：')
 
 /** 角色选项 */
-const ROLE_OPTIONS = [
-  { value: 'frontend', label: '前端' },
-  { value: 'backend', label: '后端' },
-  { value: 'test', label: '测试' }
-]
-const ROLE_TAG_CLASS = { frontend: 'dt-tag-blue', backend: 'dt-tag-green', test: 'dt-tag-orange' }
-const ROLE_LABEL = { frontend: '前端', backend: '后端', test: '测试' }
 const EMPLOYMENT_STATUS_OPTIONS = [
   { value: 'active', label: '在职' },
   { value: 'resigned', label: '离职' },
@@ -177,7 +171,7 @@ function getFillUrl(token) {
 function openCreate() {
   isEditing.value = false
   editingId.value = ''
-  form.value = { name: '', phone: '', role: 'frontend' }
+  form.value = { name: '', phone: '', role: ROLE_AI_DEV }
   dialogVisible.value = true
 }
 
@@ -313,7 +307,7 @@ function openLink(token) {
   window.open(url, '_blank')
 }
 
-/* ========== 产品经理 Tab ========== */
+/* ========== AI产品经理 Tab ========== */
 const pmDialogVisible = ref(false)
 const pmIsEditing = ref(false)
 const pmEditingId = ref('')
@@ -373,7 +367,7 @@ async function handlePmSubmit() {
 
 async function handlePmDelete(pm) {
   try {
-    await ElMessageBox.confirm(`确认删除产品经理「${pm.name}」？`, '删除产品经理', {
+    await ElMessageBox.confirm(`确认删除AI产品经理「${pm.name}」？`, '删除AI产品经理', {
       confirmButtonText: '确认', cancelButtonText: '取消', type: 'warning'
     })
     await pmStore.remove(pm.id)
@@ -403,7 +397,7 @@ async function openPmTransfer(pm) {
 
 async function handlePmTransfer() {
   if (!pmTransferTargetId.value) {
-    ElMessage.warning('请选择交接目标产品经理')
+    ElMessage.warning('请选择交接目标AI产品经理')
     return
   }
   pmTransferSubmitting.value = true
@@ -421,7 +415,7 @@ async function handlePmTransfer() {
 
 function copyPmLink(token) {
   const url = getPmViewUrl(token)
-  if (!url) return ElMessage.warning('该产品经理暂无专属链接')
+  if (!url) return ElMessage.warning('该AI产品经理暂无专属链接')
   copyToClipboard(url)
     .then(() => ElMessage.success('链接已复制'))
     .catch(() => ElMessage.error('复制失败'))
@@ -429,7 +423,7 @@ function copyPmLink(token) {
 
 function openPmLink(token) {
   const url = getPmViewUrl(token)
-  if (!url) return ElMessage.warning('该产品经理暂无专属链接')
+  if (!url) return ElMessage.warning('该AI产品经理暂无专属链接')
   window.open(url, '_blank')
 }
 
@@ -438,7 +432,7 @@ async function updatePmStatus(pm, status) {
   try {
     if (status === 'resigned') {
       await ElMessageBox.confirm(
-        `确认将产品经理「${pm.name}」设为离职？生效后专属查看链接会被阻断，后续周期不再统计该产品经理。`,
+        `确认将AI产品经理「${pm.name}」设为离职？生效后专属查看链接会被阻断，后续周期不再统计该AI产品经理。`,
         '切换为离职',
         { confirmButtonText: '确认', cancelButtonText: '取消', type: 'warning' }
       )
@@ -469,12 +463,12 @@ async function updatePmStatus(pm, status) {
       <div class="dt-page-header flex-between">
         <div>
           <h1 class="dt-page-title">团队人员</h1>
-          <p class="dt-page-description">管理研发团队成员与产品经理名单</p>
+          <p class="dt-page-description">管理研发团队成员与AI产品经理名单</p>
         </div>
         <div style="display:flex; gap:8px;">
           <el-button circle @click="activeTab === 'staff' ? staffStore.fetchAll() : pmStore.fetchAll()" title="刷新数据" style="font-size:16px;">🔄</el-button>
           <el-button v-if="activeTab === 'staff' && authStore.hasPermission('btn:personnel:create', 'view')" type="primary" @click="openCreate">+ 新增人员</el-button>
-          <el-button v-if="activeTab === 'pm'" type="primary" @click="openPmCreate">+ 新增产品经理</el-button>
+          <el-button v-if="activeTab === 'pm'" type="primary" @click="openPmCreate">+ 新增AI产品经理</el-button>
         </div>
       </div>
 
@@ -514,9 +508,9 @@ async function updatePmStatus(pm, status) {
                   <span>{{ row.phone || '' }}</span>
                 </template>
               </el-table-column>
-              <el-table-column label="角色" width="80">
+              <el-table-column label="角色" width="120">
                 <template #default="{ row }">
-                  <span class="dt-tag" :class="ROLE_TAG_CLASS[row.role]">{{ ROLE_LABEL[row.role] || '-' }}</span>
+                  <span class="dt-tag dt-role-tag" :class="ROLE_TAG_CLASS[row.role]">{{ ROLE_LABEL[row.role] || '-' }}</span>
                 </template>
               </el-table-column>
               <el-table-column label="状态" width="70">
@@ -571,12 +565,12 @@ async function updatePmStatus(pm, status) {
           </div>
         </el-tab-pane>
 
-        <!-- ===== Tab 2: 产品经理 ===== -->
-        <el-tab-pane label="产品经理" name="pm">
+        <!-- ===== Tab 2: AI产品经理 ===== -->
+        <el-tab-pane label="AI产品经理" name="pm">
           <el-skeleton v-if="pmStore.loading" :rows="5" animated />
           <div v-else-if="pmStore.list.length === 0" class="dt-empty" style="padding:60px;">
             <div class="dt-empty-icon">👔</div>
-            <p class="dt-empty-text">暂无产品经理，请点击上方按钮添加</p>
+            <p class="dt-empty-text">暂无AI产品经理，请点击上方按钮添加</p>
           </div>
           <div v-else class="dt-data-card">
             <el-table :data="pmStore.list" style="width:100%;" class="pm-sortable-table" row-key="id">
@@ -718,11 +712,11 @@ async function updatePmStatus(pm, status) {
         </template>
       </el-dialog>
 
-      <!-- 产品经理 新增/编辑弹窗 -->
-      <el-dialog v-model="pmDialogVisible" :title="pmIsEditing ? '编辑产品经理' : '新增产品经理'" width="400px" :close-on-click-modal="false">
+      <!-- AI产品经理 新增/编辑弹窗 -->
+      <el-dialog v-model="pmDialogVisible" :title="pmIsEditing ? '编辑AI产品经理' : '新增AI产品经理'" width="400px" :close-on-click-modal="false">
         <el-form :model="pmForm" label-width="70px">
           <el-form-item label="姓名">
-            <el-input v-model="pmForm.name" placeholder="请输入产品经理姓名（2-20字）" maxlength="20" />
+            <el-input v-model="pmForm.name" placeholder="请输入AI产品经理姓名（2-20字）" maxlength="20" />
           </el-form-item>
         </el-form>
         <template #footer>
@@ -731,7 +725,7 @@ async function updatePmStatus(pm, status) {
         </template>
       </el-dialog>
 
-      <!-- 产品经理 交接弹窗 -->
+      <!-- AI产品经理 交接弹窗 -->
       <el-dialog
         v-model="pmTransferDialogVisible"
         :title="`PM 数据交接 — ${pmTransferSource?.name}`"
@@ -765,7 +759,7 @@ async function updatePmStatus(pm, status) {
             </el-table>
             <div style="display:flex; align-items:center; gap:12px;">
               <span style="font-size:14px; font-weight:500; white-space:nowrap;">交接给：</span>
-              <el-select v-model="pmTransferTargetId" placeholder="请选择目标产品经理" style="flex:1;" filterable>
+              <el-select v-model="pmTransferTargetId" placeholder="请选择目标AI产品经理" style="flex:1;" filterable>
                 <el-option v-for="p in pmTransferTargetOptions" :key="p.id" :label="p.name" :value="p.id" />
               </el-select>
             </div>
@@ -817,6 +811,14 @@ async function updatePmStatus(pm, status) {
 }
 .dt-link-url-full:hover {
   text-decoration: underline;
+}
+
+.dt-role-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 92px;
+  white-space: nowrap;
 }
 
 /* v1.6.1: 链接操作按钮横排加粗加大 */

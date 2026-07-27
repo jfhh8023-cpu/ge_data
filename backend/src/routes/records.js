@@ -43,7 +43,7 @@ function requireProductManagers(value, label = '记录') {
   const productManagers = normalizeProductManagers(value);
   if (productManagers.length === 0) {
     const prefix = label ? `${label}：` : '';
-    const err = new Error(`${prefix}请选择产品经理`);
+    const err = new Error(`${prefix}请选择AI产品经理`);
     err.status = 400;
     throw err;
   }

@@ -43,6 +43,8 @@ function parseMatchGroup(group) {
   plain.frontend = safeParseJsonArray(plain.frontend);
   plain.backend = safeParseJsonArray(plain.backend);
   plain.test_role = safeParseJsonArray(plain.test_role);
+  plain.ai_developers = [...plain.frontend, ...plain.backend];
+  plain.ai_quality = plain.test_role;
   plain.product_managers = safeParseJsonArray(plain.product_managers);
   return plain;
 }
@@ -65,6 +67,8 @@ router.get('/', async (req, res, next) => {
       plain.frontend = safeParseJsonArray(plain.frontend);
       plain.backend = safeParseJsonArray(plain.backend);
       plain.test_role = safeParseJsonArray(plain.test_role);
+      plain.ai_developers = [...plain.frontend, ...plain.backend];
+      plain.ai_quality = plain.test_role;
       plain.product_managers = task
         ? await filterPmNamesForRecord(plain, task, pmContextByName)
         : safeParseJsonArray(plain.product_managers);
@@ -139,9 +143,18 @@ router.put('/:id', async (req, res, next) => {
     const textFields = ['merged_title', 'version', 'remark', 'status'];
     textFields.forEach(f => { if (req.body[f] !== undefined) mg[f] = req.body[f]; });
     if (req.body.product_managers !== undefined) mg.product_managers = normalizeNameArray(req.body.product_managers);
-    if (req.body.frontend !== undefined) mg.frontend = normalizeRoleArray(req.body.frontend);
-    if (req.body.backend !== undefined) mg.backend = normalizeRoleArray(req.body.backend);
-    if (req.body.test_role !== undefined) mg.test_role = normalizeRoleArray(req.body.test_role);
+    if (req.body.ai_developers !== undefined) {
+      mg.frontend = normalizeRoleArray(req.body.ai_developers);
+      mg.backend = [];
+    } else {
+      if (req.body.frontend !== undefined) mg.frontend = normalizeRoleArray(req.body.frontend);
+      if (req.body.backend !== undefined) mg.backend = normalizeRoleArray(req.body.backend);
+    }
+    if (req.body.ai_quality !== undefined) {
+      mg.test_role = normalizeRoleArray(req.body.ai_quality);
+    } else if (req.body.test_role !== undefined) {
+      mg.test_role = normalizeRoleArray(req.body.test_role);
+    }
     await mg.save();
     res.json({ code: 0, data: parseMatchGroup(mg) });
   } catch (err) { next(err); }
@@ -150,16 +163,16 @@ router.put('/:id', async (req, res, next) => {
 /* POST /api/report/manual-row — 手动添加行 */
 router.post('/manual-row', async (req, res, next) => {
   try {
-    const { task_id, merged_title, version, product_managers, frontend, backend, test_role, remark } = req.body;
+    const { task_id, merged_title, version, product_managers, frontend, backend, test_role, ai_developers, ai_quality, remark } = req.body;
     if (!task_id) return res.status(400).json({ code: 1, message: 'task_id 必填' });
     const mg = await MatchGroup.create({
       id: uuidv4(), task_id,
       merged_title: merged_title || '',
       version: version || '',
       product_managers: normalizeNameArray(product_managers),
-      frontend: normalizeRoleArray(frontend),
-      backend: normalizeRoleArray(backend),
-      test_role: normalizeRoleArray(test_role),
+      frontend: normalizeRoleArray(ai_developers ?? frontend),
+      backend: ai_developers !== undefined ? [] : normalizeRoleArray(backend),
+      test_role: normalizeRoleArray(ai_quality ?? test_role),
       remark: remark || '',
       confidence: 1,
       status: 'manual_merged'
@@ -201,9 +214,11 @@ router.post('/import', async (req, res, next) => {
         merged_title: row.merged_title || '',
         version: row.version || '',
         product_managers: row.product_managers ? JSON.stringify(row.product_managers.split(/[,，、\s]+/).filter(Boolean)) : '[]',
-        frontend: buildRoleArray(row.frontend_name, row.frontend_hours),
-        backend: buildRoleArray(row.backend_name, row.backend_hours),
-        test_role: buildRoleArray(row.test_name, row.test_hours),
+        frontend: buildRoleArray(row.ai_dev_name ?? row.frontend_name, row.ai_dev_hours ?? row.frontend_hours),
+        backend: row.ai_dev_name !== undefined || row.ai_dev_hours !== undefined
+          ? []
+          : buildRoleArray(row.backend_name, row.backend_hours),
+        test_role: buildRoleArray(row.ai_quality_name ?? row.test_name, row.ai_quality_hours ?? row.test_hours),
         remark: row.remark || ''
       };
 

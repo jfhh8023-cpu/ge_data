@@ -16,11 +16,16 @@ const {
   normalizeStatusDate,
   setStaffStatus
 } = require('../services/PersonStatusService');
+const {
+  STAFF_ROLE_OPTIONS,
+  decorateRolePayload,
+  normalizeStaffRole
+} = require('../services/RoleService');
 
 /* 常量 */
 const MIN_NAME_LENGTH = 2;
 const MAX_NAME_LENGTH = 20;
-const VALID_ROLES = ['frontend', 'backend', 'test'];
+const VALID_ROLES = STAFF_ROLE_OPTIONS.map(item => item.value);
 const PHONE_PATTERN = /^\d{5,20}$/;
 
 function normalizePhone(phone) {
@@ -43,6 +48,7 @@ router.get('/', async (req, res, next) => {
     });
     const data = list.map(s => ({
       ...s.toJSON(),
+      ...decorateRolePayload(s),
       ...buildCurrentStatusPayload(s),
       fillToken: s.fillLink?.token ?? null
     }));
@@ -154,7 +160,7 @@ router.put('/:id/status', async (req, res, next) => {
     const effectiveAt = normalizeStatusDate(req.body.effective_date || req.body.status_changed_at);
     await setStaffStatus(staff, req.body.employment_status || req.body.status, effectiveAt, t);
     await t.commit();
-    res.json({ code: 0, data: { ...staff.toJSON(), ...buildCurrentStatusPayload(staff) }, message: '状态已更新' });
+    res.json({ code: 0, data: { ...staff.toJSON(), ...decorateRolePayload(staff), ...buildCurrentStatusPayload(staff) }, message: '状态已更新' });
   } catch (err) {
     await t.rollback();
     next(err);
@@ -169,16 +175,17 @@ router.post('/', async (req, res, next) => {
     if (!name || name.trim().length < MIN_NAME_LENGTH || name.trim().length > MAX_NAME_LENGTH) {
       return res.status(400).json({ code: 1, message: `姓名长度须为${MIN_NAME_LENGTH}-${MAX_NAME_LENGTH}个字符` });
     }
-    if (!VALID_ROLES.includes(role)) {
+    const normalizedRole = normalizeStaffRole(role, '');
+    if (!VALID_ROLES.includes(normalizedRole)) {
       return res.status(400).json({ code: 1, message: '角色无效' });
     }
     const staffId = uuidv4();
-    const staff = await Staff.create({ id: staffId, name: name.trim(), role, phone });
+    const staff = await Staff.create({ id: staffId, name: name.trim(), role: normalizedRole, phone });
     await setStaffStatus(staff, 'active', staff.created_at || new Date());
     // v1.6.0: 自动生成系统级专属链接
     const token = `${staffId.substring(0, 8)}_${uuidv4().replace(/-/g, '').substring(0, 12)}`;
     await StaffFillLink.create({ id: uuidv4(), staff_id: staffId, token });
-    res.json({ code: 0, data: { ...staff.toJSON(), ...buildCurrentStatusPayload(staff), fillToken: token } });
+    res.json({ code: 0, data: { ...staff.toJSON(), ...decorateRolePayload(staff), ...buildCurrentStatusPayload(staff), fillToken: token } });
   } catch (err) { next(err); }
 });
 
@@ -192,7 +199,10 @@ router.put('/:id', async (req, res, next) => {
       if (name.trim().length < MIN_NAME_LENGTH) return res.status(400).json({ code: 1, message: '姓名过短' });
       staff.name = name.trim();
     }
-    if (role !== undefined && VALID_ROLES.includes(role)) staff.role = role;
+    if (role !== undefined) {
+      const normalizedRole = normalizeStaffRole(role, '');
+      if (VALID_ROLES.includes(normalizedRole)) staff.role = normalizedRole;
+    }
     if (req.body.phone !== undefined) staff.phone = normalizePhone(req.body.phone);
     if (is_active !== undefined) {
       await setStaffStatus(staff, is_active ? 'active' : 'resigned', req.body.status_changed_at || new Date());
@@ -201,7 +211,7 @@ router.put('/:id', async (req, res, next) => {
       await setStaffStatus(staff, req.body.employment_status || req.body.status, req.body.status_changed_at || new Date());
     }
     await staff.save();
-    res.json({ code: 0, data: { ...staff.toJSON(), ...buildCurrentStatusPayload(staff) } });
+    res.json({ code: 0, data: { ...staff.toJSON(), ...decorateRolePayload(staff), ...buildCurrentStatusPayload(staff) } });
   } catch (err) { next(err); }
 });
 

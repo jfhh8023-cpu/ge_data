@@ -10,6 +10,7 @@
  */
 const { v4: uuidv4 } = require('uuid');
 const { safeParseJsonArray } = require('../utils/parseJson');
+const { isAiDevelopmentRole } = require('./RoleService');
 
 /* ========== 常量 ========== */
 const THRESHOLD_NO_VER = 0.5;
@@ -97,8 +98,7 @@ function buildGroup(clusterRecords, confidence, status) {
     const hours = parseFloat(r.hours);
     const entry = { staffName, hours };
 
-    if (role === 'frontend') frontend.push(entry);
-    else if (role === 'backend') backend.push(entry);
+    if (isAiDevelopmentRole(role)) frontend.push(entry);
     else testRole.push(entry);
   }
 

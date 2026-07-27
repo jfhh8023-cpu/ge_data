@@ -25,15 +25,13 @@ const authStore = useAuthStore()
 /* ========== 常量 ========== */
 const PAGE_SIZE = 20
 const SORT_OPTIONS = [
-  { key: 'pm', label: '产品经理' },
-  { key: 'frontend', label: '前端' },
-  { key: 'backend', label: '后端' },
-  { key: 'test', label: '测试' }
+  { key: 'pm', label: 'AI产品' },
+  { key: 'ai_dev', label: 'AI开发' },
+  { key: 'ai_quality', label: 'AI质量' }
 ]
 const ROLE_EDITORS = [
-  { field: 'frontend', role: 'frontend' },
-  { field: 'backend', role: 'backend' },
-  { field: 'test_role', role: 'test' }
+  { field: 'ai_developers', role: 'ai_dev' },
+  { field: 'ai_quality', role: 'ai_quality' }
 ]
 const DIMENSION_LABEL = {
   day: '日', week: '周', half_month: '半月', month: '月',
@@ -266,9 +264,8 @@ function buildRowPayload(row) {
     merged_title: row.merged_title || '',
     version: row.version || '',
     product_managers: normalizeNameArray(row.product_managers),
-    frontend: normalizeRoleRows(row.frontend),
-    backend: normalizeRoleRows(row.backend),
-    test_role: normalizeRoleRows(row.test_role),
+    ai_developers: normalizeRoleRows(row.ai_developers),
+    ai_quality: normalizeRoleRows(row.ai_quality),
     remark: row.remark || ''
   }
 }
@@ -316,12 +313,10 @@ const sortedGroups = computed(() => {
         const pmB = Array.isArray(b.product_managers) ? b.product_managers.join('') : ''
         return pmA.localeCompare(pmB, 'zh-Hans') || (a.version || '').localeCompare(b.version || '')
       })
-    case 'frontend':
-      return groups.sort((a, b) => (a.frontend?.[0]?.staffName || '').localeCompare(b.frontend?.[0]?.staffName || '', 'zh-Hans'))
-    case 'backend':
-      return groups.sort((a, b) => (a.backend?.[0]?.staffName || '').localeCompare(b.backend?.[0]?.staffName || '', 'zh-Hans'))
-    case 'test':
-      return groups.sort((a, b) => (a.test_role?.[0]?.staffName || '').localeCompare(b.test_role?.[0]?.staffName || '', 'zh-Hans'))
+    case 'ai_dev':
+      return groups.sort((a, b) => (a.ai_developers?.[0]?.staffName || '').localeCompare(b.ai_developers?.[0]?.staffName || '', 'zh-Hans'))
+    case 'ai_quality':
+      return groups.sort((a, b) => (a.ai_quality?.[0]?.staffName || '').localeCompare(b.ai_quality?.[0]?.staffName || '', 'zh-Hans'))
     default:
       return groups
   }
@@ -396,25 +391,23 @@ function exportReportData() {
     return
   }
 
-  const headers = ['序号', '版本号', '需求名称', '产品经理', '前端姓名', '前端工时', '后端姓名', '后端工时', '测试姓名', '测试工时', '总计/小时', '备注']
+  const headers = ['序号', '版本号', '需求名称', 'AI产品经理', 'AI开发工程师姓名', 'AI开发工程师工时', 'AI质量工程师姓名', 'AI质量工程师工时', '总计/小时', '备注']
   const rows = groups.map((g, idx) => [
     idx + 1,
     g.version || '',
     g.merged_title || '',
     Array.isArray(g.product_managers) ? g.product_managers.join(', ') : '',
-    formatNames(g.frontend).join(', '),
-    g._frontendTotal ? g._frontendTotal.toFixed(1) : '0',
-    formatNames(g.backend).join(', '),
-    g._backendTotal ? g._backendTotal.toFixed(1) : '0',
-    formatNames(g.test_role).join(', '),
-    g._testTotal ? g._testTotal.toFixed(1) : '0',
+    formatNames(g.ai_developers).join(', '),
+    g._aiDevTotal ? g._aiDevTotal.toFixed(1) : '0',
+    formatNames(g.ai_quality).join(', '),
+    g._aiQualityTotal ? g._aiQualityTotal.toFixed(1) : '0',
     g._rowTotal ? g._rowTotal.toFixed(1) : '0',
     g.remark || ''
   ])
 
   // 合计行
   const totals = reportStore.columnTotals
-  rows.push(['', '', '', '', '合计', totals.frontend.toFixed(1), '', totals.backend.toFixed(1), '', totals.test.toFixed(1), totals.total.toFixed(1), ''])
+  rows.push(['', '', '', '', '合计', totals.ai_dev.toFixed(1), '', totals.ai_quality.toFixed(1), totals.total.toFixed(1), ''])
 
   const taskTitle = selectedTask.value?.title || '需求工时统计'
   const filename = `${taskTitle}_需求工时统计.xlsx`
@@ -424,7 +417,7 @@ function exportReportData() {
     sheets: [{
       name: '需求工时统计',
       data: [headers, ...rows],
-      colWidths: [6, 12, 30, 12, 12, 10, 12, 10, 12, 10, 10, 18]
+      colWidths: [6, 12, 30, 14, 18, 14, 18, 14, 10, 18]
     }]
   })
 
@@ -454,8 +447,9 @@ async function handleImportFile(event) {
 
   try {
     const { headers, rows } = await parseExcelFile(file)
-    const expectedHeaders = ['版本号', '需求名称', '产品经理', '前端姓名', '前端工时', '后端姓名', '后端工时', '测试姓名', '测试工时', '备注']
-    if (!validateHeaders(headers, expectedHeaders)) {
+    const expectedHeaders = ['版本号', '需求名称', 'AI产品经理', 'AI开发工程师姓名', 'AI开发工程师工时', 'AI质量工程师姓名', 'AI质量工程师工时', '备注']
+    const legacyHeaders = ['版本号', '需求名称', '产品经理', '前端姓名', '前端工时', '后端姓名', '后端工时', '测试姓名', '测试工时', '备注']
+    if (!validateHeaders(headers, expectedHeaders) && !validateHeaders(headers, legacyHeaders)) {
       ElMessage.error('页面数据格式不匹配，请重新导入')
       return
     }
@@ -476,11 +470,15 @@ async function handleImportFile(event) {
       rows: rows.map(r => ({
         version: String(r['版本号'] || '').trim(),
         merged_title: String(r['需求名称'] || '').trim(),
-        product_managers: String(r['产品经理'] || '').trim(),
+        product_managers: String((r['AI产品经理'] ?? r['产品经理']) || '').trim(),
+        ai_dev_name: String(r['AI开发工程师姓名'] || '').trim(),
+        ai_dev_hours: parseFloat(r['AI开发工程师工时']) || 0,
         frontend_name: String(r['前端姓名'] || '').trim(),
         frontend_hours: parseFloat(r['前端工时']) || 0,
         backend_name: String(r['后端姓名'] || '').trim(),
         backend_hours: parseFloat(r['后端工时']) || 0,
+        ai_quality_name: String(r['AI质量工程师姓名'] || '').trim(),
+        ai_quality_hours: parseFloat(r['AI质量工程师工时']) || 0,
         test_name: String(r['测试姓名'] || '').trim(),
         test_hours: parseFloat(r['测试工时']) || 0,
         remark: String(r['备注'] || '').trim()
@@ -596,7 +594,7 @@ function handleDownloadTemplate() {
             <span v-else style="font-weight:500;">{{ row.merged_title || '(空)' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="产品经理" width="150">
+        <el-table-column label="AI产品经理" width="150">
           <template #default="{ row }">
             <el-select
               v-if="canEditRow(row)"
@@ -606,7 +604,7 @@ function handleDownloadTemplate() {
               collapse-tags
               collapse-tags-tooltip
               size="small"
-              placeholder="产品经理"
+              placeholder="AI产品"
               class="manual-cell-select"
               @change="scheduleRowAutoSave(row)"
             >
@@ -618,19 +616,19 @@ function handleDownloadTemplate() {
             <span v-else style="color:var(--color-text-4);">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="前端" align="center">
+        <el-table-column label="AI开发工程师" align="center">
           <el-table-column label="姓名" width="130">
             <template #default="{ row }">
               <div v-if="canEditRow(row)" class="role-editor">
-                <div v-for="(person, i) in editableRoleRows(row, 'frontend')" :key="i" class="role-editor-row">
-                  <el-select v-model="person.staffName" filterable clearable size="small" placeholder="前端" class="role-staff-select" @change="scheduleRowAutoSave(row)">
-                    <el-option v-for="staff in roleOptions('frontend')" :key="staff.id" :label="staff.name" :value="staff.name" />
+                <div v-for="(person, i) in editableRoleRows(row, 'ai_developers')" :key="i" class="role-editor-row">
+                  <el-select v-model="person.staffName" filterable clearable size="small" placeholder="AI开发" class="role-staff-select" @change="scheduleRowAutoSave(row)">
+                    <el-option v-for="staff in roleOptions('ai_dev')" :key="staff.id" :label="staff.name" :value="staff.name" />
                   </el-select>
-                  <el-button link type="danger" size="small" class="role-remove-btn" @click="removeRolePerson(row, 'frontend', i)">×</el-button>
+                  <el-button link type="danger" size="small" class="role-remove-btn" @click="removeRolePerson(row, 'ai_developers', i)">×</el-button>
                 </div>
               </div>
-              <div v-else-if="formatNames(row.frontend).length">
-                <div v-for="(n, i) in formatNames(row.frontend)" :key="i" style="line-height:1.6;">{{ n }}</div>
+              <div v-else-if="formatNames(row.ai_developers).length">
+                <div v-for="(n, i) in formatNames(row.ai_developers)" :key="i" style="line-height:1.6;">{{ n }}</div>
               </div>
               <span v-else style="color:var(--color-text-4);">-</span>
             </template>
@@ -639,7 +637,7 @@ function handleDownloadTemplate() {
             <template #default="{ row }">
               <div v-if="canEditRow(row)" class="hours-editor">
                 <el-input-number
-                  v-for="(person, i) in editableRoleRows(row, 'frontend')"
+                  v-for="(person, i) in editableRoleRows(row, 'ai_developers')"
                   :key="i"
                   v-model="person.hours"
                   :controls="false"
@@ -651,26 +649,26 @@ function handleDownloadTemplate() {
                   @blur="flushRowAutoSave(row)"
                 />
               </div>
-              <div v-else-if="formatHoursList(row.frontend).length">
-                <div v-for="(h, i) in formatHoursList(row.frontend)" :key="i" style="line-height:1.6; font-weight:700; color:#165DFF;">{{ h }}</div>
+              <div v-else-if="formatHoursList(row.ai_developers).length">
+                <div v-for="(h, i) in formatHoursList(row.ai_developers)" :key="i" style="line-height:1.6; font-weight:700; color:#165DFF;">{{ h }}</div>
               </div>
               <span v-else style="color:var(--color-text-4);">-</span>
             </template>
           </el-table-column>
         </el-table-column>
-        <el-table-column label="后端" align="center">
+        <el-table-column label="AI质量工程师" align="center">
           <el-table-column label="姓名" width="130">
             <template #default="{ row }">
               <div v-if="canEditRow(row)" class="role-editor">
-                <div v-for="(person, i) in editableRoleRows(row, 'backend')" :key="i" class="role-editor-row">
-                  <el-select v-model="person.staffName" filterable clearable size="small" placeholder="后端" class="role-staff-select" @change="scheduleRowAutoSave(row)">
-                    <el-option v-for="staff in roleOptions('backend')" :key="staff.id" :label="staff.name" :value="staff.name" />
+                <div v-for="(person, i) in editableRoleRows(row, 'ai_quality')" :key="i" class="role-editor-row">
+                  <el-select v-model="person.staffName" filterable clearable size="small" placeholder="AI质量" class="role-staff-select" @change="scheduleRowAutoSave(row)">
+                    <el-option v-for="staff in roleOptions('ai_quality')" :key="staff.id" :label="staff.name" :value="staff.name" />
                   </el-select>
-                  <el-button link type="danger" size="small" class="role-remove-btn" @click="removeRolePerson(row, 'backend', i)">×</el-button>
+                  <el-button link type="danger" size="small" class="role-remove-btn" @click="removeRolePerson(row, 'ai_quality', i)">×</el-button>
                 </div>
               </div>
-              <div v-else-if="formatNames(row.backend).length">
-                <div v-for="(n, i) in formatNames(row.backend)" :key="i" style="line-height:1.6;">{{ n }}</div>
+              <div v-else-if="formatNames(row.ai_quality).length">
+                <div v-for="(n, i) in formatNames(row.ai_quality)" :key="i" style="line-height:1.6;">{{ n }}</div>
               </div>
               <span v-else style="color:var(--color-text-4);">-</span>
             </template>
@@ -679,7 +677,7 @@ function handleDownloadTemplate() {
             <template #default="{ row }">
               <div v-if="canEditRow(row)" class="hours-editor">
                 <el-input-number
-                  v-for="(person, i) in editableRoleRows(row, 'backend')"
+                  v-for="(person, i) in editableRoleRows(row, 'ai_quality')"
                   :key="i"
                   v-model="person.hours"
                   :controls="false"
@@ -691,48 +689,8 @@ function handleDownloadTemplate() {
                   @blur="flushRowAutoSave(row)"
                 />
               </div>
-              <div v-else-if="formatHoursList(row.backend).length">
-                <div v-for="(h, i) in formatHoursList(row.backend)" :key="i" style="line-height:1.6; font-weight:700; color:#00B42A;">{{ h }}</div>
-              </div>
-              <span v-else style="color:var(--color-text-4);">-</span>
-            </template>
-          </el-table-column>
-        </el-table-column>
-        <el-table-column label="测试" align="center">
-          <el-table-column label="姓名" width="130">
-            <template #default="{ row }">
-              <div v-if="canEditRow(row)" class="role-editor">
-                <div v-for="(person, i) in editableRoleRows(row, 'test_role')" :key="i" class="role-editor-row">
-                  <el-select v-model="person.staffName" filterable clearable size="small" placeholder="测试" class="role-staff-select" @change="scheduleRowAutoSave(row)">
-                    <el-option v-for="staff in roleOptions('test')" :key="staff.id" :label="staff.name" :value="staff.name" />
-                  </el-select>
-                  <el-button link type="danger" size="small" class="role-remove-btn" @click="removeRolePerson(row, 'test_role', i)">×</el-button>
-                </div>
-              </div>
-              <div v-else-if="formatNames(row.test_role).length">
-                <div v-for="(n, i) in formatNames(row.test_role)" :key="i" style="line-height:1.6;">{{ n }}</div>
-              </div>
-              <span v-else style="color:var(--color-text-4);">-</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="工时/H" width="88" align="center" header-class-name="dt-nowrap-header">
-            <template #default="{ row }">
-              <div v-if="canEditRow(row)" class="hours-editor">
-                <el-input-number
-                  v-for="(person, i) in editableRoleRows(row, 'test_role')"
-                  :key="i"
-                  v-model="person.hours"
-                  :controls="false"
-                  :min="0"
-                  :precision="1"
-                  size="small"
-                  class="manual-hours-input"
-                  @change="scheduleRowAutoSave(row)"
-                  @blur="flushRowAutoSave(row)"
-                />
-              </div>
-              <div v-else-if="formatHoursList(row.test_role).length">
-                <div v-for="(h, i) in formatHoursList(row.test_role)" :key="i" style="line-height:1.6; font-weight:700; color:#FF7D00;">{{ h }}</div>
+              <div v-else-if="formatHoursList(row.ai_quality).length">
+                <div v-for="(h, i) in formatHoursList(row.ai_quality)" :key="i" style="line-height:1.6; font-weight:700; color:#FF7D00;">{{ h }}</div>
               </div>
               <span v-else style="color:var(--color-text-4);">-</span>
             </template>
@@ -789,22 +747,16 @@ export default {
         }
         if (col.property === 'version' || col.property === 'merged_title') { sums[idx] = ''; return }
         // 姓名列留空
-        if (col.label === '姓名' || col.label === '产品经理') { sums[idx] = ''; return }
-        // 前端工时
+        if (col.label === '姓名' || col.label === '产品经理' || col.label === 'AI产品经理') { sums[idx] = ''; return }
+        // AI开发工程师工时
         if (col.label === '工时/H' && idx <= 6) {
-          const val = data.reduce((s, row) => s + (row._frontendTotal || 0), 0).toFixed(1)
+          const val = data.reduce((s, row) => s + (row._aiDevTotal || 0), 0).toFixed(1)
           sums[idx] = h('span', { style: 'font-weight:700; font-size:14px; color:#165DFF;' }, val)
           return
         }
-        // 后端工时
+        // AI质量工程师工时
         if (col.label === '工时/H' && idx <= 8) {
-          const val = data.reduce((s, row) => s + (row._backendTotal || 0), 0).toFixed(1)
-          sums[idx] = h('span', { style: 'font-weight:700; font-size:14px; color:#00B42A;' }, val)
-          return
-        }
-        // 测试工时
-        if (col.label === '工时/H' && idx <= 10) {
-          const val = data.reduce((s, row) => s + (row._testTotal || 0), 0).toFixed(1)
+          const val = data.reduce((s, row) => s + (row._aiQualityTotal || 0), 0).toFixed(1)
           sums[idx] = h('span', { style: 'font-weight:700; font-size:14px; color:#FF7D00;' }, val)
           return
         }

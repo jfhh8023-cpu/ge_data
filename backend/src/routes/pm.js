@@ -19,6 +19,12 @@ const {
   normalizeStatusDate,
   setProductManagerStatus
 } = require('../services/PersonStatusService');
+const {
+  addRoleHours,
+  createRoleSummary,
+  normalizeStaffRole,
+  withRoleAliases
+} = require('../services/RoleService');
 
 /* 常量 */
 const MIN_NAME_LENGTH = 2;
@@ -57,7 +63,7 @@ router.post('/', async (req, res, next) => {
     // 唯一性校验
     const existing = await ProductManager.findOne({ where: { name: trimmedName } });
     if (existing) {
-      return res.status(400).json({ code: 1, message: `产品经理「${trimmedName}」已存在` });
+      return res.status(400).json({ code: 1, message: `AI产品经理「${trimmedName}」已存在` });
     }
 
     const pmId = uuidv4();
@@ -93,7 +99,7 @@ router.put('/:id/status', async (req, res, next) => {
     const pm = await ProductManager.findByPk(req.params.id, { transaction: t });
     if (!pm) {
       await t.rollback();
-      return res.status(404).json({ code: 1, message: '产品经理不存在' });
+      return res.status(404).json({ code: 1, message: 'AI产品经理不存在' });
     }
     const effectiveAt = normalizeStatusDate(req.body.effective_date || req.body.status_changed_at);
     await setProductManagerStatus(pm, req.body.employment_status || req.body.status, effectiveAt, t);
@@ -109,7 +115,7 @@ router.put('/:id/status', async (req, res, next) => {
 router.put('/:id', async (req, res, next) => {
   try {
     const pm = await ProductManager.findByPk(req.params.id);
-    if (!pm) return res.status(404).json({ code: 1, message: '产品经理不存在' });
+    if (!pm) return res.status(404).json({ code: 1, message: 'AI产品经理不存在' });
 
     const { name, is_active } = req.body;
 
@@ -124,7 +130,7 @@ router.put('/:id', async (req, res, next) => {
         where: { name: trimmedName, id: { [Op.ne]: pm.id } }
       });
       if (existing) {
-        return res.status(400).json({ code: 1, message: `产品经理「${trimmedName}」已存在` });
+        return res.status(400).json({ code: 1, message: `AI产品经理「${trimmedName}」已存在` });
       }
 
       const oldName = pm.name;
@@ -155,14 +161,14 @@ router.put('/:id', async (req, res, next) => {
 router.delete('/:id', async (req, res, next) => {
   try {
     const pm = await ProductManager.findByPk(req.params.id);
-    if (!pm) return res.status(404).json({ code: 1, message: '产品经理不存在' });
+    if (!pm) return res.status(404).json({ code: 1, message: 'AI产品经理不存在' });
 
     // 检查是否有关联的工时数据
     const relatedCount = await countPmReferences(pm.name);
     if (relatedCount > 0) {
       return res.status(400).json({
         code: 1,
-        message: `该产品经理有 ${relatedCount} 条关联工时记录，请先通过「交接」功能将数据迁移到其他产品经理后再删除`
+        message: `该AI产品经理有 ${relatedCount} 条关联工时记录，请先通过「交接」功能将数据迁移到其他AI产品经理后再删除`
       });
     }
 
@@ -175,7 +181,7 @@ router.delete('/:id', async (req, res, next) => {
 router.get('/:id/references', async (req, res, next) => {
   try {
     const pm = await ProductManager.findByPk(req.params.id);
-    if (!pm) return res.status(404).json({ code: 1, message: '产品经理不存在' });
+    if (!pm) return res.status(404).json({ code: 1, message: 'AI产品经理不存在' });
 
     // 查找 work_records 中包含该 PM 名称的记录
     const records = await WorkRecord.findAll();
@@ -221,11 +227,11 @@ router.post('/:id/transfer', async (req, res, next) => {
 
     const fromPm = await ProductManager.findByPk(req.params.id, { transaction: t });
     const toPm = await ProductManager.findByPk(to_pm_id, { transaction: t });
-    if (!fromPm) { await t.rollback(); return res.status(404).json({ code: 1, message: '被交接的产品经理不存在' }); }
-    if (!toPm) { await t.rollback(); return res.status(404).json({ code: 1, message: '目标产品经理不存在' }); }
+    if (!fromPm) { await t.rollback(); return res.status(404).json({ code: 1, message: '被交接的AI产品经理不存在' }); }
+    if (!toPm) { await t.rollback(); return res.status(404).json({ code: 1, message: '目标AI产品经理不存在' }); }
     if (!isNonResigned(toPm)) {
       await t.rollback();
-      return res.status(400).json({ code: 1, message: '交接目标产品经理已离职，不能作为接收人' });
+      return res.status(400).json({ code: 1, message: '交接目标AI产品经理已离职，不能作为接收人' });
     }
 
     // 全局替换：work_records + match_groups 中的 PM 名称（事务内执行）
@@ -322,7 +328,7 @@ router.get('/view/:token', async (req, res, next) => {
           version: r.version,
           hours: r.hours,
           staffName: r.staff?.name || '-',
-          role: r.staff?.role || '-',
+          role: normalizeStaffRole(r.staff?.role, '-'),
           created_at: r.created_at,
           product_managers: productManagersForPmResponse(r, pm.name)
         });
@@ -336,12 +342,9 @@ router.get('/view/:token', async (req, res, next) => {
     const totalHours = pmRecords.reduce((s, r) => s + parseFloat(r.hours || 0), 0);
 
     // 按角色汇总
-    const roleSummary = { frontend: 0, backend: 0, test: 0 };
+    const roleSummary = createRoleSummary();
     for (const r of pmRecords) {
-      const role = r.staff?.role;
-      if (role && roleSummary[role] !== undefined) {
-        roleSummary[role] += parseFloat(r.hours || 0);
-      }
+      addRoleHours(roleSummary, r.staff?.role, parseFloat(r.hours || 0));
     }
 
     res.json({
@@ -351,7 +354,7 @@ router.get('/view/:token', async (req, res, next) => {
         year, quarter, month,
         tasks: taskList,
         totalHours,
-        roleSummary,
+        roleSummary: withRoleAliases(roleSummary),
         totalRecords: pmRecords.length
       }
     });

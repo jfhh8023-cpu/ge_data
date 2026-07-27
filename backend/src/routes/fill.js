@@ -48,7 +48,7 @@ function validateRequiredProductManagers(records) {
   for (let i = 0; i < records.length; i++) {
     const normalizedPms = normalizeProductManagers(records[i]?.product_managers);
     if (normalizedPms.length === 0) {
-      return `第 ${i + 1} 条记录请选择产品经理`;
+      return `第 ${i + 1} 条记录请选择AI产品经理`;
     }
     records[i].product_managers = normalizedPms;
   }

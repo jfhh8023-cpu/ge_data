@@ -75,7 +75,7 @@ const routes = [
     path: '/pm/view/:token',
     name: 'PmView',
     component: () => import('../views/PmViewPage.vue'),
-    meta: { title: '产品经理数据', layout: 'pm-view' }
+    meta: { title: 'AI产品经理数据', layout: 'pm-view' }
   },
   {
     path: '/fill/:token',
