@@ -2,7 +2,7 @@
 
 日期：2026-07-25  
 环境：本地开发环境  
-发布状态：已推送远端，暂未发生产
+发布状态：已推送远端，已发布生产
 
 ## 本次实施范围
 
@@ -40,7 +40,7 @@
    - `frontend` -> `ai_dev`
    - `backend` -> `ai_dev`
    - `test` -> `ai_quality`
-3. 迁移只作用于当前连接的数据库；当前代码变更已允许远端推送，但生产发布仍需单独执行。
+3. 迁移只作用于当前连接的数据库；生产发布时已先备份生产数据，并按 `--skip-db` 执行。
 
 ## 数据兼容策略
 
@@ -87,9 +87,9 @@
 
 ## 暂不处理项
 
-1. 不推送远程。
-2. 暂不发布生产。
-3. 不修改生产数据。
+1. 远程已推送。
+2. 生产已发布。
+3. 不导入或覆盖本地数据；生产发版仅使用 `--skip-db`，生产数据已先备份。
 4. `demo/` 静态演示目录暂未纳入主应用验证路径，若后续要作为对外 demo，需要单独重构。
 
 ## 后续发布前注意
@@ -107,3 +107,39 @@
    - `GET /api/staff`。
    - `GET /api/stats`。
    - 核心页面可访问且数据未清空。
+
+## 生产发布记录
+
+发布时间：2026-07-27 16:20 左右
+
+发布提交：
+- `2db25d7 feat: 统一 AI 角色统计口径`
+
+发布命令：
+- `python deploy/deploy.py --skip-db`
+
+生产数据保护：
+- 发布前生产数据库备份：`deploy/backups/20260727_162018/devtracker_20260727_162018.sql`
+- 备份大小：约 1.1 MB
+- 未执行 `init.sql`、未执行全量 dump 导入、未覆盖生产业务数据。
+
+发布后验证：
+- `https://jfzhu8023.cloud/devtracker/api/health`：200
+- `https://jfzhu8023.cloud/devtracker/personnel?admin=1`：200
+- `https://jfzhu8023.cloud/devtracker/report?admin=1`：200
+- `https://jfzhu8023.cloud/devtracker/stats?admin=1`：200
+- `https://jfzhu8023.cloud/devtracker/api/local-reports/workload-analysis/devtracker_workload_all_latest.html`：200
+
+生产核心表行数：
+
+| 表 | 发布前 | 发布后 |
+| --- | ---: | ---: |
+| collection_tasks | 27 | 27 |
+| work_records | 652 | 652 |
+| staff | 10 | 10 |
+| product_managers | 12 | 12 |
+| match_groups | 392 | 392 |
+
+生产角色迁移结果：
+- `staff.role`：`ai_dev:8, ai_quality:2`
+- Q3 页面口径：总工时 `1147.0`，AI开发 `776.0`，AI质量 `371.0`，记录 `86`，周期 `4`，统计研发人数 `9`。
