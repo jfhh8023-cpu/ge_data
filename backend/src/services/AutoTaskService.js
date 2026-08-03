@@ -24,6 +24,9 @@ const TASK_TYPE_DUTY_NOTIFY = 'duty_notify';
 const ACTION_MODES = new Set(['run_and_notify', 'run_only', 'notify_only']);
 const TASK_TYPES = new Set([TASK_TYPE_CREATE_NOTIFY, TASK_TYPE_DUTY_NOTIFY]);
 const DUTY_SEND_MODES = new Set(['start_only', 'start_and_end']);
+const WEEKLY_DUTY_MODE_FIXED = 'fixed';
+const WEEKLY_DUTY_MODE_ROTATION = 'rotation';
+const DAY_MS = 24 * 60 * 60 * 1000;
 const STALE_RUNNING_LOG_MS = 60 * 1000;
 const SCHEDULE_TRIGGER_GRACE_MS = 60 * 1000;
 let schedulerTimer = null;
@@ -220,6 +223,37 @@ function normalizeDutyDayMap(value, min, max) {
   return result;
 }
 
+function createDefaultDutyItem() {
+  return normalizeDutyItem({
+    enabled: false,
+    staff_ids: [],
+    start_time: '09:00:00',
+    end_time: '18:30:00',
+    send_mode: 'start_only',
+    start_message: '请关注线上告警和待处理反馈。',
+    end_message: '请同步今日值班处理结果。'
+  });
+}
+
+function normalizeWeeklyDutyMode(value) {
+  return value === WEEKLY_DUTY_MODE_ROTATION ? WEEKLY_DUTY_MODE_ROTATION : WEEKLY_DUTY_MODE_FIXED;
+}
+
+function normalizeWeeklyRotationConfig(value = {}) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const endWeekday = Number(source.end_weekday);
+  const rawStartDate = String(source.start_date || '').slice(0, 10);
+  const startDate = /^\d{4}-\d{2}-\d{2}$/.test(rawStartDate)
+    ? dateToYmd(getMonday(dateFromYmd(rawStartDate)))
+    : dateToYmd(getMonday(getBeijingDate()));
+  const staffIds = Array.isArray(source.staff_ids) ? source.staff_ids : [];
+  return {
+    end_weekday: Number.isInteger(endWeekday) && endWeekday >= 1 && endWeekday <= 7 ? endWeekday : 5,
+    staff_ids: [...new Set(staffIds.map(id => String(id || '').trim()).filter(Boolean))],
+    start_date: startDate
+  };
+}
+
 function normalizeDutyConfig(value) {
   let raw = value;
   if (typeof raw === 'string') {
@@ -232,7 +266,9 @@ function normalizeDutyConfig(value) {
   const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
   return {
     weekly: normalizeDutyDayMap(source.weekly, 1, 7),
-    monthly: normalizeDutyDayMap(source.monthly, 1, 31)
+    monthly: normalizeDutyDayMap(source.monthly, 1, 31),
+    weekly_mode: normalizeWeeklyDutyMode(source.weekly_mode),
+    weekly_rotation: normalizeWeeklyRotationConfig(source.weekly_rotation)
   };
 }
 
@@ -254,6 +290,55 @@ function configuredDutyKeys(dayMap, includeEnd = false) {
     .filter(([, item]) => dutyItemHasStart(item) || (includeEnd && dutyItemHasEnd(item)))
     .map(([key]) => Number(key))
     .sort((a, b) => a - b);
+}
+
+function rotationRangeKeys(rotation) {
+  const config = normalizeWeeklyRotationConfig(rotation);
+  return Array.from({ length: config.end_weekday }, (_, index) => index + 1);
+}
+
+function positiveModulo(value, divisor) {
+  return ((value % divisor) + divisor) % divisor;
+}
+
+function rotationSequenceIndex(rotation, ymd) {
+  const config = normalizeWeeklyRotationConfig(rotation);
+  if (!config.staff_ids.length) return -1;
+  const current = dateFromYmd(ymd);
+  const anchor = getMonday(dateFromYmd(config.start_date));
+  const diffDays = Math.floor((current.getTime() - anchor.getTime()) / DAY_MS);
+  const weekOffset = Math.floor(diffDays / 7);
+  const weekdayOffset = getWeekdayNumber(ymd) - 1;
+  return positiveModulo((weekOffset * config.end_weekday) + weekdayOffset, config.staff_ids.length);
+}
+
+function rotationStaffIdForDate(rotation, ymd) {
+  const config = normalizeWeeklyRotationConfig(rotation);
+  if (!config.staff_ids.length || getWeekdayNumber(ymd) > config.end_weekday) return '';
+  return config.staff_ids[rotationSequenceIndex(config, ymd)] || '';
+}
+
+function resolveWeeklyRotationDutyItem(dutyConfig, ymd) {
+  const weekday = getWeekdayNumber(ymd);
+  const baseItem = normalizeDutyItem(dutyConfig.weekly[String(weekday)] || createDefaultDutyItem());
+  const staffId = rotationStaffIdForDate(dutyConfig.weekly_rotation, ymd);
+  return normalizeDutyItem({
+    ...baseItem,
+    staff_ids: staffId ? [staffId] : [],
+    enabled: Boolean(staffId && String(baseItem.start_message || '').trim())
+  });
+}
+
+function configuredWeeklyDutyKeys(dutyConfig) {
+  if (dutyConfig.weekly_mode !== WEEKLY_DUTY_MODE_ROTATION) {
+    return configuredDutyKeys(dutyConfig.weekly, true);
+  }
+  if (!dutyConfig.weekly_rotation.staff_ids.length) return [];
+  return rotationRangeKeys(dutyConfig.weekly_rotation).filter(key => {
+    const baseItem = normalizeDutyItem(dutyConfig.weekly[String(key)] || createDefaultDutyItem());
+    return String(baseItem.start_message || '').trim() ||
+      (baseItem.send_mode === 'start_and_end' && String(baseItem.end_message || '').trim());
+  });
 }
 
 function normalizeRecipientConfig(value) {
@@ -406,7 +491,7 @@ function normalizeRulePayload(payload, existing = null) {
     ? (configuredDutyKeys(dutyConfig.monthly, true).length ? configuredDutyKeys(dutyConfig.monthly, true) : Array.from({ length: 31 }, (_, i) => i + 1))
     : toIntList(payload.month_days ?? existing?.month_days, 1, 31);
   const weekDays = taskType === TASK_TYPE_DUTY_NOTIFY
-    ? (configuredDutyKeys(dutyConfig.weekly, true).length ? configuredDutyKeys(dutyConfig.weekly, true) : Array.from({ length: 7 }, (_, i) => i + 1))
+    ? (configuredWeeklyDutyKeys(dutyConfig).length ? configuredWeeklyDutyKeys(dutyConfig) : Array.from({ length: 7 }, (_, i) => i + 1))
     : toIntList(payload.week_days ?? existing?.week_days, 1, 7);
   const scheduleYear = payload.schedule_year ?? existing?.schedule_year ?? new Date().getFullYear();
   const webhooks = normalizeWebhookConfigs(
@@ -451,11 +536,8 @@ function partsFromYmd(ymd) {
 
 function isRuleDateMatched(rule, parts) {
   if (normalizeTaskType(rule.task_type) === TASK_TYPE_DUTY_NOTIFY) {
-    const dutyConfig = normalizeDutyConfig(rule.duty_config);
-    if (rule.schedule_type === 'monthly') {
-      return Boolean(dutyConfig.monthly[String(parts.day)]?.enabled);
-    }
-    return Boolean(dutyConfig.weekly[String(getWeekdayNumber(parts.date))]?.enabled);
+    const item = getDutyItemForParts(rule, parts);
+    return dutyItemHasStart(item) || dutyItemHasEnd(item);
   }
   if (rule.schedule_type === 'monthly') {
     const monthDays = toIntList(rule.month_days, 1, 31);
@@ -493,6 +575,9 @@ function getDutyItemForParts(rule, parts) {
   if (rule.schedule_type === 'monthly') {
     if (rule.schedule_year && Number(rule.schedule_year) !== parts.year) return null;
     return dutyConfig.monthly[String(parts.day)] || null;
+  }
+  if (dutyConfig.weekly_mode === WEEKLY_DUTY_MODE_ROTATION) {
+    return resolveWeeklyRotationDutyItem(dutyConfig, parts.date);
   }
   return dutyConfig.weekly[String(getWeekdayNumber(parts.date))] || null;
 }

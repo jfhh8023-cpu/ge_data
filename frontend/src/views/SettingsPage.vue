@@ -40,7 +40,9 @@ const dutyDetailRule = ref(null)
 const dutyDetailRuleIndex = ref(-1)
 const dutyDetailKey = ref('')
 const dutyDetailMode = ref('weekly')
+const dutyDetailTab = ref('fixed')
 const dutyDetailForm = ref(createDefaultDutyItem())
+const dutyRotationForm = ref(createDefaultWeeklyRotationConfig())
 const dutyReferenceKey = ref('')
 const dutyBulkRule = ref(null)
 const dutyBulkRuleIndex = ref(-1)
@@ -55,6 +57,9 @@ const dutyBulkForm = ref({
   start_message: '请关注线上告警和待处理反馈。',
   end_message: '请同步今日值班处理结果。'
 })
+const dutyFutureDialogVisible = ref(false)
+const dutyFutureRule = ref(null)
+const dutyFutureOpenedAt = ref(localDateOnly(new Date()))
 const backupFormat = ref('xlsx')
 const nowTs = ref(Date.now())
 let countdownTimer = null
@@ -100,6 +105,8 @@ const TASK_TYPE_CREATE_NOTIFY = 'task_create_notify'
 const TASK_TYPE_DUTY_NOTIFY = 'duty_notify'
 const DUTY_SEND_MODE_START = 'start_only'
 const DUTY_SEND_MODE_BOTH = 'start_and_end'
+const WEEKLY_DUTY_MODE_FIXED = 'fixed'
+const WEEKLY_DUTY_MODE_ROTATION = 'rotation'
 const PHONE_PATTERN = /^\d{5,20}$/
 
 const canEditAutoTasks = computed(() =>
@@ -110,6 +117,7 @@ const canEditAutoTasks = computed(() =>
 const canCreateAutoTasks = computed(() => authStore.hasPermission('btn:settings:auto_task_save', 'create'))
 const canDeleteAutoTasks = computed(() => authStore.hasPermission('btn:settings:auto_task_save', 'delete'))
 const canDownloadBackup = computed(() => authStore.hasPermission('btn:settings:backup_download', 'view'))
+const currentDutyWeekInfo = computed(() => localIsoWeekInfo(new Date(nowTs.value)))
 
 function defaultWebhookName(index) {
   return `钉钉群webhook机器人${String(index + 1).padStart(2, '0')}`
@@ -122,6 +130,33 @@ function pad2(value) {
 function currentTimeString() {
   const now = new Date()
   return `${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`
+}
+
+function localDateToYmd(date) {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
+}
+
+function parseLocalYmd(ymd) {
+  const [year, month, day] = String(ymd || '').slice(0, 10).split('-').map(Number)
+  if (!year || !month || !day) return localDateOnly(new Date())
+  return new Date(year, month - 1, day)
+}
+
+function localMonday(date) {
+  const base = localDateOnly(date)
+  const weekday = base.getDay() || 7
+  base.setDate(base.getDate() - weekday + 1)
+  return base
+}
+
+function localIsoWeekInfo(date) {
+  const d = localDateOnly(date)
+  const dayNum = d.getDay() || 7
+  d.setDate(d.getDate() + 4 - dayNum)
+  const weekYear = d.getFullYear()
+  const yearStart = new Date(weekYear, 0, 1)
+  const week = Math.ceil((((d - yearStart) / 86400000) + 1) / 7)
+  return { year: weekYear, week }
 }
 
 function createDefaultWebhook(index = 0) {
@@ -152,10 +187,20 @@ function createDefaultDutyItem() {
   }
 }
 
+function createDefaultWeeklyRotationConfig() {
+  return {
+    end_weekday: 5,
+    staff_ids: [],
+    start_date: localDateToYmd(localMonday(new Date()))
+  }
+}
+
 function createDefaultDutyConfig() {
   return {
     weekly: {},
-    monthly: {}
+    monthly: {},
+    weekly_mode: WEEKLY_DUTY_MODE_FIXED,
+    weekly_rotation: createDefaultWeeklyRotationConfig()
   }
 }
 
@@ -352,6 +397,24 @@ function normalizeDutyDayMap(value, min, max) {
   return result
 }
 
+function normalizeWeeklyDutyMode(value) {
+  return value === WEEKLY_DUTY_MODE_ROTATION ? WEEKLY_DUTY_MODE_ROTATION : WEEKLY_DUTY_MODE_FIXED
+}
+
+function normalizeWeeklyRotationConfig(value = {}) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+  const endWeekday = Number(source.end_weekday)
+  const startDate = /^\d{4}-\d{2}-\d{2}$/.test(String(source.start_date || ''))
+    ? localDateToYmd(localMonday(parseLocalYmd(source.start_date)))
+    : localDateToYmd(localMonday(new Date()))
+  const staffIds = Array.isArray(source.staff_ids) ? source.staff_ids : []
+  return {
+    end_weekday: Number.isInteger(endWeekday) && endWeekday >= 1 && endWeekday <= 7 ? endWeekday : 5,
+    staff_ids: [...new Set(staffIds.map(id => String(id || '').trim()).filter(Boolean))],
+    start_date: startDate
+  }
+}
+
 function normalizeDutyConfig(value) {
   let raw = value
   if (typeof raw === 'string') {
@@ -364,7 +427,9 @@ function normalizeDutyConfig(value) {
   const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
   return {
     weekly: normalizeDutyDayMap(source.weekly, 1, 7),
-    monthly: normalizeDutyDayMap(source.monthly, 1, 31)
+    monthly: normalizeDutyDayMap(source.monthly, 1, 31),
+    weekly_mode: normalizeWeeklyDutyMode(source.weekly_mode),
+    weekly_rotation: normalizeWeeklyRotationConfig(source.weekly_rotation)
   }
 }
 
@@ -489,13 +554,14 @@ function validateWebhooks(rule, requireComplete = false) {
 }
 
 function dutyFirstMessage(rule) {
-  const dayMap = dutyMapForRule(rule)
-  const item = Object.values(dayMap).find(dutyItemConfigured)
+  const item = dutyKeys(rule)
+    .map(key => getResolvedDutyItem(rule, key))
+    .find(dutyItemConfigured)
   return String(item?.start_message || '').trim()
 }
 
 function hasConfiguredDutyItem(rule) {
-  return Object.values(dutyMapForRule(rule)).some(dutyItemConfigured)
+  return dutyKeys(rule).some(key => dutyItemConfigured(getResolvedDutyItem(rule, key)))
 }
 
 function validateRule(rule, options = {}) {
@@ -555,6 +621,12 @@ function buildPayload(rule) {
   }
 }
 
+function requestErrorText(error, fallback = '编辑失败') {
+  const reason = String(error?.response?.data?.message || error?.message || '').trim()
+  if (!reason || reason === 'Network Error') return fallback
+  return `${fallback}：${reason}`
+}
+
 async function persistRule(rule, index, options = {}, successMessage = '编辑成功', errorMessage = '编辑失败') {
   if (!validateRule(rule, options)) return
   savingId.value = rule.id || rule.localKey
@@ -565,13 +637,19 @@ async function persistRule(rule, index, options = {}, successMessage = '编辑�
       : await api.post('/settings/auto-tasks', payload)
     rules.value[index] = normalizeRule(res.data)
     ElMessage.success(successMessage)
-    await loadSettings()
-    if (isDutyRule(rules.value[index])) {
-      await loadQuoteConfig(rules.value[index])
+    try {
+      await loadSettings()
+      const refreshedRule = rules.value.find(item => item.id === res.data.id) || rules.value[index]
+      if (isDutyRule(refreshedRule)) {
+        await loadQuoteConfig(refreshedRule)
+      }
+    } catch (refreshError) {
+      console.warn('[settings] 规则已保存，但刷新页面数据失败', refreshError?.message || refreshError)
+      ElMessage.warning('数据已保存，但页面刷新失败，请手动刷新')
     }
     return true
-  } catch {
-    ElMessage.error(errorMessage)
+  } catch (error) {
+    ElMessage.error(requestErrorText(error, errorMessage))
     return false
   } finally {
     savingId.value = ''
@@ -589,9 +667,9 @@ async function handleRuleStatusChange(rule, index) {
     const res = await api.patch(`/settings/auto-tasks/${rule.id}/status`, { enabled: rule.enabled })
     rules.value[index] = normalizeRule(res.data)
     ElMessage.success('编辑成功')
-  } catch {
+  } catch (error) {
     rule.enabled = !rule.enabled
-    ElMessage.error('编辑失败')
+    ElMessage.error(requestErrorText(error))
   } finally {
     savingId.value = ''
   }
@@ -831,9 +909,14 @@ async function saveRecipients() {
     }
     ElMessage.success('编辑成功')
     recipientDialogVisible.value = false
-    await loadSettings()
-  } catch {
-    ElMessage.error('编辑失败')
+    try {
+      await loadSettings()
+    } catch (refreshError) {
+      console.warn('[settings] 接收人已保存，但刷新页面数据失败', refreshError?.message || refreshError)
+      ElMessage.warning('数据已保存，但页面刷新失败，请手动刷新')
+    }
+  } catch (error) {
+    ElMessage.error(requestErrorText(error))
   } finally {
     recipientSaving.value = false
   }
@@ -854,10 +937,69 @@ function dutyKeyLabel(rule, key) {
   return weekDayOptions.find(day => String(day.value) === String(key))?.label || `周${key}`
 }
 
+const rotationRangeOptions = weekDayOptions.map(day => ({
+  value: day.value,
+  label: `周一到${day.label}`
+}))
+
+function dutyWeeklyMode(rule) {
+  return normalizeDutyConfig(rule?.duty_config).weekly_mode
+}
+
+function isWeeklyRotationRule(rule) {
+  return Boolean(rule?.schedule_type === 'weekly' && dutyWeeklyMode(rule) === WEEKLY_DUTY_MODE_ROTATION)
+}
+
+function weeklyRotationConfig(rule) {
+  return normalizeDutyConfig(rule?.duty_config).weekly_rotation
+}
+
+function rotationRangeKeys(rotation) {
+  const endWeekday = normalizeWeeklyRotationConfig(rotation).end_weekday
+  return weekDayOptions
+    .filter(day => day.value <= endWeekday)
+    .map(day => String(day.value))
+}
+
+function positiveModulo(value, divisor) {
+  return ((value % divisor) + divisor) % divisor
+}
+
+function rotationSequenceIndex(rotation, date) {
+  const normalized = normalizeWeeklyRotationConfig(rotation)
+  const staffCount = normalized.staff_ids.length
+  if (!staffCount) return -1
+  const current = localDateOnly(date)
+  const anchor = localMonday(parseLocalYmd(normalized.start_date))
+  const days = Math.floor((current.getTime() - anchor.getTime()) / 86400000)
+  const weekOffset = Math.floor(days / 7)
+  const weekdayOffset = localWeekdayNumber(current) - 1
+  return positiveModulo((weekOffset * normalized.end_weekday) + weekdayOffset, staffCount)
+}
+
+function rotationStaffIdForDate(rotation, date) {
+  const normalized = normalizeWeeklyRotationConfig(rotation)
+  if (!normalized.staff_ids.length || localWeekdayNumber(date) > normalized.end_weekday) return ''
+  return normalized.staff_ids[rotationSequenceIndex(normalized, date)] || ''
+}
+
 function getDutyItem(rule, key) {
   const config = normalizeDutyConfig(rule.duty_config)
   const map = rule.schedule_type === 'monthly' ? config.monthly : config.weekly
   return normalizeDutyItem(map[String(key)] || createDefaultDutyItem())
+}
+
+function getResolvedDutyItem(rule, key, date = null) {
+  if (!isWeeklyRotationRule(rule)) return getDutyItem(rule, key)
+  const config = normalizeDutyConfig(rule.duty_config)
+  const currentDate = date || dutyDateFromKey(rule, key)
+  const baseItem = normalizeDutyItem(config.weekly[String(key)] || createDefaultDutyItem())
+  const staffId = rotationStaffIdForDate(config.weekly_rotation, currentDate)
+  return normalizeDutyItem({
+    ...baseItem,
+    staff_ids: staffId ? [staffId] : [],
+    enabled: Boolean(staffId && String(baseItem.start_message || '').trim())
+  })
 }
 
 function setDutyItem(rule, key, item) {
@@ -868,7 +1010,9 @@ function setDutyItem(rule, key, item) {
 }
 
 function syncDutyRuleScheduleKeys(rule) {
-  const configuredKeys = dutyKeys(rule).filter(key => dutyItemConfigured(getDutyItem(rule, key))).map(Number)
+  const configuredKeys = dutyKeys(rule)
+    .filter(key => dutyItemConfigured(getResolvedDutyItem(rule, key)))
+    .map(Number)
   if (rule.schedule_type === 'monthly') {
     rule.month_days = configuredKeys
   } else {
@@ -882,7 +1026,7 @@ function dutyReferenceOptions(rule, excludeKey = '') {
     .filter(key => String(key) !== String(excludeKey))
     .map(key => ({
       value: String(key),
-      label: `${dutyKeyLabel(rule, key)}${dutyItemConfigured(getDutyItem(rule, key)) ? '（已配置）' : '（未配置）'}`
+      label: `${dutyKeyLabel(rule, key)}${dutyItemDisplayConfigured(getResolvedDutyItem(rule, key)) ? '（已配置）' : '（未配置）'}`
     }))
 }
 
@@ -936,11 +1080,19 @@ function normalizeDutyStaffIds(ids = []) {
     .filter(Boolean))]
 }
 
+function visibleDutyStaffIds(ids = []) {
+  return normalizeDutyStaffIds(ids).filter(id => staffById(id))
+}
+
+function dutyItemDisplayConfigured(item) {
+  return Boolean(dutyItemConfigured(item) && visibleDutyStaffIds(item?.staff_ids).length)
+}
+
 function staffNames(ids = []) {
   const names = ids
     .map(id => {
       const staff = staffById(id)
-      return staff ? staffDisplayName(staff) : String(id || '').trim()
+      return staff ? staffDisplayName(staff) : ''
     })
     .filter(Boolean)
   return names.length ? names.join('、') : '未配置'
@@ -951,14 +1103,14 @@ function dutyPeopleText(item) {
 }
 
 function dutyTimeText(item) {
-  if (!item.enabled) return '--'
+  if (!item.enabled || !visibleDutyStaffIds(item.staff_ids).length) return '--'
   return item.send_mode === DUTY_SEND_MODE_BOTH
     ? `${item.start_time.slice(0, 5)} / ${item.end_time.slice(0, 5)}`
     : item.start_time.slice(0, 5)
 }
 
 function dutyStatusText(item) {
-  return dutyItemConfigured(item) ? '已配置' : '跳过'
+  return dutyItemDisplayConfigured(item) ? '已配置' : '跳过'
 }
 
 function dutyItemHasStartPreview(item) {
@@ -1047,7 +1199,7 @@ function findNextDutyPreview(rule) {
     const date = addLocalDays(today, offset)
     if (!canUseDutyDate(rule, date)) continue
     const key = dutyKeyForDate(rule, date)
-    const item = getDutyItem(rule, key)
+    const item = getResolvedDutyItem(rule, key, date)
     if (!item.enabled) continue
     const nextEvent = dutyPreviewEvents(item, date)
       .filter(runAt => runAt.getTime() > now.getTime())
@@ -1064,7 +1216,7 @@ function findNextDutyPreviewEntry(rule) {
     const date = addLocalDays(today, offset)
     if (!canUseDutyDate(rule, date)) continue
     const key = dutyKeyForDate(rule, date)
-    const item = getDutyItem(rule, key)
+    const item = getResolvedDutyItem(rule, key, date)
     if (!item.enabled) continue
     const event = dutyPreviewEntries(item, date)
       .filter(entry => entry.scheduledAt.getTime() > now.getTime())
@@ -1079,7 +1231,7 @@ function findTodayClosestDutyPreviewEntry(rule) {
   const today = localDateOnly(now)
   if (!canUseDutyDate(rule, today)) return null
   const key = dutyKeyForDate(rule, today)
-  const item = getDutyItem(rule, key)
+  const item = getResolvedDutyItem(rule, key, today)
   if (!item.enabled) return null
   const event = dutyPreviewEntries(item, today)
     .sort((a, b) => {
@@ -1115,10 +1267,10 @@ function isDutyCurrentKey(rule, key) {
 
 function dutyPreviewLines(rule) {
   const next = findNextDutyPreviewEntry(rule)
-  const key = next?.key || dutyKeys(rule).find(itemKey => dutyItemConfigured(getDutyItem(rule, itemKey)))
+  const key = next?.key || dutyKeys(rule).find(itemKey => dutyItemConfigured(getResolvedDutyItem(rule, itemKey)))
   if (!key) return []
-  const item = next?.item || getDutyItem(rule, key)
   const date = next?.date || dutyDateFromKey(rule, key)
+  const item = next?.item || getResolvedDutyItem(rule, key, date)
   // v3.3.0 名句搭配：开启时为每条预览拼接候选队列中的下一句（start->queue[0], end->queue[1]）
   const quoteCfg = rule ? getQuoteConfig(rule) : null
   const quoteQueue = (quoteCfg && quoteCfg.enabled) ? (quoteCfg.candidate_queue || []) : []
@@ -1165,19 +1317,22 @@ function formatDutyPreview(rule, key, item) {
 function dutyPreviewText(rule) {
   const next = findNextDutyPreview(rule)
   if (next) return formatDutyPreview(rule, next.key, next.item)
-  const key = dutyKeys(rule).find(itemKey => dutyItemConfigured(getDutyItem(rule, itemKey)))
+  const key = dutyKeys(rule).find(itemKey => dutyItemConfigured(getResolvedDutyItem(rule, itemKey)))
   if (!key) return '尚未配置值班通知内容'
-  const item = getDutyItem(rule, key)
+  const item = getResolvedDutyItem(rule, key)
   return formatDutyPreview(rule, key, item)
 }
 
 async function openDutyDetail(rule, index, key) {
   await ensureStaffList()
+  const config = normalizeDutyConfig(rule.duty_config)
   dutyDetailRule.value = rule
   dutyDetailRuleIndex.value = index
   dutyDetailKey.value = String(key)
   dutyDetailMode.value = rule.schedule_type
+  dutyDetailTab.value = rule.schedule_type === 'weekly' ? config.weekly_mode : WEEKLY_DUTY_MODE_FIXED
   dutyDetailForm.value = getDutyItem(rule, key)
+  dutyRotationForm.value = normalizeWeeklyRotationConfig(config.weekly_rotation)
   dutyReferenceKey.value = dutyReferenceOptions(rule, key).find(option => option.label.includes('已配置'))?.value || ''
   dutyDetailDialogVisible.value = true
 }
@@ -1187,12 +1342,29 @@ function closeDutyDetail() {
   dutyDetailRule.value = null
   dutyDetailRuleIndex.value = -1
   dutyDetailKey.value = ''
+  dutyDetailTab.value = WEEKLY_DUTY_MODE_FIXED
   dutyReferenceKey.value = ''
 }
 
+function dutyDetailIsRotation() {
+  return dutyDetailMode.value === 'weekly' && dutyDetailTab.value === WEEKLY_DUTY_MODE_ROTATION
+}
+
+function dutyDetailStaffIds() {
+  return dutyDetailIsRotation() ? dutyRotationForm.value.staff_ids : dutyDetailForm.value.staff_ids
+}
+
 function isDutyStaffChecked(staff) {
-  const ids = dutyDetailForm.value.staff_ids.map(id => String(id))
+  const ids = dutyDetailStaffIds().map(id => String(id))
   return canSelectDutyStaff(staff) && (ids.includes(String(staff.id)) || Boolean(staff.phone && ids.includes(String(staff.phone).trim())))
+}
+
+function dutyRotationOrder(staff) {
+  if (!dutyDetailIsRotation()) return 0
+  const ids = dutyRotationForm.value.staff_ids.map(id => String(id))
+  const phone = String(staff?.phone || '').trim()
+  const index = ids.findIndex(id => id === String(staff?.id) || (phone && id === phone))
+  return index >= 0 ? index + 1 : 0
 }
 
 function toggleDutyStaff(staff, checked) {
@@ -1200,9 +1372,10 @@ function toggleDutyStaff(staff, checked) {
     ElMessage.warning(dutyStaffUnavailableReason(staff))
     return
   }
-  const current = dutyDetailForm.value.staff_ids
+  const target = dutyDetailIsRotation() ? dutyRotationForm.value : dutyDetailForm.value
+  const current = target.staff_ids
   const phone = String(staff.phone || '').trim()
-  dutyDetailForm.value.staff_ids = checked
+  target.staff_ids = checked
     ? [...new Set([...current, staff.id])]
     : current.filter(id => id !== staff.id && String(id) !== phone)
 }
@@ -1228,6 +1401,18 @@ async function saveDutyDetail() {
     enabled: staffIds.length > 0 && Boolean(dutyDetailForm.value.start_message?.trim())
   })
   setDutyItem(rule, dutyDetailKey.value, item)
+  if (rule.schedule_type === 'weekly') {
+    const config = normalizeDutyConfig(rule.duty_config)
+    config.weekly_mode = dutyDetailTab.value
+    const rotationStaffIds = normalizeDutyStaffIds(dutyRotationForm.value.staff_ids)
+      .filter(id => canSelectDutyStaff(staffById(id)))
+    config.weekly_rotation = normalizeWeeklyRotationConfig({
+      ...dutyRotationForm.value,
+      staff_ids: rotationStaffIds,
+      start_date: dutyRotationForm.value.start_date || localDateToYmd(localMonday(new Date(nowTs.value)))
+    })
+    rule.duty_config = config
+  }
   syncDutyRuleScheduleKeys(rule)
   if (rule.id && dutyDetailRuleIndex.value > -1) {
     const saved = await persistRule(
@@ -1367,9 +1552,36 @@ async function saveDutyBulkContent() {
   }
 }
 
+function dutyDetailPreviewItem() {
+  if (!dutyDetailIsRotation()) return dutyDetailForm.value
+  const rule = dutyDetailRule.value || { schedule_type: 'weekly', duty_config: createDefaultDutyConfig() }
+  const config = normalizeDutyConfig(rule.duty_config)
+  config.weekly_rotation = normalizeWeeklyRotationConfig(dutyRotationForm.value)
+  config.weekly_mode = WEEKLY_DUTY_MODE_ROTATION
+  const previewRule = { ...rule, schedule_type: 'weekly', duty_config: config }
+  const date = dutyDateFromKey(previewRule, dutyDetailKey.value || '1')
+  const baseItem = normalizeDutyItem(dutyDetailForm.value)
+  const staffId = rotationStaffIdForDate(config.weekly_rotation, date)
+  return normalizeDutyItem({
+    ...baseItem,
+    staff_ids: staffId ? [staffId] : [],
+    enabled: Boolean(staffId && String(baseItem.start_message || '').trim())
+  })
+}
+
+function dutyRotationNames() {
+  return dutyRotationForm.value.staff_ids.length ? staffNames(dutyRotationForm.value.staff_ids) : '未选择轮换人员'
+}
+
+function dutyRotationCurrentText() {
+  const item = dutyDetailPreviewItem()
+  return dutyPeopleText(item)
+}
+
 function dutyDetailPreview() {
-  const names = staffNames(dutyDetailForm.value.staff_ids)
-  const atText = dutyDetailForm.value.staff_ids.length ? `@${names.replaceAll('、', ' @')}` : '未选择接收人'
+  const previewItem = dutyDetailPreviewItem()
+  const names = staffNames(previewItem.staff_ids)
+  const atText = previewItem.staff_ids.length ? `@${names.replaceAll('、', ' @')}` : '未选择接收人'
 
   // v3.3.0 名句搭配：开启时在每段消息前追加一条名句（与后端 AutoTaskService.executeDutyEvent 注入格式一致）
   const quoteCfg = dutyDetailRule.value ? getQuoteConfig(dutyDetailRule.value) : null
@@ -1380,13 +1592,62 @@ function dutyDetailPreview() {
   const startPrefix = startQuote ? `${startQuote}\n` : ''
   const endPrefix   = endQuote ? `${endQuote}\n` : ''
 
-  const start = `开始 ${dutyDetailForm.value.start_time.slice(0, 5)}\n${startPrefix}${atText} ${dutyDetailForm.value.start_message}`
-  if (dutyDetailForm.value.send_mode !== DUTY_SEND_MODE_BOTH) return start
-  return `${start}\n\n结束 ${dutyDetailForm.value.end_time.slice(0, 5)}\n${endPrefix}${atText} ${dutyDetailForm.value.end_message}`
+  const start = `开始 ${previewItem.start_time.slice(0, 5)}\n${startPrefix}${atText} ${previewItem.start_message}`
+  if (previewItem.send_mode !== DUTY_SEND_MODE_BOTH) return start
+  return `${start}\n\n结束 ${previewItem.end_time.slice(0, 5)}\n${endPrefix}${atText} ${previewItem.end_message}`
 }
 
 function dutyDetailLabel() {
   return dutyKeyLabel(dutyDetailRule.value || { schedule_type: dutyDetailMode.value }, dutyDetailKey.value || '1')
+}
+
+function dutyCurrentWeekText() {
+  return `当前是第${currentDutyWeekInfo.value.week}周值班人员，下周值班人员每周一早上更新`
+}
+
+function formatMonthDay(date) {
+  return `${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
+}
+
+function dutyFutureDay(rule, date) {
+  const key = String(localWeekdayNumber(date))
+  const item = getResolvedDutyItem(rule, key, date)
+  return {
+    key,
+    date: localDateToYmd(date),
+    weekday: dutyKeyLabel({ schedule_type: 'weekly' }, key),
+    monthDay: formatMonthDay(date),
+    people: dutyPeopleText(item),
+    time: dutyTimeText(item),
+    status: dutyStatusText(item),
+    configured: dutyItemDisplayConfigured(item),
+    isToday: localDateToYmd(date) === localDateToYmd(localDateOnly(new Date(nowTs.value))),
+    isBeforeOpened: date.getTime() < localDateOnly(dutyFutureOpenedAt.value).getTime()
+  }
+}
+
+function dutyFutureWeeks() {
+  const rule = dutyFutureRule.value
+  if (!rule) return []
+  const opened = localDateOnly(dutyFutureOpenedAt.value)
+  const firstMonday = addLocalDays(localMonday(opened), 7)
+  return Array.from({ length: 3 }, (_, weekIndex) => {
+    const monday = addLocalDays(firstMonday, weekIndex * 7)
+    const sunday = addLocalDays(monday, 6)
+    const weekInfo = localIsoWeekInfo(monday)
+    return {
+      id: `${weekInfo.year}-${weekInfo.week}`,
+      title: `${weekInfo.year}年第${weekInfo.week}周`,
+      range: `${localDateToYmd(monday)} ~ ${localDateToYmd(sunday)}`,
+      days: weekDayOptions.map(day => dutyFutureDay(rule, addLocalDays(monday, day.value - 1)))
+    }
+  })
+}
+
+function openDutyFuture(rule) {
+  dutyFutureRule.value = rule
+  dutyFutureOpenedAt.value = localDateOnly(new Date(nowTs.value))
+  dutyFutureDialogVisible.value = true
 }
 
 function historyKey(rule) {
@@ -2225,8 +2486,19 @@ onUnmounted(() => {
 
                 <div class="dt-duty-card">
                   <div class="dt-duty-card-head">
-                    <div>
-                      <strong>{{ rule.schedule_type === 'monthly' ? '每月值班概览' : '每周值班概览' }}</strong>
+                    <div class="dt-duty-card-title">
+                      <div class="dt-duty-card-title-line">
+                        <strong>{{ rule.schedule_type === 'monthly' ? '每月值班概览' : '每周值班概览' }}</strong>
+                        <span v-if="isWeeklyRotationRule(rule)" class="dt-duty-week-note">{{ dutyCurrentWeekText() }}</span>
+                        <el-button
+                          v-if="isWeeklyRotationRule(rule)"
+                          size="small"
+                          plain
+                          @click="openDutyFuture(rule)"
+                        >
+                          后续
+                        </el-button>
+                      </div>
                       <span>{{ rule.schedule_type === 'monthly' ? '1-31 日完整展示，点击日期配置提醒。' : '周一至周日完整展示，点击星期配置提醒。' }}</span>
                     </div>
                     <div class="dt-duty-card-actions">
@@ -2248,7 +2520,7 @@ onUnmounted(() => {
                       type="button"
                       class="dt-duty-cell"
                       :class="{
-                        'is-configured': dutyItemConfigured(getDutyItem(rule, key)),
+                        'is-configured': dutyItemDisplayConfigured(getResolvedDutyItem(rule, key)),
                         'is-current-duty': isDutyCurrentKey(rule, key)
                       }"
                       :disabled="!canEditAutoTasks"
@@ -2256,9 +2528,9 @@ onUnmounted(() => {
                     >
                       <strong>{{ dutyKeyLabel(rule, key) }}</strong>
                       <div class="dt-duty-cell-info">
-                        <span>{{ dutyPeopleText(getDutyItem(rule, key)) }}</span>
-                        <em>{{ dutyTimeText(getDutyItem(rule, key)) }}</em>
-                        <small>{{ dutyStatusText(getDutyItem(rule, key)) }}</small>
+                        <span>{{ dutyPeopleText(getResolvedDutyItem(rule, key)) }}</span>
+                        <em>{{ dutyTimeText(getResolvedDutyItem(rule, key)) }}</em>
+                        <small>{{ dutyStatusText(getResolvedDutyItem(rule, key)) }}</small>
                       </div>
                     </button>
                   </div>
@@ -2371,25 +2643,99 @@ onUnmounted(() => {
 
         <div class="dt-duty-dialog-grid">
           <div class="dt-duty-dialog-card">
-            <h4>值班对象</h4>
-            <label class="dt-duty-field-label">团队人员</label>
-            <div class="dt-duty-staff-grid" v-loading="staffLoading">
-              <label
-                v-for="staff in staffList"
-                :key="staff.id"
-                class="dt-duty-staff-item"
-                :class="{ 'is-disabled': !canSelectDutyStaff(staff) }"
-                :title="dutyStaffUnavailableReason(staff)"
+            <div class="dt-duty-mode-head">
+              <h4>值班对象</h4>
+              <el-radio-group
+                v-if="dutyDetailMode === 'weekly'"
+                v-model="dutyDetailTab"
+                size="small"
+                class="dt-duty-mode-selector"
               >
-                <el-checkbox
-                  :model-value="isDutyStaffChecked(staff)"
-                  :disabled="!canSelectDutyStaff(staff)"
-                  @change="checked => toggleDutyStaff(staff, checked)"
-                />
-                <span>{{ staffDisplayName(staff) }}</span>
-              </label>
+                <el-radio :value="WEEKLY_DUTY_MODE_FIXED">固定模式</el-radio>
+                <el-radio :value="WEEKLY_DUTY_MODE_ROTATION">轮换模式</el-radio>
+              </el-radio-group>
             </div>
-            <p class="dt-duty-dialog-tip">勾选人员会在 webhook 消息中按手机号 @，姓名和手机号完整才可勾选。</p>
+            <template v-if="dutyDetailMode === 'weekly'">
+              <div v-if="dutyDetailTab === WEEKLY_DUTY_MODE_FIXED">
+                <label class="dt-duty-field-label">团队人员</label>
+                <div class="dt-duty-staff-grid" v-loading="staffLoading">
+                  <label
+                    v-for="staff in staffList"
+                    :key="staff.id"
+                    class="dt-duty-staff-item"
+                    :class="{ 'is-disabled': !canSelectDutyStaff(staff) }"
+                    :title="dutyStaffUnavailableReason(staff)"
+                  >
+                    <el-checkbox
+                      :model-value="isDutyStaffChecked(staff)"
+                      :disabled="!canSelectDutyStaff(staff)"
+                      @change="checked => toggleDutyStaff(staff, checked)"
+                    />
+                    <span>{{ staffDisplayName(staff) }}</span>
+                  </label>
+                </div>
+                <p class="dt-duty-dialog-tip">固定模式沿用当前方式，仅配置 {{ dutyDetailLabel() }} 的固定值班对象。</p>
+              </div>
+              <div v-else>
+                <label class="dt-duty-field-label">排班区间</label>
+                <el-select v-model="dutyRotationForm.end_weekday" size="small" class="dt-duty-rotation-select">
+                  <el-option
+                    v-for="option in rotationRangeOptions"
+                    :key="option.value"
+                    :label="option.label"
+                    :value="option.value"
+                  />
+                </el-select>
+                <label class="dt-duty-field-label">轮换人员</label>
+                <div class="dt-duty-staff-grid" v-loading="staffLoading">
+                  <label
+                    v-for="staff in staffList"
+                    :key="staff.id"
+                    class="dt-duty-staff-item is-rotation"
+                    :class="{
+                      'is-disabled': !canSelectDutyStaff(staff),
+                      'is-selected': isDutyStaffChecked(staff)
+                    }"
+                    :title="dutyStaffUnavailableReason(staff)"
+                  >
+                    <el-checkbox
+                      :model-value="isDutyStaffChecked(staff)"
+                      :disabled="!canSelectDutyStaff(staff)"
+                      @change="checked => toggleDutyStaff(staff, checked)"
+                    />
+                    <span class="dt-duty-order-badge" :class="{ 'is-empty': !dutyRotationOrder(staff) }">
+                      {{ dutyRotationOrder(staff) || '' }}
+                    </span>
+                    <span class="dt-duty-staff-name">{{ staffDisplayName(staff) }}</span>
+                  </label>
+                </div>
+                <div class="dt-duty-rotation-summary">
+                  <span>轮换顺序：{{ dutyRotationNames() }}</span>
+                  <span>{{ dutyDetailLabel() }} 当前排班：{{ dutyRotationCurrentText() }}</span>
+                </div>
+                <p class="dt-duty-dialog-tip">勾选顺序即轮换顺序；如需调整中间顺序，取消后续人员后按新顺序重新勾选。</p>
+              </div>
+            </template>
+            <template v-else>
+              <label class="dt-duty-field-label">团队人员</label>
+              <div class="dt-duty-staff-grid" v-loading="staffLoading">
+                <label
+                  v-for="staff in staffList"
+                  :key="staff.id"
+                  class="dt-duty-staff-item"
+                  :class="{ 'is-disabled': !canSelectDutyStaff(staff) }"
+                  :title="dutyStaffUnavailableReason(staff)"
+                >
+                  <el-checkbox
+                    :model-value="isDutyStaffChecked(staff)"
+                    :disabled="!canSelectDutyStaff(staff)"
+                    @change="checked => toggleDutyStaff(staff, checked)"
+                  />
+                  <span>{{ staffDisplayName(staff) }}</span>
+                </label>
+              </div>
+              <p class="dt-duty-dialog-tip">勾选人员会在 webhook 消息中按手机号 @，姓名和手机号完整才可勾选。</p>
+            </template>
 
             <!-- v3.3.0 名句搭配面板（位于值班对象卡片下方；配置以当前规则为粒度，所有星期/日期共享） -->
             <div
@@ -2563,6 +2909,46 @@ onUnmounted(() => {
         <template #footer>
           <el-button @click="closeDutyDetail">退出</el-button>
           <el-button type="primary" @click="saveDutyDetail">保存通知</el-button>
+        </template>
+      </el-dialog>
+
+      <el-dialog
+        v-model="dutyFutureDialogVisible"
+        title="后续三周值班排期"
+        width="980px"
+        :close-on-click-modal="false"
+      >
+        <div class="dt-duty-future-weeks">
+          <section
+            v-for="week in dutyFutureWeeks()"
+            :key="week.id"
+            class="dt-duty-future-week"
+          >
+            <div class="dt-duty-future-week-head">
+              <strong>{{ week.title }}</strong>
+              <span>{{ week.range }}</span>
+            </div>
+            <div class="dt-duty-future-days">
+              <div
+                v-for="day in week.days"
+                :key="day.date"
+                class="dt-duty-future-day"
+                :class="{
+                  'is-configured': day.configured,
+                  'is-today': day.isToday,
+                  'is-before-opened': day.isBeforeOpened
+                }"
+              >
+                <strong>{{ day.weekday }}</strong>
+                <span>{{ day.monthDay }}</span>
+                <em>{{ day.isBeforeOpened ? '已过' : day.people }}</em>
+                <small>{{ day.isBeforeOpened ? '--' : day.status }}</small>
+              </div>
+            </div>
+          </section>
+        </div>
+        <template #footer>
+          <el-button type="primary" @click="dutyFutureDialogVisible = false">知道了</el-button>
         </template>
       </el-dialog>
 
@@ -3416,6 +3802,23 @@ onUnmounted(() => {
   font-size: 13px;
 }
 
+.dt-duty-card-title {
+  min-width: 0;
+}
+
+.dt-duty-card-title-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dt-duty-card-title-line .dt-duty-week-note {
+  color: var(--color-text-3);
+  font-size: 12px;
+  font-weight: 400;
+}
+
 .dt-duty-card-head span {
   color: var(--color-text-3);
   font-size: 11px;
@@ -3646,6 +4049,95 @@ onUnmounted(() => {
   color: var(--color-text-3);
 }
 
+.dt-duty-future-weeks {
+  display: grid;
+  gap: 12px;
+}
+
+.dt-duty-future-week {
+  border: 1px solid var(--color-border-light);
+  border-radius: 8px;
+  background: var(--color-bg-3);
+  padding: 10px;
+}
+
+.dt-duty-future-week-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.dt-duty-future-week-head strong {
+  color: var(--color-text-1);
+  font-size: 14px;
+}
+
+.dt-duty-future-week-head span {
+  color: var(--color-text-3);
+  font-size: 12px;
+}
+
+.dt-duty-future-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.dt-duty-future-day {
+  min-width: 0;
+  min-height: 82px;
+  border: 1px solid var(--color-border-light);
+  border-radius: 6px;
+  background: var(--color-bg-white);
+  padding: 8px;
+  display: grid;
+  gap: 3px;
+  align-content: start;
+}
+
+.dt-duty-future-day.is-configured {
+  border-color: #f4c37d;
+  background: #fff7ed;
+}
+
+.dt-duty-future-day.is-today {
+  box-shadow: inset 0 0 0 2px #165dff;
+}
+
+.dt-duty-future-day.is-before-opened {
+  opacity: .46;
+}
+
+.dt-duty-future-day strong,
+.dt-duty-future-day span,
+.dt-duty-future-day em,
+.dt-duty-future-day small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dt-duty-future-day strong {
+  color: #9a5b00;
+  font-size: 13px;
+}
+
+.dt-duty-future-day span,
+.dt-duty-future-day small {
+  color: var(--color-text-3);
+  font-size: 11px;
+}
+
+.dt-duty-future-day em {
+  color: var(--color-text-1);
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 700;
+}
+
 .dt-task-type-options {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -3732,6 +4224,36 @@ onUnmounted(() => {
   font-size: 12px;
 }
 
+.dt-duty-mode-head {
+  min-height: 28px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dt-duty-mode-head h4 {
+  margin-bottom: 0;
+}
+
+.dt-duty-mode-selector {
+  flex-shrink: 0;
+}
+
+.dt-duty-mode-selector :deep(.el-radio) {
+  height: 28px;
+  margin-right: 12px;
+}
+
+.dt-duty-mode-selector :deep(.el-radio:last-child) {
+  margin-right: 0;
+}
+
+.dt-duty-rotation-select {
+  width: 100%;
+}
+
 .dt-duty-staff-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -3758,12 +4280,50 @@ onUnmounted(() => {
   font-size: 12px;
 }
 
+.dt-duty-staff-item.is-rotation {
+  grid-template-columns: 18px 20px minmax(0, 1fr);
+}
+
+.dt-duty-order-badge {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #165dff;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.dt-duty-order-badge.is-empty {
+  background: transparent;
+}
+
+.dt-duty-rotation-summary {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  border: 1px solid #d6e3ff;
+  border-radius: 6px;
+  background: #f5f8ff;
+  padding: 8px;
+  color: var(--color-text-2);
+  font-size: 12px;
+}
+
 .dt-duty-staff-item span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 500;
   color: var(--color-text-1);
+}
+
+.dt-duty-staff-item .dt-duty-order-badge:not(.is-empty) {
+  color: #fff;
 }
 
 .dt-duty-staff-item.is-disabled {
