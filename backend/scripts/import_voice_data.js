@@ -14,7 +14,7 @@ const STAFF_LIST = [
   { name: '张希亮', role: 'backend' },
   { name: '郑家成', role: 'backend' },
   { name: '唐兵', role: 'backend' },
-  { name: '赖香山', role: 'backend' },
+  { name: '赖香山', role: 'voip' },
   // 前端
   { name: '刘君', role: 'frontend' },
   { name: '温嘉敦', role: 'frontend' },

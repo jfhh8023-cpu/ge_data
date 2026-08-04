@@ -10,7 +10,7 @@
  */
 const { v4: uuidv4 } = require('uuid');
 const { safeParseJsonArray } = require('../utils/parseJson');
-const { isAiDevelopmentRole } = require('./RoleService');
+const { isAiDevelopmentRole, isVoipRole } = require('./RoleService');
 
 /* ========== 常量 ========== */
 const THRESHOLD_NO_VER = 0.5;
@@ -90,6 +90,7 @@ function buildGroup(clusterRecords, confidence, status) {
 
   const frontend = [];
   const backend = [];
+  const voip = [];
   const testRole = [];
 
   for (const r of clusterRecords) {
@@ -99,6 +100,7 @@ function buildGroup(clusterRecords, confidence, status) {
     const entry = { staffName, hours };
 
     if (isAiDevelopmentRole(role)) frontend.push(entry);
+    else if (isVoipRole(role)) voip.push(entry);
     else testRole.push(entry);
   }
 
@@ -115,6 +117,7 @@ function buildGroup(clusterRecords, confidence, status) {
     product_managers: [...allPMs],
     frontend: JSON.stringify(frontend),
     backend: JSON.stringify(backend),
+    voip: JSON.stringify(voip),
     test_role: JSON.stringify(testRole),
     confidence: Math.round(confidence * 100) / 100,
     status,

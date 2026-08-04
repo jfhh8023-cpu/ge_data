@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import api from '../api'
-import { ROLE_AI_DEV, ROLE_AI_QUALITY, normalizeRole } from '../utils/roles'
+import { ROLE_AI_DEV, ROLE_VOIP, ROLE_AI_QUALITY, normalizeRole } from '../utils/roles'
 
 function isActiveLike(person) {
   return (person?.employment_status || (person?.is_active === false ? 'resigned' : 'active')) !== 'resigned'
@@ -15,6 +15,7 @@ export const useStaffStore = defineStore('staff', {
     activeStaff: (state) => state.list.filter(isActiveLike),
     byRole: (state) => (role) => state.list.filter(s => normalizeRole(s.role) === normalizeRole(role) && isActiveLike(s)),
     aiDevStaff() { return this.byRole(ROLE_AI_DEV) },
+    voipStaff() { return this.byRole(ROLE_VOIP) },
     aiQualityStaff() { return this.byRole(ROLE_AI_QUALITY) },
     frontendStaff() { return this.aiDevStaff },
     backendStaff() { return this.aiDevStaff },

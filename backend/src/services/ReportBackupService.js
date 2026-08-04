@@ -44,6 +44,8 @@ function buildTaskRows(task) {
       AI产品经理: '',
       AI开发工程师: '',
       AI开发工程师工时: 0,
+      VOIP工程师: '',
+      VOIP工程师工时: 0,
       AI质量工程师: '',
       AI质量工程师工时: 0,
       合计工时: 0,
@@ -54,6 +56,7 @@ function buildTaskRows(task) {
   return groups.map(group => {
     const aiDevelopers = mergeRoleLists(group.frontend, group.backend);
     const aiDevHours = roleTotal(aiDevelopers);
+    const voipHours = roleTotal(group.voip);
     const aiQualityHours = roleTotal(group.test_role);
     return {
       周期: task.title,
@@ -66,9 +69,11 @@ function buildTaskRows(task) {
       AI产品经理: pmText(group.product_managers),
       AI开发工程师: roleText(aiDevelopers),
       AI开发工程师工时: aiDevHours,
+      VOIP工程师: roleText(group.voip),
+      VOIP工程师工时: voipHours,
       AI质量工程师: roleText(group.test_role),
       AI质量工程师工时: aiQualityHours,
-      合计工时: aiDevHours + aiQualityHours,
+      合计工时: aiDevHours + voipHours + aiQualityHours,
       备注: group.remark || ''
     };
   });
@@ -170,10 +175,10 @@ function buildMarkdown(tasks) {
       return section.join('\n');
     }
 
-    section.push('| 需求名称 | 版本 | AI产品经理 | AI开发工程师 | AI开发工程师工时 | AI质量工程师 | AI质量工程师工时 | 合计工时 | 备注 |');
-    section.push('| --- | --- | --- | --- | ---: | --- | ---: | ---: | --- |');
+    section.push('| 需求名称 | 版本 | AI产品经理 | AI开发工程师 | AI开发工程师工时 | VOIP工程师 | VOIP工程师工时 | AI质量工程师 | AI质量工程师工时 | 合计工时 | 备注 |');
+    section.push('| --- | --- | --- | --- | ---: | --- | ---: | --- | ---: | ---: | --- |');
     for (const row of rows) {
-      section.push(`| ${row.需求名称} | ${row.版本} | ${row.AI产品经理} | ${row.AI开发工程师} | ${row.AI开发工程师工时} | ${row.AI质量工程师} | ${row.AI质量工程师工时} | ${row.合计工时} | ${String(row.备注 || '').replace(/\|/g, '\\|')} |`);
+      section.push(`| ${row.需求名称} | ${row.版本} | ${row.AI产品经理} | ${row.AI开发工程师} | ${row.AI开发工程师工时} | ${row.VOIP工程师} | ${row.VOIP工程师工时} | ${row.AI质量工程师} | ${row.AI质量工程师工时} | ${row.合计工时} | ${String(row.备注 || '').replace(/\|/g, '\\|')} |`);
     }
     section.push('');
     return section.join('\n');

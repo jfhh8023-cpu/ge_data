@@ -15,11 +15,12 @@ const path = require('path');
 const mysql = require('mysql2/promise');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env'), quiet: true });
 
-const ROLE_KEYS = ['frontend', 'test'];
+const ROLE_KEYS = ['frontend', 'voip', 'test'];
 const ROLE_TEXT = {
   frontend: 'AI开发工程师',
   backend: 'AI开发工程师',
   ai_dev: 'AI开发工程师',
+  voip: 'VOIP工程师',
   test: 'AI质量工程师',
   ai_quality: 'AI质量工程师'
 };
@@ -27,11 +28,12 @@ const ROLE_CHART_TEXT = {
   frontend: 'AI开发',
   backend: 'AI开发',
   ai_dev: 'AI开发',
+  voip: 'VOIP',
   test: 'AI质量',
   ai_quality: 'AI质量'
 };
-const ROLE_CLASS = { frontend: 'fe', backend: 'fe', ai_dev: 'fe', test: 'qa', ai_quality: 'qa' };
-const ROLE_COLORS = { frontend: '#2563eb', backend: '#2563eb', ai_dev: '#2563eb', test: '#f97316', ai_quality: '#f97316' };
+const ROLE_CLASS = { frontend: 'fe', backend: 'fe', ai_dev: 'fe', voip: 'be', test: 'qa', ai_quality: 'qa' };
+const ROLE_COLORS = { frontend: '#2563eb', backend: '#2563eb', ai_dev: '#2563eb', voip: '#00b42a', test: '#f97316', ai_quality: '#f97316' };
 const DEFAULT_PM = '不在上述';
 const RESIGNED_STATUS = 'resigned';
 
@@ -51,6 +53,7 @@ const KEYWORD_DEFS = [
 function normalizeRoleKey(role) {
   const value = String(role || '').trim();
   if (value === 'frontend' || value === 'backend' || value === 'ai_dev') return 'frontend';
+  if (value === 'voip') return 'voip';
   if (value === 'test' || value === 'ai_quality') return 'test';
   return 'frontend';
 }
@@ -222,6 +225,7 @@ function emptyGroup() {
     total: 0,
     frontend: 0,
     backend: 0,
+    voip: 0,
     test: 0,
     records: 0,
     tasks: new Set(),
@@ -299,6 +303,7 @@ function groupToRows(map, totalHours, limit = Infinity) {
       total: round(group.total),
       frontend: round(group.frontend),
       backend: round(group.backend),
+      voip: round(group.voip),
       test: round(group.test),
       records: group.records,
       taskCount: group.tasks.size,
@@ -306,6 +311,7 @@ function groupToRows(map, totalHours, limit = Infinity) {
       share: pct(group.total, totalHours),
       frontendShare: pct(group.frontend, group.total),
       backendShare: pct(group.backend, group.total),
+      voipShare: pct(group.voip, group.total),
       testShare: pct(group.test, group.total)
     }))
     .sort((a, b) => b.total - a.total)
@@ -332,12 +338,14 @@ function periodRows(map, direction = 'desc') {
       total: round(group.total),
       frontend: round(group.frontend),
       backend: round(group.backend),
+      voip: round(group.voip),
       test: round(group.test),
       records: group.records,
       taskCount: group.tasks.size,
       requirementCount: group.requirements.size,
       frontendShare: pct(group.frontend, group.total),
       backendShare: pct(group.backend, group.total),
+      voipShare: pct(group.voip, group.total),
       testShare: pct(group.test, group.total)
     }))
     .sort((a, b) => {
@@ -720,6 +728,7 @@ function analyze(data) {
       total: 0,
       frontend: 0,
       backend: 0,
+      voip: 0,
       test: 0,
       records: 0,
       staff: new Set()
@@ -773,6 +782,7 @@ function analyze(data) {
         total: round(req.total),
         frontend: round(req.frontend),
         backend: round(req.backend),
+        voip: round(req.voip),
         test: round(req.test),
         records: req.records,
         staffCount: req.staff.size
@@ -834,9 +844,11 @@ function analyze(data) {
     total: round(totalGroup.total),
     frontend: round(totalGroup.frontend),
     backend: round(totalGroup.backend),
+    voip: round(totalGroup.voip),
     test: round(totalGroup.test),
     frontendShare: pct(totalGroup.frontend, totalGroup.total),
     backendShare: pct(totalGroup.backend, totalGroup.total),
+    voipShare: pct(totalGroup.voip, totalGroup.total),
     testShare: pct(totalGroup.test, totalGroup.total),
     records: totalGroup.records,
     avgRecordHours: round(totalGroup.total / Math.max(totalGroup.records, 1)),
@@ -1171,7 +1183,7 @@ function formulasHtml() {
       <ol>
         <li><strong>周期归属</strong>：先按任务结束日期，把每条工时归到对应的年、季度、月份和周。</li>
         <li><strong>工时合计</strong>：把当前范围内符合条件的每条填报工时相加。</li>
-        <li><strong>岗位工时</strong>：分别把AI开发工程师、AI质量工程师填写的工时相加；历史前端/后端岗位统一并入AI开发工程师。</li>
+        <li><strong>岗位工时</strong>：分别把AI开发工程师、VOIP工程师、AI质量工程师填写的工时相加；历史前端/后端岗位统一并入AI开发工程师。</li>
         <li><strong>岗位占比</strong>：用某个岗位的工时除以当前范围总工时，再换算成百分比。</li>
         <li><strong>需求数量</strong>：同一个周期内，需求名称和版本相同的内容视为同一个需求。</li>
         <li><strong>AI产品经理归属</strong>：优先使用填报时选择的第一个AI产品经理；没有填写时归入“不在上述”。</li>
@@ -1496,9 +1508,9 @@ function renderHtml(report, options = {}) {
   const titleScopeText = reportTitleScopeText(report);
   const referenceNoticeLines = [
     '当前数据统计依据，为人工每周填写数据所统计，存在一定的统一性偏差，工时填写预估性为主等因素，因此数据仅供参考；详细可查看~',
-    'AI Agent需求对应AI开发和AI质量工时在AI组占相当一部分未被统计进当前数据分析；'
+    'AI Agent需求对应AI开发、VOIP和AI质量工时在AI组占相当一部分未被统计进当前数据分析；'
   ];
-  const referenceTip = '1，需求存在如：工单需求，有多个AI产品经理负责，单个AI开发工程师负责开发，单个AI质量工程师负责验证，最后填写工时只选择了其中一个AI产品经理，因此存在偏差；\n2，工时都是人工自己预估，存在不绝对准确的情况，因此不具备绝对工时参考，仅做相对数据参考；';
+  const referenceTip = '1，需求存在如：工单需求，有多个AI产品经理负责，AI开发工程师、VOIP工程师或AI质量工程师参与，最后填写工时只选择了其中一个AI产品经理，因此存在偏差；\n2，工时都是人工自己预估，存在不绝对准确的情况，因此不具备绝对工时参考，仅做相对数据参考；';
 
   const periodReports = Array.isArray(options.periodReports) ? options.periodReports : null;
   const naturalWeeks = Array.isArray(options.naturalWeeks) ? options.naturalWeeks : [];
@@ -1540,7 +1552,7 @@ function renderHtml(report, options = {}) {
       --text: #172033;
       --muted: #667085;
       --fe: ${ROLE_COLORS.frontend};
-      --be: ${ROLE_COLORS.backend};
+      --be: ${ROLE_COLORS.voip};
       --qa: ${ROLE_COLORS.test};
       --accent: #0f766e;
       --accent-2: #7c3aed;
@@ -1973,6 +1985,7 @@ function renderHtml(report, options = {}) {
       <section class="grid">
         <button type="button" class="card" data-jump-tab="trend"><div class="label">总工时</div><div class="value">${fmt(report.summary.total)}</div><div class="sub">${fmt(report.dataset.recordCount)} 条记录 / ${fmt(report.dataset.requirementCount)} 个需求</div></button>
         <button type="button" class="card" data-jump-tab="requirements" data-filter-tab="requirements" data-filter-value="frontend"><div class="label">AI开发工程师总工时</div><div class="value fe-text">${fmt(report.summary.frontend)}</div><div class="sub">${report.summary.frontendShare}% · 点击看AI开发相关需求</div></button>
+        <button type="button" class="card" data-jump-tab="requirements" data-filter-tab="requirements" data-filter-value="voip"><div class="label">VOIP工程师总工时</div><div class="value be-text">${fmt(report.summary.voip)}</div><div class="sub">${report.summary.voipShare}% · 点击看VOIP相关需求</div></button>
         <button type="button" class="card" data-jump-tab="requirements" data-filter-tab="requirements" data-filter-value="test"><div class="label">AI质量工程师总工时</div><div class="value qa-text">${fmt(report.summary.test)}</div><div class="sub">${report.summary.testShare}% · 点击看AI质量相关需求</div></button>
       </section>
       <section class="dimension-grid">
@@ -1994,7 +2007,7 @@ function renderHtml(report, options = {}) {
           <div class="section-head"><h2>总览解读</h2></div>
           <ul class="finding-list">
             <li>当前范围共有 <strong class="metric-value">${fmt(report.dataset.recordCount)}</strong> 条填报记录、<strong class="metric-value">${fmt(report.dataset.requirementCount)}</strong> 个需求粒度、<strong class="metric-value">${fmt(report.dataset.taskCount)}</strong> 个采集周期。</li>
-            <li>AI开发工程师投入 <strong class="metric-fe">${fmt(report.summary.frontend)}h</strong>，占 <strong class="metric-fe">${report.summary.frontendShare}%</strong>；AI质量工程师投入 <strong class="metric-qa">${fmt(report.summary.test)}h</strong>，占 <strong class="metric-qa">${report.summary.testShare}%</strong>。</li>
+            <li>AI开发工程师投入 <strong class="metric-fe">${fmt(report.summary.frontend)}h</strong>，占 <strong class="metric-fe">${report.summary.frontendShare}%</strong>；VOIP工程师投入 <strong class="metric-be">${fmt(report.summary.voip)}h</strong>，占 <strong class="metric-be">${report.summary.voipShare}%</strong>；AI质量工程师投入 <strong class="metric-qa">${fmt(report.summary.test)}h</strong>，占 <strong class="metric-qa">${report.summary.testShare}%</strong>。</li>
             <li>平均每条记录 <strong class="metric-value">${fmt(report.summary.avgRecordHours)}h</strong>，平均每个需求粒度 <strong class="metric-value">${fmt(report.summary.avgRequirementHours)}h</strong>。</li>
             <li>点击上方卡片会进入对应页签，并按卡片维度自动筛选明细。</li>
           </ul>
@@ -2005,7 +2018,7 @@ function renderHtml(report, options = {}) {
 
     <section class="tab-panel" id="tab-trend">
       <section class="chart-grid">
-        ${trendChart(report, report.months, '月份折线趋势', { note: '折线同时展示总计、AI开发工程师、AI质量工程师；季度报告中月线更适合看结构变化。' })}
+        ${trendChart(report, report.months, '月份折线趋势', { note: '折线同时展示总计、AI开发工程师、VOIP工程师、AI质量工程师；季度报告中月线更适合看结构变化。' })}
         ${pieChart(report.quarters, '季度总工时占比')}
       </section>
       ${stackedBarChart(report.weeks, '按周期堆叠趋势：岗位工时')}
@@ -2074,6 +2087,7 @@ function renderHtml(report, options = {}) {
         <div class="filter-row" data-filter-group="requirements">
           <button type="button" class="chip active" data-filter-tab="requirements" data-filter-value="__all">全部</button>
           <button type="button" class="chip" data-filter-tab="requirements" data-filter-value="frontend">包含AI开发工程师</button>
+          <button type="button" class="chip" data-filter-tab="requirements" data-filter-value="voip">包含VOIP工程师</button>
           <button type="button" class="chip" data-filter-tab="requirements" data-filter-value="test">包含AI质量工程师</button>
         </div>
         <div class="table-wrap">
@@ -2608,7 +2622,7 @@ async function main() {
   console.log(`[OK] 最新 HTML: ${latestHtmlPath}`);
   console.log(`[OK] 最新 JSON: ${latestJsonPath}`);
   console.log(`[OK] 周期页面: ${shouldWriteSharedPeriodPages ? periodReports.length - 1 : 0} 个${shouldWriteSharedPeriodPages ? '' : '（筛选报告不覆盖共享周期页）'}`);
-  console.log(`[OK] 总工时: ${report.summary.total}h；AI开发工程师: ${report.summary.frontend}h；AI质量工程师: ${report.summary.test}h`);
+  console.log(`[OK] 总工时: ${report.summary.total}h；AI开发工程师: ${report.summary.frontend}h；VOIP工程师: ${report.summary.voip}h；AI质量工程师: ${report.summary.test}h`);
 }
 
 main().catch(err => {

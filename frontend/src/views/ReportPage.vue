@@ -27,10 +27,12 @@ const PAGE_SIZE = 20
 const SORT_OPTIONS = [
   { key: 'pm', label: 'AI产品' },
   { key: 'ai_dev', label: 'AI开发' },
+  { key: 'voip', label: 'VOIP' },
   { key: 'ai_quality', label: 'AI质量' }
 ]
 const ROLE_EDITORS = [
   { field: 'ai_developers', role: 'ai_dev' },
+  { field: 'voip', role: 'voip' },
   { field: 'ai_quality', role: 'ai_quality' }
 ]
 const DIMENSION_LABEL = {
@@ -265,6 +267,7 @@ function buildRowPayload(row) {
     version: row.version || '',
     product_managers: normalizeNameArray(row.product_managers),
     ai_developers: normalizeRoleRows(row.ai_developers),
+    voip: normalizeRoleRows(row.voip),
     ai_quality: normalizeRoleRows(row.ai_quality),
     remark: row.remark || ''
   }
@@ -315,6 +318,8 @@ const sortedGroups = computed(() => {
       })
     case 'ai_dev':
       return groups.sort((a, b) => (a.ai_developers?.[0]?.staffName || '').localeCompare(b.ai_developers?.[0]?.staffName || '', 'zh-Hans'))
+    case 'voip':
+      return groups.sort((a, b) => (a.voip?.[0]?.staffName || '').localeCompare(b.voip?.[0]?.staffName || '', 'zh-Hans'))
     case 'ai_quality':
       return groups.sort((a, b) => (a.ai_quality?.[0]?.staffName || '').localeCompare(b.ai_quality?.[0]?.staffName || '', 'zh-Hans'))
     default:
@@ -391,7 +396,7 @@ function exportReportData() {
     return
   }
 
-  const headers = ['序号', '版本号', '需求名称', 'AI产品经理', 'AI开发工程师姓名', 'AI开发工程师工时', 'AI质量工程师姓名', 'AI质量工程师工时', '总计/小时', '备注']
+  const headers = ['序号', '版本号', '需求名称', 'AI产品经理', 'AI开发工程师姓名', 'AI开发工程师工时', 'VOIP工程师姓名', 'VOIP工程师工时', 'AI质量工程师姓名', 'AI质量工程师工时', '总计/小时', '备注']
   const rows = groups.map((g, idx) => [
     idx + 1,
     g.version || '',
@@ -399,6 +404,8 @@ function exportReportData() {
     Array.isArray(g.product_managers) ? g.product_managers.join(', ') : '',
     formatNames(g.ai_developers).join(', '),
     g._aiDevTotal ? g._aiDevTotal.toFixed(1) : '0',
+    formatNames(g.voip).join(', '),
+    g._voipTotal ? g._voipTotal.toFixed(1) : '0',
     formatNames(g.ai_quality).join(', '),
     g._aiQualityTotal ? g._aiQualityTotal.toFixed(1) : '0',
     g._rowTotal ? g._rowTotal.toFixed(1) : '0',
@@ -407,7 +414,7 @@ function exportReportData() {
 
   // 合计行
   const totals = reportStore.columnTotals
-  rows.push(['', '', '', '', '合计', totals.ai_dev.toFixed(1), '', totals.ai_quality.toFixed(1), totals.total.toFixed(1), ''])
+  rows.push(['', '', '', '', '合计', totals.ai_dev.toFixed(1), '', totals.voip.toFixed(1), '', totals.ai_quality.toFixed(1), totals.total.toFixed(1), ''])
 
   const taskTitle = selectedTask.value?.title || '需求工时统计'
   const filename = `${taskTitle}_需求工时统计.xlsx`
@@ -417,7 +424,7 @@ function exportReportData() {
     sheets: [{
       name: '需求工时统计',
       data: [headers, ...rows],
-      colWidths: [6, 12, 30, 14, 18, 14, 18, 14, 10, 18]
+      colWidths: [6, 12, 30, 14, 18, 14, 18, 14, 18, 14, 10, 18]
     }]
   })
 
@@ -447,9 +454,10 @@ async function handleImportFile(event) {
 
   try {
     const { headers, rows } = await parseExcelFile(file)
-    const expectedHeaders = ['版本号', '需求名称', 'AI产品经理', 'AI开发工程师姓名', 'AI开发工程师工时', 'AI质量工程师姓名', 'AI质量工程师工时', '备注']
+    const expectedHeaders = ['版本号', '需求名称', 'AI产品经理', 'AI开发工程师姓名', 'AI开发工程师工时', 'VOIP工程师姓名', 'VOIP工程师工时', 'AI质量工程师姓名', 'AI质量工程师工时', '备注']
+    const previousHeaders = ['版本号', '需求名称', 'AI产品经理', 'AI开发工程师姓名', 'AI开发工程师工时', 'AI质量工程师姓名', 'AI质量工程师工时', '备注']
     const legacyHeaders = ['版本号', '需求名称', '产品经理', '前端姓名', '前端工时', '后端姓名', '后端工时', '测试姓名', '测试工时', '备注']
-    if (!validateHeaders(headers, expectedHeaders) && !validateHeaders(headers, legacyHeaders)) {
+    if (!validateHeaders(headers, expectedHeaders) && !validateHeaders(headers, previousHeaders) && !validateHeaders(headers, legacyHeaders)) {
       ElMessage.error('页面数据格式不匹配，请重新导入')
       return
     }
@@ -473,6 +481,8 @@ async function handleImportFile(event) {
         product_managers: String((r['AI产品经理'] ?? r['产品经理']) || '').trim(),
         ai_dev_name: String(r['AI开发工程师姓名'] || '').trim(),
         ai_dev_hours: parseFloat(r['AI开发工程师工时']) || 0,
+        voip_name: String(r['VOIP工程师姓名'] || '').trim(),
+        voip_hours: parseFloat(r['VOIP工程师工时']) || 0,
         frontend_name: String(r['前端姓名'] || '').trim(),
         frontend_hours: parseFloat(r['前端工时']) || 0,
         backend_name: String(r['后端姓名'] || '').trim(),
@@ -656,6 +666,46 @@ function handleDownloadTemplate() {
             </template>
           </el-table-column>
         </el-table-column>
+        <el-table-column label="VOIP工程师" align="center">
+          <el-table-column label="姓名" width="130">
+            <template #default="{ row }">
+              <div v-if="canEditRow(row)" class="role-editor">
+                <div v-for="(person, i) in editableRoleRows(row, 'voip')" :key="i" class="role-editor-row">
+                  <el-select v-model="person.staffName" filterable clearable size="small" placeholder="VOIP" class="role-staff-select" @change="scheduleRowAutoSave(row)">
+                    <el-option v-for="staff in roleOptions('voip')" :key="staff.id" :label="staff.name" :value="staff.name" />
+                  </el-select>
+                  <el-button link type="danger" size="small" class="role-remove-btn" @click="removeRolePerson(row, 'voip', i)">×</el-button>
+                </div>
+              </div>
+              <div v-else-if="formatNames(row.voip).length">
+                <div v-for="(n, i) in formatNames(row.voip)" :key="i" style="line-height:1.6;">{{ n }}</div>
+              </div>
+              <span v-else style="color:var(--color-text-4);">-</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="工时/H" width="88" align="center" header-class-name="dt-nowrap-header">
+            <template #default="{ row }">
+              <div v-if="canEditRow(row)" class="hours-editor">
+                <el-input-number
+                  v-for="(person, i) in editableRoleRows(row, 'voip')"
+                  :key="i"
+                  v-model="person.hours"
+                  :controls="false"
+                  :min="0"
+                  :precision="1"
+                  size="small"
+                  class="manual-hours-input"
+                  @change="scheduleRowAutoSave(row)"
+                  @blur="flushRowAutoSave(row)"
+                />
+              </div>
+              <div v-else-if="formatHoursList(row.voip).length">
+                <div v-for="(h, i) in formatHoursList(row.voip)" :key="i" style="line-height:1.6; font-weight:700; color:#00B42A;">{{ h }}</div>
+              </div>
+              <span v-else style="color:var(--color-text-4);">-</span>
+            </template>
+          </el-table-column>
+        </el-table-column>
         <el-table-column label="AI质量工程师" align="center">
           <el-table-column label="姓名" width="130">
             <template #default="{ row }">
@@ -754,8 +804,14 @@ export default {
           sums[idx] = h('span', { style: 'font-weight:700; font-size:14px; color:#165DFF;' }, val)
           return
         }
-        // AI质量工程师工时
+        // VOIP工程师工时
         if (col.label === '工时/H' && idx <= 8) {
+          const val = data.reduce((s, row) => s + (row._voipTotal || 0), 0).toFixed(1)
+          sums[idx] = h('span', { style: 'font-weight:700; font-size:14px; color:#00B42A;' }, val)
+          return
+        }
+        // AI质量工程师工时
+        if (col.label === '工时/H' && idx <= 10) {
           const val = data.reduce((s, row) => s + (row._aiQualityTotal || 0), 0).toFixed(1)
           sums[idx] = h('span', { style: 'font-weight:700; font-size:14px; color:#FF7D00;' }, val)
           return

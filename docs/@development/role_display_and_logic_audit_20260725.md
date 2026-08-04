@@ -101,3 +101,17 @@
   - `/report?admin=1`：排序按钮显示 `AI产品 / AI开发 / AI质量`。
 - 口径说明：周期统计页面实际请求参数为 `quarter=Q3`；手工接口验证必须沿用 `Q1/Q2/Q3/Q4` 字符串口径，不使用 `quarter=3`。
 - 发布状态：2026-07-27 已按用户要求执行远端推送准备，生产发布暂不执行。
+
+## 2026-08-04 VOIP 独立角色追加审计
+
+研发角色口径由两类扩展为三类：`ai_dev / voip / ai_quality`。完整名称分别为 AI开发工程师、VOIP工程师、AI质量工程师；紧凑区域使用 AI开发、VOIP、AI质量，所有角色徽标保持不换行。
+
+本轮重新遍历人员管理、填写工时、任务详情、需求工时统计、周期统计、研发聚焦、AI产品经理聚焦、设置通知名单、Excel 导入导出、报表备份、离线分析报告、角色服务、匹配服务和历史初始化脚本。赖香山、赵鲁鹏的角色与 87 条历史匹配条目已经独立迁移到 VOIP，773h 工时不再并入 AI开发；迁移前后总工时守恒。
+
+需求及实施证据：
+
+- `docs/@demand/voip_engineer_role_20260804.md`
+- `docs/@development/voip_engineer_role_implementation_20260804.md`
+- `docs/@development/voip_engineer_role_tests_20260804/voip_role_summary.md`
+
+本轮仅修改本地开发环境，没有提交、推送、发包或生产发布。

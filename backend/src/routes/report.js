@@ -8,8 +8,10 @@
 const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
+const { Op } = require('sequelize');
 const { MatchGroup, WorkRecord, Staff, CollectionTask } = require('../models');
 const { matchRecords } = require('../services/MatchService');
+const { normalizeStaffRole } = require('../services/RoleService');
 const { safeParseJsonArray } = require('../utils/parseJson');
 const {
   collectPmNamesFromRecords,
@@ -38,10 +40,44 @@ function normalizeRoleArray(value) {
     .filter(item => item.staffName || item.hours > 0);
 }
 
+async function canonicalizeRoleBuckets({ aiDevelopers, voip, aiQuality }, knownRoleByName = null) {
+  const buckets = {
+    aiDevelopers: normalizeRoleArray(aiDevelopers),
+    voip: normalizeRoleArray(voip),
+    aiQuality: normalizeRoleArray(aiQuality)
+  };
+  const names = [...new Set(Object.values(buckets).flat().map(item => item.staffName).filter(Boolean))];
+  if (!names.length) return buckets;
+
+  const roleByName = knownRoleByName || new Map((await Staff.findAll({
+    where: { name: { [Op.in]: names } },
+    attributes: ['name', 'role']
+  })).map(item => [item.name, normalizeStaffRole(item.role, '')]));
+  const canonical = { aiDevelopers: [], voip: [], aiQuality: [] };
+
+  for (const [sourceKey, entries] of Object.entries(buckets)) {
+    for (const entry of entries) {
+      const role = roleByName.get(entry.staffName);
+      const targetKey = role === 'voip'
+        ? 'voip'
+        : role === 'ai_quality'
+          ? 'aiQuality'
+          : role === 'ai_dev'
+            ? 'aiDevelopers'
+            : sourceKey;
+      const duplicate = canonical[targetKey].find(item => item.staffName === entry.staffName);
+      if (duplicate) duplicate.hours += entry.hours;
+      else canonical[targetKey].push({ ...entry });
+    }
+  }
+  return canonical;
+}
+
 function parseMatchGroup(group) {
   const plain = group.toJSON ? group.toJSON() : { ...group };
   plain.frontend = safeParseJsonArray(plain.frontend);
   plain.backend = safeParseJsonArray(plain.backend);
+  plain.voip = safeParseJsonArray(plain.voip);
   plain.test_role = safeParseJsonArray(plain.test_role);
   plain.ai_developers = [...plain.frontend, ...plain.backend];
   plain.ai_quality = plain.test_role;
@@ -66,6 +102,7 @@ router.get('/', async (req, res, next) => {
       const plain = g.toJSON();
       plain.frontend = safeParseJsonArray(plain.frontend);
       plain.backend = safeParseJsonArray(plain.backend);
+      plain.voip = safeParseJsonArray(plain.voip);
       plain.test_role = safeParseJsonArray(plain.test_role);
       plain.ai_developers = [...plain.frontend, ...plain.backend];
       plain.ai_quality = plain.test_role;
@@ -155,6 +192,16 @@ router.put('/:id', async (req, res, next) => {
     } else if (req.body.test_role !== undefined) {
       mg.test_role = normalizeRoleArray(req.body.test_role);
     }
+    if (req.body.voip !== undefined) mg.voip = normalizeRoleArray(req.body.voip);
+    const canonical = await canonicalizeRoleBuckets({
+      aiDevelopers: [...normalizeRoleArray(mg.frontend), ...normalizeRoleArray(mg.backend)],
+      voip: mg.voip,
+      aiQuality: mg.test_role
+    });
+    mg.frontend = canonical.aiDevelopers;
+    mg.backend = [];
+    mg.voip = canonical.voip;
+    mg.test_role = canonical.aiQuality;
     await mg.save();
     res.json({ code: 0, data: parseMatchGroup(mg) });
   } catch (err) { next(err); }
@@ -163,16 +210,25 @@ router.put('/:id', async (req, res, next) => {
 /* POST /api/report/manual-row — 手动添加行 */
 router.post('/manual-row', async (req, res, next) => {
   try {
-    const { task_id, merged_title, version, product_managers, frontend, backend, test_role, ai_developers, ai_quality, remark } = req.body;
+    const { task_id, merged_title, version, product_managers, frontend, backend, voip, test_role, ai_developers, ai_quality, remark } = req.body;
     if (!task_id) return res.status(400).json({ code: 1, message: 'task_id 必填' });
+    const canonical = await canonicalizeRoleBuckets({
+      aiDevelopers: [
+        ...normalizeRoleArray(ai_developers ?? frontend),
+        ...(ai_developers !== undefined ? [] : normalizeRoleArray(backend))
+      ],
+      voip,
+      aiQuality: ai_quality ?? test_role
+    });
     const mg = await MatchGroup.create({
       id: uuidv4(), task_id,
       merged_title: merged_title || '',
       version: version || '',
       product_managers: normalizeNameArray(product_managers),
-      frontend: normalizeRoleArray(ai_developers ?? frontend),
-      backend: ai_developers !== undefined ? [] : normalizeRoleArray(backend),
-      test_role: normalizeRoleArray(ai_quality ?? test_role),
+      frontend: canonical.aiDevelopers,
+      backend: [],
+      voip: canonical.voip,
+      test_role: canonical.aiQuality,
       remark: remark || '',
       confidence: 1,
       status: 'manual_merged'
@@ -188,8 +244,9 @@ router.post('/import', async (req, res, next) => {
     if (!task_id) return res.status(400).json({ code: 1, message: 'task_id 必填' });
     if (!Array.isArray(rows) || rows.length === 0) return res.status(400).json({ code: 1, message: 'rows 须为非空数组' });
 
-    const { Op } = require('sequelize');
     let created = 0, updated = 0;
+    const importRoleByName = new Map((await Staff.findAll({ attributes: ['name', 'role'] }))
+      .map(item => [item.name, normalizeStaffRole(item.role, '')]));
 
     for (const row of rows) {
       // 覆盖规则：已存在相同需求名称或相同版本号的 MatchGroup 则覆盖
@@ -204,21 +261,30 @@ router.post('/import', async (req, res, next) => {
 
       // 构建角色 JSON 数组
       const buildRoleArray = (name, hours) => {
-        if (!name && !hours) return '[]';
+        if (!name && !hours) return [];
         const names = name ? name.split(/[,，、\s]+/).filter(Boolean) : [''];
         const avgHours = hours ? (hours / names.length) : 0;
-        return JSON.stringify(names.map(n => ({ staffName: n, hours: avgHours })));
+        return names.map(n => ({ staffName: n, hours: avgHours }));
       };
+
+      const usesCanonicalAiDevFields = row.ai_dev_name !== undefined || row.ai_dev_hours !== undefined;
+      const canonical = await canonicalizeRoleBuckets({
+        aiDevelopers: [
+          ...buildRoleArray(row.ai_dev_name ?? row.frontend_name, row.ai_dev_hours ?? row.frontend_hours),
+          ...(usesCanonicalAiDevFields ? [] : buildRoleArray(row.backend_name, row.backend_hours))
+        ],
+        voip: buildRoleArray(row.voip_name, row.voip_hours),
+        aiQuality: buildRoleArray(row.ai_quality_name ?? row.test_name, row.ai_quality_hours ?? row.test_hours)
+      }, importRoleByName);
 
       const data = {
         merged_title: row.merged_title || '',
         version: row.version || '',
         product_managers: row.product_managers ? JSON.stringify(row.product_managers.split(/[,，、\s]+/).filter(Boolean)) : '[]',
-        frontend: buildRoleArray(row.ai_dev_name ?? row.frontend_name, row.ai_dev_hours ?? row.frontend_hours),
-        backend: row.ai_dev_name !== undefined || row.ai_dev_hours !== undefined
-          ? []
-          : buildRoleArray(row.backend_name, row.backend_hours),
-        test_role: buildRoleArray(row.ai_quality_name ?? row.test_name, row.ai_quality_hours ?? row.test_hours),
+        frontend: canonical.aiDevelopers,
+        backend: [],
+        voip: canonical.voip,
+        test_role: canonical.aiQuality,
         remark: row.remark || ''
       };
 

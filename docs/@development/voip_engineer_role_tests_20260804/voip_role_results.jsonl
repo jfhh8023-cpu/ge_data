@@ -1,0 +1,17 @@
+{"id":"VOIP-001","status":"PASS","evidence":{"roleKeys":["ai_dev","voip","ai_quality"],"modelColumns":["staff.role","match_groups.voip"],"legacyAliases":["frontend","backend","test"]}}
+{"id":"VOIP-002","status":"PASS","evidence":{"staff":[{"name":"赖香山","role":"voip","records":55,"hours":441},{"name":"赵鲁鹏","role":"voip","records":32,"hours":332}]}}
+{"id":"VOIP-003","status":"PASS","evidence":{"sourceOccurrences":0,"voipOccurrences":87,"voipHours":773,"allMatchHoursBefore":7569.5,"allMatchHoursAfter":7569.5,"idempotentChangedGroups":0}}
+{"id":"VOIP-004","status":"PASS","evidence":{"route":"/personnel?admin=1","labels":["赖香山：VOIP工程师","赵鲁鹏：VOIP工程师"],"whiteSpace":"nowrap"}}
+{"id":"VOIP-005","status":"PASS","evidence":{"fillRoles":{"赖香山":"voip","赵鲁鹏":"voip"},"personalHours":{"赖香山":441,"赵鲁鹏":332}}}
+{"id":"VOIP-006","status":"PASS","evidence":{"route":"/report?admin=1","headers":["AI开发工程师","VOIP工程师","AI质量工程师"],"sortOption":"VOIP"}}
+{"id":"VOIP-007","status":"PASS","evidence":{"actions":["create","update","read","delete"],"field":"voip","cleanup":true}}
+{"id":"VOIP-008","status":"PASS","evidence":{"templateHeaders":["VOIP工程师姓名","VOIP工程师工时"],"newImport":true,"legacyImportCompatible":true,"xlsxBackup":true,"markdownBackup":true,"cleanup":true}}
+{"id":"VOIP-009","status":"PASS","evidence":{"q3":{"ai_dev":186,"voip":66,"ai_quality":105,"total":357},"surfaces":["cards","chart","pmDistribution","period","version","requirement"]}}
+{"id":"VOIP-010","status":"PASS","evidence":{"groups":["ai_dev","voip","ai_quality"],"targetGroup":"voip","targetHours":773}}
+{"id":"VOIP-011","status":"PASS","evidence":{"periodPages":36,"total":7161.5,"ai_dev":4412,"voip":773,"ai_quality":1976.5,"targetVoipHours":{"赖香山":441,"赵鲁鹏":332}}}
+{"id":"VOIP-012","status":"PASS","evidence":{"scripts":["backend/scripts/import_voice_data.js","backend/scripts/import_voice_data_v2.js"],"targetRole":"voip","matchColumn":"voip"}}
+{"id":"VOIP-013","status":"PASS","evidence":{"nodeCheckFiles":13,"viteModules":1683,"build":"passed","diffCheck":"passed_with_line_ending_warnings"}}
+{"id":"VOIP-014","status":"ISSUE","marker":"TOOL","evidence":{"browserRuntime":"No browser is available","earlierUiChecks":["personnel","report","stats"],"fallbackPlaywright":"not_installed"},"productDefect":false}
+{"id":"VOIP-015","status":"PASS","evidence":{"temporaryRows":0,"gitStaged":false,"commit":false,"push":false,"deploy":false}}
+{"id":"VOIP-007","attempt":2,"status":"PASS","evidence":{"backendCanonicalization":{"manualCreate":true,"manualUpdate":true,"batchImport":true},"wrongSourceBuckets":["aiDevelopers","aiQuality"],"canonicalBucket":"voip","cleanup":true}}
+{"id":"VOIP-014","attempt":2,"status":"PASS","evidence":{"runner":"repository Playwright 1.59.1","routes":["/personnel","/report","/stats","/pm/view/:token","/tasks/:id","/fill/:token"],"desktop":true,"mobile768":true,"consoleErrors":0,"screenshots":["codex-voip-personnel.png","codex-voip-report.png","codex-voip-stats.png","codex-voip-pm.png","codex-voip-task.png","codex-voip-fill.png"]}}

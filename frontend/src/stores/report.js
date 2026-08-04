@@ -34,6 +34,7 @@ function normalizeRoleList(value) {
 function normalizeGroup(group) {
   const frontend = normalizeRoleList(group.frontend)
   const backend = normalizeRoleList(group.backend)
+  const voip = normalizeRoleList(group.voip)
   const testRole = normalizeRoleList(group.test_role)
   const aiDevelopers = normalizeRoleList(group.ai_developers)
   const aiQuality = normalizeRoleList(group.ai_quality)
@@ -42,6 +43,7 @@ function normalizeGroup(group) {
     product_managers: parseJsonArray(group.product_managers).map(item => String(item || '').trim()).filter(Boolean),
     frontend,
     backend,
+    voip,
     test_role: testRole,
     ai_developers: aiDevelopers.length ? aiDevelopers : [...frontend, ...backend],
     ai_quality: aiQuality.length ? aiQuality : testRole
@@ -59,16 +61,19 @@ export const useReportStore = defineStore('report', {
       return state.matchGroups.map(g => {
         const dev = Array.isArray(g.ai_developers) ? g.ai_developers : []
         const qa = Array.isArray(g.ai_quality) ? g.ai_quality : []
+        const voip = Array.isArray(g.voip) ? g.voip : []
         const aiDevTotal = dev.reduce((s, p) => s + (parseFloat(p.hours) || 0), 0)
         const aiQualityTotal = qa.reduce((s, p) => s + (parseFloat(p.hours) || 0), 0)
+        const voipTotal = voip.reduce((s, p) => s + (parseFloat(p.hours) || 0), 0)
         return {
           ...g,
           _aiDevTotal: aiDevTotal,
           _aiQualityTotal: aiQualityTotal,
+          _voipTotal: voipTotal,
           _frontendTotal: aiDevTotal,
           _backendTotal: 0,
           _testTotal: aiQualityTotal,
-          _rowTotal: aiDevTotal + aiQualityTotal
+          _rowTotal: aiDevTotal + voipTotal + aiQualityTotal
         }
       })
     },
@@ -77,6 +82,7 @@ export const useReportStore = defineStore('report', {
       const groups = this.groupsWithTotal
       return {
         ai_dev: groups.reduce((s, g) => s + g._aiDevTotal, 0),
+        voip: groups.reduce((s, g) => s + g._voipTotal, 0),
         ai_quality: groups.reduce((s, g) => s + g._aiQualityTotal, 0),
         frontend: groups.reduce((s, g) => s + g._aiDevTotal, 0),
         backend: 0,

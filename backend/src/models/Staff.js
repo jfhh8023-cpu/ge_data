@@ -5,7 +5,7 @@ const Staff = sequelize.define('staff', {
   id:        { type: DataTypes.CHAR(36), primaryKey: true },
   name:      { type: DataTypes.STRING(50), allowNull: false },
   phone:     { type: DataTypes.STRING(30), allowNull: true },
-  role:      { type: DataTypes.ENUM('ai_dev', 'ai_quality', 'frontend', 'backend', 'test'), allowNull: false },
+  role:      { type: DataTypes.ENUM('ai_dev', 'voip', 'ai_quality', 'frontend', 'backend', 'test'), allowNull: false },
   employment_status: {
     type: DataTypes.ENUM('active', 'resigned', 'retained', 'long_leave'),
     defaultValue: 'active'

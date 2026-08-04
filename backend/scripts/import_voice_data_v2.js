@@ -21,7 +21,7 @@ const STAFF_LIST = [
   { name: '张希亮', role: 'backend' },
   { name: '郑家成', role: 'backend' },
   { name: '唐兵', role: 'backend' },
-  { name: '赖香山', role: 'backend' },
+  { name: '赖香山', role: 'voip' },
   // 前端
   { name: '刘君', role: 'frontend' },
   { name: '温嘉敦', role: 'frontend' },
@@ -34,6 +34,8 @@ const STAFF_LIST = [
 const NAME_ALIAS = {
   '俊锋': '朱俊锋',
 };
+
+const VOIP_NAMES = new Set(['赖香山', '赵鲁鹏']);
 
 /* 已知人名集合（用于判断测试列内容是否为人名） */
 const KNOWN_NAMES = new Set(STAFF_LIST.map(s => s.name));
@@ -409,7 +411,12 @@ async function main() {
 
       // 创建 MatchGroup（包含所有字段 + 备注）
       const feJson = feParsed.records.map(r => ({ name: r.name, hours: r.hours }));
-      const beJson = beParsed.records.map(r => ({ name: r.name, hours: r.hours }));
+      const voipJson = beParsed.records
+        .filter(r => VOIP_NAMES.has(NAME_ALIAS[r.name] || r.name))
+        .map(r => ({ name: r.name, hours: r.hours }));
+      const beJson = beParsed.records
+        .filter(r => !VOIP_NAMES.has(NAME_ALIAS[r.name] || r.name))
+        .map(r => ({ name: r.name, hours: r.hours }));
       const testJson = testParsed.records.map(r => ({ name: r.name, hours: r.hours }));
       // 过滤备注：去掉人名部分，只保留真正的状态文字
       const filteredRemarks = testParsed.remarks.filter(r => {
@@ -432,6 +439,7 @@ async function main() {
         product_managers: JSON.stringify(pmArray),
         frontend: JSON.stringify(feJson),
         backend: JSON.stringify(beJson),
+        voip: JSON.stringify(voipJson),
         test_role: JSON.stringify(testJson),
         remark: remarkStr,
         confidence: 1.00,

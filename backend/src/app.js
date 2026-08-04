@@ -10,7 +10,7 @@ const { sequelize } = require('./models');
 const errorHandler = require('./middleware/errorHandler');
 const { ensureAutoTaskTables, startAutoTaskScheduler } = require('./services/AutoTaskService');
 const { ensurePersonStatusTables } = require('./services/PersonStatusService');
-const { ensureStaffRoleSchema } = require('./services/RoleService');
+const { ensureStaffRoleSchema, ensureMatchGroupRoleSchema } = require('./services/RoleService');
 
 const app = express();
 const PORT = parseInt(process.env.PORT, 10) || 3001;
@@ -56,6 +56,7 @@ async function start() {
     await sequelize.authenticate();
     console.log('[DB] MySQL 连接成功');
     await ensureStaffRoleSchema();
+    await ensureMatchGroupRoleSchema();
     await ensurePersonStatusTables();
     await ensureAutoTaskTables();
     app.listen(PORT, () => {

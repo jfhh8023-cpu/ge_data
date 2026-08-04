@@ -25,7 +25,7 @@ import { ArrowLeft, ArrowRight, ArrowUp } from '@element-plus/icons-vue'
 import { onDataChange, SYNC_EVENTS } from '../utils/sync'
 import { generateAndDownloadExcel, uploadExcelToServer } from '../utils/excel'
 import { useAuthStore } from '../stores/auth'
-import { ROLE_AI_DEV, ROLE_AI_QUALITY, ROLE_LABEL, ROLE_SHORT_LABEL, ROLE_DOT_COLOR, ROLE_TAG_CLASS, normalizeRole } from '../utils/roles'
+import { ROLE_AI_DEV, ROLE_VOIP, ROLE_AI_QUALITY, ROLE_LABEL, ROLE_SHORT_LABEL, ROLE_DOT_COLOR, ROLE_TAG_CLASS, normalizeRole } from '../utils/roles'
 
 const statsStore = useStatsStore()
 const authStore = useAuthStore()
@@ -37,12 +37,13 @@ const router = useRouter()
 const CURRENT_YEAR = new Date().getFullYear()
 const BAR_COLORS = {
   ai_dev: '#165DFF',
+  voip: '#00B42A',
   ai_quality: '#FF7D00',
   total: '#F53F3F'
 }
 const CANVAS_HEIGHT = 360
-const BAR_LABELS = ['AI开发', 'AI质量', '总计']
-const BAR_KEYS = [ROLE_AI_DEV, ROLE_AI_QUALITY, 'total']
+const BAR_LABELS = ['AI开发', 'VOIP', 'AI质量', '总计']
+const BAR_KEYS = [ROLE_AI_DEV, ROLE_VOIP, ROLE_AI_QUALITY, 'total']
 const WEEK_WINDOW_SIZE = 9
 const WEEK_MIN_WINDOW_SIZE = 4
 const WEEK_FOCUS_INDEX = 4
@@ -53,6 +54,7 @@ const WEEK_NAV_SLOT_WIDTH = 72
 const PM_THEME_COLOR = '#722ED1'
 const ANALYSIS_ROLE_META = [
   { key: ROLE_AI_DEV, label: 'AI开发', itemClass: 'dt-analysis-fe', bgClass: 'dt-analysis-fe-bg' },
+  { key: ROLE_VOIP, label: 'VOIP', itemClass: 'dt-analysis-be', bgClass: 'dt-analysis-be-bg' },
   { key: ROLE_AI_QUALITY, label: 'AI质量', itemClass: 'dt-analysis-qa', bgClass: 'dt-analysis-qa-bg' }
 ]
 const WORKLOAD_REPORT_PATH = 'api/local-reports/workload-analysis/devtracker_workload_all_latest.html'
@@ -479,6 +481,7 @@ const roleTotals = computed(() => {
     : Number(summary.frontend || 0) + Number(summary.backend || 0)
   return {
     [ROLE_AI_DEV]: aiDev,
+    [ROLE_VOIP]: Number(summary[ROLE_VOIP] || 0),
     [ROLE_AI_QUALITY]: Number(summary[ROLE_AI_QUALITY] ?? summary.test ?? 0)
   }
 })
@@ -493,6 +496,10 @@ function roleSummaryAiQuality(summary = {}) {
   return Number(summary[ROLE_AI_QUALITY] ?? summary.test ?? 0)
 }
 
+function roleSummaryVoip(summary = {}) {
+  return Number(summary[ROLE_VOIP] || 0)
+}
+
 function roleDisplay(role, compact = false) {
   const normalized = normalizeRole(role)
   return (compact ? ROLE_SHORT_LABEL[normalized] : ROLE_LABEL[normalized]) || role || '-'
@@ -500,7 +507,11 @@ function roleDisplay(role, compact = false) {
 
 function rolePillStyle(role, compact = false) {
   const normalized = normalizeRole(role)
-  const isQuality = normalized === ROLE_AI_QUALITY
+  const palette = normalized === ROLE_VOIP
+    ? { background: '#E8FFEA', color: '#00B42A' }
+    : normalized === ROLE_AI_QUALITY
+      ? { background: '#FFF7E8', color: '#FF7D00' }
+      : { background: '#E8F3FF', color: '#165DFF' }
   return {
     display: 'inline-flex',
     alignItems: 'center',
@@ -512,8 +523,7 @@ function rolePillStyle(role, compact = false) {
     lineHeight: compact ? '16px' : '18px',
     minWidth: compact ? '42px' : '54px',
     whiteSpace: 'nowrap',
-    background: isQuality ? '#FFF7E8' : '#E8F3FF',
-    color: isQuality ? '#FF7D00' : '#165DFF'
+    ...palette
   }
 }
 
@@ -589,6 +599,7 @@ function groupAnalysisRows(records, keyGetter, labelGetter) {
         label,
         total: 0,
         [ROLE_AI_DEV]: 0,
+        [ROLE_VOIP]: 0,
         [ROLE_AI_QUALITY]: 0,
         recordCount: 0,
         requirementSet: new Set(),
@@ -609,6 +620,7 @@ function groupAnalysisRows(records, keyGetter, labelGetter) {
       ...row,
       total: Number(row.total.toFixed(1)),
       [ROLE_AI_DEV]: Number(row[ROLE_AI_DEV].toFixed(1)),
+      [ROLE_VOIP]: Number(row[ROLE_VOIP].toFixed(1)),
       [ROLE_AI_QUALITY]: Number(row[ROLE_AI_QUALITY].toFixed(1)),
       taskCount: row.taskSet.size,
       requirementCount: row.requirementSet.size,
@@ -621,6 +633,7 @@ const analysisDimensionMeta = computed(() => {
   const meta = {
     total: { label: '总工时', role: '', color: '#F53F3F' },
     [ROLE_AI_DEV]: { label: 'AI开发工程师总工时', role: ROLE_AI_DEV, color: '#165DFF' },
+    [ROLE_VOIP]: { label: 'VOIP工程师总工时', role: ROLE_VOIP, color: '#00B42A' },
     [ROLE_AI_QUALITY]: { label: 'AI质量工程师总工时', role: ROLE_AI_QUALITY, color: '#FF7D00' }
   }
   return meta[analysisDimension.value] || meta.total
@@ -644,7 +657,7 @@ const analysisRecords = computed(() => {
 const analysisData = computed(() => {
   const records = analysisRecords.value
   const total = records.reduce((sum, rec) => sum + toNumber(rec.hours), 0)
-  const roleTotals = { [ROLE_AI_DEV]: 0, [ROLE_AI_QUALITY]: 0 }
+  const roleTotals = { [ROLE_AI_DEV]: 0, [ROLE_VOIP]: 0, [ROLE_AI_QUALITY]: 0 }
   for (const rec of records) {
     const role = normalizeRole(rec.staff?.role || rec.role)
     if (roleTotals[role] !== undefined) roleTotals[role] += toNumber(rec.hours)
@@ -667,7 +680,7 @@ const analysisData = computed(() => {
   }).sort((a, b) => b.sortTime - a.sortTime)
   const roleComboRows = groupAnalysisRows(records, requirementKey, rec => rec.requirement_title || '-')
     .map(row => ({
-      combo: [ROLE_AI_DEV, ROLE_AI_QUALITY].filter(role => row[role] > 0).map(role => ROLE_SHORT_LABEL[role]).join('+') || '无角色',
+      combo: [ROLE_AI_DEV, ROLE_VOIP, ROLE_AI_QUALITY].filter(role => row[role] > 0).map(role => ROLE_SHORT_LABEL[role]).join('+') || '无角色',
       total: row.total,
       requirementCount: 1
     }))
@@ -719,6 +732,7 @@ const analysisData = computed(() => {
     avgRequirementHours: requirementRows.length ? Number((total / requirementRows.length).toFixed(1)) : 0,
     roleTotals: {
       [ROLE_AI_DEV]: Number(roleTotals[ROLE_AI_DEV].toFixed(1)),
+      [ROLE_VOIP]: Number(roleTotals[ROLE_VOIP].toFixed(1)),
       [ROLE_AI_QUALITY]: Number(roleTotals[ROLE_AI_QUALITY].toFixed(1))
     },
     pmRows,
@@ -763,7 +777,7 @@ const analysisRoleSummaryText = computed(() => {
     const row = analysisRoleRows.value[0]
     return row ? `${row.label} ${row.hours.toFixed(1)}h。` : ''
   }
-  return `AI开发工程师 ${analysisData.value.roleTotals.ai_dev.toFixed(1)}h，AI质量工程师 ${analysisData.value.roleTotals.ai_quality.toFixed(1)}h。`
+  return `AI开发工程师 ${analysisData.value.roleTotals.ai_dev.toFixed(1)}h，VOIP工程师 ${analysisData.value.roleTotals.voip.toFixed(1)}h，AI质量工程师 ${analysisData.value.roleTotals.ai_quality.toFixed(1)}h。`
 })
 
 function openAnalysisDialog(dimension = 'total') {
@@ -1076,7 +1090,7 @@ function drawChart() {
 
   // 图例
   const legendY = 18
-  let legendX = W - padding.right - 260
+  let legendX = Math.max(padding.left, W - padding.right - 340)
   BAR_KEYS.forEach((_, i) => {
     ctx.fillStyle = colors[i]
     ctx.fillRect(legendX, legendY - 8, 12, 12)
@@ -1084,7 +1098,7 @@ function drawChart() {
     ctx.font = '13px "Inter", "Microsoft YaHei", sans-serif'
     ctx.textAlign = 'left'
     ctx.fillText(BAR_LABELS[i], legendX + 16, legendY + 3)
-    legendX += 70
+    legendX += 78
   })
 }
 
@@ -1204,10 +1218,10 @@ watch(activeTab, async (tab) => {
 
 /* ========== 研发聚焦双模式 ========== */
 const viewMode = ref('individual')  // 'individual' | 'all'
-const allPersonalData = ref({ [ROLE_AI_DEV]: [], [ROLE_AI_QUALITY]: [] })
+const allPersonalData = ref({ [ROLE_AI_DEV]: [], [ROLE_VOIP]: [], [ROLE_AI_QUALITY]: [] })
 
 async function loadAllPersonalData() {
-  const grouped = { [ROLE_AI_DEV]: [], [ROLE_AI_QUALITY]: [] }
+  const grouped = { [ROLE_AI_DEV]: [], [ROLE_VOIP]: [], [ROLE_AI_QUALITY]: [] }
   for (const staff of statsStore.staff) {
     try {
       const res = await api.get(`/stats/personal/${staff.id}`, {
@@ -1439,8 +1453,9 @@ function exportStatsData() {
   const summaryData = [summaryHeader]
   const rt = roleTotals.value
   summaryData.push(['AI开发工程师', rt.ai_dev || 0])
+  summaryData.push(['VOIP工程师', rt.voip || 0])
   summaryData.push(['AI质量工程师', rt.ai_quality || 0])
-  summaryData.push(['合计', (rt.ai_dev || 0) + (rt.ai_quality || 0)])
+  summaryData.push(['合计', (rt.ai_dev || 0) + (rt.voip || 0) + (rt.ai_quality || 0)])
   sheets.push({ name: '角色工时汇总', data: summaryData, colWidths: [12, 14] })
 
   // Sheet 2: AI产品经理明细表（与页面表格一致）
@@ -1470,12 +1485,12 @@ function exportStatsData() {
   sheets.push({ name: 'AI产品经理工时明细', data: detailData, colWidths: [8, 16, 14, 30, 10, 12, 12, 10] })
 
   // Sheet 3: AI产品经理柱状图数据
-  const chartHeader = ['AI产品经理', 'AI开发工程师(小时)', 'AI质量工程师(小时)', '总计(小时)']
+  const chartHeader = ['AI产品经理', 'AI开发工程师(小时)', 'VOIP工程师(小时)', 'AI质量工程师(小时)', '总计(小时)']
   const chartDataExport = [chartHeader]
   for (const d of pmDist) {
-    chartDataExport.push([d.name, roleSummaryAiDev(d), roleSummaryAiQuality(d), d.total || 0])
+    chartDataExport.push([d.name, roleSummaryAiDev(d), roleSummaryVoip(d), roleSummaryAiQuality(d), d.total || 0])
   }
-  sheets.push({ name: 'AI产品经理柱状图数据', data: chartDataExport, colWidths: [16, 18, 18, 12] })
+  sheets.push({ name: 'AI产品经理柱状图数据', data: chartDataExport, colWidths: [16, 18, 18, 18, 12] })
 
   const filename = `周期统计_${selectedYear.value}年${selectedQuarter.value}.xlsx`
   const blob = generateAndDownloadExcel({ filename, sheets })
@@ -1571,6 +1586,13 @@ function exportStatsData() {
             <div class="dt-stat-card-label">{{ filterLabel }} AI开发工程师总工时</div>
             <div class="dt-stat-card-value" style="color:#165DFF;">
               {{ roleTotals.ai_dev?.toFixed(1) || '0' }}
+              <span class="dt-stat-card-unit">小时</span>
+            </div>
+          </div>
+          <div class="dt-stat-card dt-stat-card-clickable" @click="openAnalysisDialog('voip')">
+            <div class="dt-stat-card-label">{{ filterLabel }} VOIP工程师总工时</div>
+            <div class="dt-stat-card-value" style="color:#00B42A;">
+              {{ roleTotals.voip?.toFixed(1) || '0' }}
               <span class="dt-stat-card-unit">小时</span>
             </div>
           </div>
@@ -1817,7 +1839,7 @@ function exportStatsData() {
 
         <!-- ====== 一起查看模式（REQ-25 优化） ====== -->
         <template v-else>
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+          <div class="dt-personal-role-grid">
             <!-- AI开发工程师列 -->
             <div>
               <h3 style="font-size:14px; font-weight:600; color:#165DFF; margin-bottom:12px; padding:8px 12px; background:#E8F3FF; border-radius:8px; text-align:center;">AI开发工程师</h3>
@@ -1838,6 +1860,38 @@ function exportStatsData() {
                         {{ task.title.replace('语音业务线-2026年', '') }}
                       </span>
                       <span style="font-weight:700; color:var(--color-primary); font-size:13px;">{{ task.records.reduce((s,r) => s + parseFloat(r.hours || 0), 0).toFixed(1) }}H</span>
+                    </div>
+                    <div v-if="isAllExpanded(person.staff?.id, task.id)" style="padding:4px 8px 8px 20px; font-size:12px; color:var(--color-text-3);">
+                      <div v-for="(rec, ri) in task.records" :key="ri" style="display:flex; justify-content:space-between; padding:2px 0;">
+                        <span>{{ rec.requirement_title || '-' }}</span>
+                        <span style="font-weight:600; color:var(--color-text-2);">{{ rec.hours }}H</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div v-else style="font-size:12px; color:var(--color-text-4); padding:8px;">暂无数据</div>
+              </div>
+            </div>
+            <!-- VOIP工程师列 -->
+            <div>
+              <h3 style="font-size:14px; font-weight:600; color:#00B42A; margin-bottom:12px; padding:8px 12px; background:#E8FFEA; border-radius:8px; text-align:center;">VOIP工程师</h3>
+              <div v-for="(person, pIdx) in allPersonalData.voip" :key="person.staff?.id" :style="{ marginBottom:'16px', background: pIdx % 2 === 1 ? '#E8FFEA' : 'transparent', borderRadius:'10px', padding: pIdx % 2 === 1 ? '10px' : '0' }">
+                <div style="display:flex; align-items:center; gap:8px; padding:8px 12px; background:var(--color-bg-2); border-radius:8px; margin-bottom:4px;">
+                  <div style="width:28px; height:28px; border-radius:50%; background:#00B42A; color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600;">{{ getInitial(person.staff?.name) }}</div>
+                  <span style="font-weight:600; font-size:13px;">{{ person.staff?.name }}</span>
+                  <span style="margin-left:auto; font-weight:700; color:#00B42A; font-size:13px;">{{ person.totalHours?.toFixed(1) || 0 }}H</span>
+                </div>
+                <div v-if="person.tasks?.length" style="padding-left:8px;">
+                  <div v-for="task in person.tasks" :key="task.id" style="border-bottom:1px solid var(--color-border-light);">
+                    <div
+                      style="display:flex; justify-content:space-between; padding:4px 4px; cursor:pointer; font-size:13px;"
+                      @click="toggleAllTask(person.staff?.id, task.id)"
+                    >
+                      <span style="color:var(--color-text-2); display:flex; align-items:center; gap:4px;">
+                        <span :style="{ transform: isAllExpanded(person.staff?.id, task.id) ? 'rotate(90deg)' : 'rotate(0)', transition: 'transform 0.2s', fontSize: '10px', color: 'var(--color-text-4)' }">▶</span>
+                        {{ task.title.replace('语音业务线-2026年', '') }}
+                      </span>
+                      <span style="font-weight:700; color:#00B42A; font-size:13px;">{{ task.records.reduce((s,r) => s + parseFloat(r.hours || 0), 0).toFixed(1) }}H</span>
                     </div>
                     <div v-if="isAllExpanded(person.staff?.id, task.id)" style="padding:4px 8px 8px 20px; font-size:12px; color:var(--color-text-3);">
                       <div v-for="(rec, ri) in task.records" :key="ri" style="display:flex; justify-content:space-between; padding:2px 0;">
@@ -1956,6 +2010,7 @@ function exportStatsData() {
                 <!-- 角色工时分布 -->
                 <div v-if="pmFocusInfo.roleSummary" style="margin-top:8px; display:flex; gap:16px; font-size:12px;">
                   <span style="color:#165DFF;">AI开发 <strong>{{ roleSummaryAiDev(pmFocusInfo.roleSummary).toFixed(1) }}</strong>H</span>
+                  <span style="color:#00B42A;">VOIP <strong>{{ roleSummaryVoip(pmFocusInfo.roleSummary).toFixed(1) }}</strong>H</span>
                   <span style="color:#FF7D00;">AI质量 <strong>{{ roleSummaryAiQuality(pmFocusInfo.roleSummary).toFixed(1) }}</strong>H</span>
                 </div>
               </div>
@@ -2048,6 +2103,7 @@ function exportStatsData() {
                   </div>
                   <div v-if="pmData.roleSummary" style="display:flex; gap:10px; font-size:11px; margin-top:2px;">
                     <span style="color:#165DFF;">AI开发 <strong>{{ roleSummaryAiDev(pmData.roleSummary).toFixed(1) }}</strong>H</span>
+                    <span style="color:#00B42A;">VOIP <strong>{{ roleSummaryVoip(pmData.roleSummary).toFixed(1) }}</strong>H</span>
                     <span style="color:#FF7D00;">AI质量 <strong>{{ roleSummaryAiQuality(pmData.roleSummary).toFixed(1) }}</strong>H</span>
                   </div>
                 </div>
@@ -2216,6 +2272,7 @@ function exportStatsData() {
               <template #default="{ row }">{{ row.share }}%</template>
             </el-table-column>
             <el-table-column v-if="showAnalysisRole('ai_dev')" prop="ai_dev" label="AI开发" align="center" sortable />
+            <el-table-column v-if="showAnalysisRole('voip')" prop="voip" label="VOIP" align="center" sortable />
             <el-table-column v-if="showAnalysisRole('ai_quality')" prop="ai_quality" label="AI质量" align="center" sortable />
             <el-table-column prop="recordCount" label="记录数" align="center" sortable />
             <el-table-column prop="requirementCount" label="需求数" align="center" sortable />
@@ -2243,6 +2300,7 @@ function exportStatsData() {
               <template #default="{ row }">{{ row.share }}%</template>
             </el-table-column>
             <el-table-column v-if="showAnalysisRole('ai_dev')" prop="ai_dev" label="AI开发" align="center" sortable />
+            <el-table-column v-if="showAnalysisRole('voip')" prop="voip" label="VOIP" align="center" sortable />
             <el-table-column v-if="showAnalysisRole('ai_quality')" prop="ai_quality" label="AI质量" align="center" sortable />
             <el-table-column prop="recordCount" label="记录数" align="center" sortable />
             <el-table-column prop="requirementCount" label="需求数" align="center" sortable />
@@ -2255,6 +2313,9 @@ function exportStatsData() {
             <el-table-column prop="share" label="占比" align="center" sortable>
               <template #default="{ row }">{{ row.share }}%</template>
             </el-table-column>
+            <el-table-column v-if="showAnalysisRole('ai_dev')" prop="ai_dev" label="AI开发" align="center" sortable />
+            <el-table-column v-if="showAnalysisRole('voip')" prop="voip" label="VOIP" align="center" sortable />
+            <el-table-column v-if="showAnalysisRole('ai_quality')" prop="ai_quality" label="AI质量" align="center" sortable />
             <el-table-column prop="recordCount" label="记录数" align="center" sortable />
             <el-table-column prop="requirementCount" label="需求数" align="center" sortable />
           </el-table>
@@ -2267,6 +2328,7 @@ function exportStatsData() {
               <template #default="{ row }">{{ row.share }}%</template>
             </el-table-column>
             <el-table-column v-if="showAnalysisRole('ai_dev')" prop="ai_dev" label="AI开发" align="center" sortable />
+            <el-table-column v-if="showAnalysisRole('voip')" prop="voip" label="VOIP" align="center" sortable />
             <el-table-column v-if="showAnalysisRole('ai_quality')" prop="ai_quality" label="AI质量" align="center" sortable />
             <el-table-column prop="recordCount" label="记录数" align="center" sortable />
           </el-table>
@@ -2297,7 +2359,7 @@ function exportStatsData() {
           <div class="dt-analysis-formula">
             <ol>
               <li>先按页面上选择的年份、季度或具体周期确定统计范围。</li>
-              <li>如果点击总工时卡片，就统计全部岗位；如果点击AI开发工程师或AI质量工程师卡片，就只统计对应岗位。</li>
+              <li>如果点击总工时卡片，就统计全部岗位；如果点击AI开发工程师、VOIP工程师或AI质量工程师卡片，就只统计对应岗位。</li>
               <li>工时合计：把当前范围内符合条件的每条填报工时相加。</li>
               <li>占比：用当前行的工时除以当前弹窗的总工时，再换算成百分比。</li>
               <li>需求数量：同一个周期内，需求名称和版本相同的内容视为同一个需求。</li>
@@ -3025,6 +3087,15 @@ function exportStatsData() {
 }
 
 /* === 一起查看三列网格 === */
+.dt-personal-role-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+
+@media (max-width: 1200px) { .dt-personal-role-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 800px) { .dt-personal-role-grid { grid-template-columns: 1fr; } }
+
 .dt-pm-all-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS collection_tasks (
 CREATE TABLE IF NOT EXISTS staff (
   id CHAR(36) PRIMARY KEY,
   name VARCHAR(50) NOT NULL COMMENT '姓名',
-  role ENUM('ai_dev','ai_quality') NOT NULL COMMENT '岗位：AI开发工程师/AI质量工程师',
+  role ENUM('ai_dev','voip','ai_quality') NOT NULL COMMENT '岗位：AI开发工程师/VOIP工程师/AI质量工程师',
   is_active BOOLEAN DEFAULT TRUE COMMENT '在职状态',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_role (role),
@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS match_groups (
   product_managers JSON COMMENT 'AI产品经理列表',
   frontend JSON COMMENT 'AI开发工程师工时 [{staffName,hours}]，兼容历史frontend列',
   backend JSON COMMENT '历史后端兼容列；重构后新增数据置空',
+  voip JSON COMMENT 'VOIP工程师工时',
   test_role JSON COMMENT 'AI质量工程师工时',
   remark TEXT COMMENT '备注',
   confidence DECIMAL(3,2) DEFAULT 0 COMMENT '匹配置信度',
@@ -117,7 +118,7 @@ INSERT INTO work_records (id, link_id, task_id, staff_id, requirement_title, ver
 ('r8','l6','t1','s6','AI Agent 优化','V4.633.0','["钟冠"]',4);
 
 -- 匹配组
-INSERT INTO match_groups (id, task_id, merged_title, version, product_managers, frontend, backend, test_role, confidence, status) VALUES
-('mg1','t1','用户中心改版','V4.633.0','["杨瑞"]','[{"staffName":"张三","hours":5},{"staffName":"赵六","hours":4},{"staffName":"李四","hours":6}]','[]','[{"staffName":"王五","hours":9}]',0.95,'auto_merged'),
-('mg2','t1','AI Agent 优化','V4.633.0','["钟冠"]','[{"staffName":"张三","hours":3},{"staffName":"李四","hours":8}]','[]','[{"staffName":"孙八","hours":4}]',0.90,'auto_merged'),
-('mg3','t1','支付系统升级','V4.634.0','["吴浩鑫"]','[{"staffName":"钱七","hours":10}]','[]','[]',1.0,'auto_merged');
+INSERT INTO match_groups (id, task_id, merged_title, version, product_managers, frontend, backend, voip, test_role, confidence, status) VALUES
+('mg1','t1','用户中心改版','V4.633.0','["杨瑞"]','[{"staffName":"张三","hours":5},{"staffName":"赵六","hours":4},{"staffName":"李四","hours":6}]','[]','[]','[{"staffName":"王五","hours":9}]',0.95,'auto_merged'),
+('mg2','t1','AI Agent 优化','V4.633.0','["钟冠"]','[{"staffName":"张三","hours":3},{"staffName":"李四","hours":8}]','[]','[]','[{"staffName":"孙八","hours":4}]',0.90,'auto_merged'),
+('mg3','t1','支付系统升级','V4.634.0','["吴浩鑫"]','[{"staffName":"钱七","hours":10}]','[]','[]','[]',1.0,'auto_merged');

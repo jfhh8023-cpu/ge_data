@@ -9,6 +9,7 @@ const MatchGroup = sequelize.define('match_groups', {
   product_managers: { type: DataTypes.JSON },
   frontend:         { type: DataTypes.JSON },
   backend:          { type: DataTypes.JSON },
+  voip:             { type: DataTypes.JSON },
   test_role:        { type: DataTypes.JSON },
   remark:           { type: DataTypes.TEXT },
   confidence:       { type: DataTypes.DECIMAL(3, 2), defaultValue: 0 },

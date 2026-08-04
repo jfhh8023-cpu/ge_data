@@ -34,7 +34,7 @@ const {
 const QUARTER_MONTHS = { Q1: [1,2,3], Q2: [4,5,6], Q3: [7,8,9], Q4: [10,11,12] };
 
 /* 角色常量 */
-const ROLE_KEYS = ['ai_dev', 'ai_quality'];
+const ROLE_KEYS = ['ai_dev', 'voip', 'ai_quality'];
 const PM_DEFAULT_NAME = '不在上述';
 
 function recordBelongsToPm(pms, pmName) {

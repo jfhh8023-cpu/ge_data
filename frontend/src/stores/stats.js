@@ -1,9 +1,10 @@
 import { defineStore } from 'pinia'
 import api from '../api'
-import { ROLE_AI_DEV, ROLE_AI_QUALITY } from '../utils/roles'
+import { ROLE_AI_DEV, ROLE_VOIP, ROLE_AI_QUALITY } from '../utils/roles'
 
 const emptyRoleSummary = () => ({
   [ROLE_AI_DEV]: 0,
+  [ROLE_VOIP]: 0,
   [ROLE_AI_QUALITY]: 0,
   frontend: 0,
   backend: 0,

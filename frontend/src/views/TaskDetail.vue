@@ -86,8 +86,8 @@ onUnmounted(() => {
 /* ========== Tab 1: 提交数据 — 内联编辑 ========== */
 const editingRowId = ref('')
 
-/* REQ-26a: 角色排序常量（AI开发→AI质量） */
-const ROLE_SORT_ORDER = { ai_dev: 0, ai_quality: 1 }
+/* REQ-26a: 角色排序常量（AI开发→VOIP→AI质量） */
+const ROLE_SORT_ORDER = { ai_dev: 0, voip: 1, ai_quality: 2 }
 
 const sortedRecords = computed(() => {
   return [...recordStore.list].sort((a, b) => {

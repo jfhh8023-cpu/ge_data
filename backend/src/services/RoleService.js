@@ -2,6 +2,7 @@ const { DataTypes } = require('sequelize');
 const { sequelize } = require('../models');
 
 const ROLE_AI_DEV = 'ai_dev';
+const ROLE_VOIP = 'voip';
 const ROLE_AI_QUALITY = 'ai_quality';
 const ROLE_FRONTEND = 'frontend';
 const ROLE_BACKEND = 'backend';
@@ -9,6 +10,7 @@ const ROLE_TEST = 'test';
 
 const STAFF_ROLE_VALUES = [
   ROLE_AI_DEV,
+  ROLE_VOIP,
   ROLE_AI_QUALITY,
   ROLE_FRONTEND,
   ROLE_BACKEND,
@@ -17,11 +19,13 @@ const STAFF_ROLE_VALUES = [
 
 const STAFF_ROLE_OPTIONS = [
   { value: ROLE_AI_DEV, label: 'AI开发工程师' },
+  { value: ROLE_VOIP, label: 'VOIP工程师' },
   { value: ROLE_AI_QUALITY, label: 'AI质量工程师' }
 ];
 
 const ROLE_LABEL = {
   [ROLE_AI_DEV]: 'AI开发工程师',
+  [ROLE_VOIP]: 'VOIP工程师',
   [ROLE_AI_QUALITY]: 'AI质量工程师',
   [ROLE_FRONTEND]: 'AI开发工程师',
   [ROLE_BACKEND]: 'AI开发工程师',
@@ -31,6 +35,7 @@ const ROLE_LABEL = {
 function normalizeStaffRole(role, fallback = ROLE_AI_DEV) {
   const value = String(role || '').trim();
   if ([ROLE_AI_DEV, ROLE_FRONTEND, ROLE_BACKEND].includes(value)) return ROLE_AI_DEV;
+  if (value === ROLE_VOIP) return ROLE_VOIP;
   if ([ROLE_AI_QUALITY, ROLE_TEST].includes(value)) return ROLE_AI_QUALITY;
   return fallback;
 }
@@ -39,9 +44,14 @@ function isAiDevelopmentRole(role) {
   return normalizeStaffRole(role) === ROLE_AI_DEV;
 }
 
+function isVoipRole(role) {
+  return normalizeStaffRole(role) === ROLE_VOIP;
+}
+
 function createRoleSummary() {
   return {
     [ROLE_AI_DEV]: 0,
+    [ROLE_VOIP]: 0,
     [ROLE_AI_QUALITY]: 0
   };
 }
@@ -57,8 +67,10 @@ function withRoleAliases(summary = {}) {
   const aiDev = Number(summary[ROLE_AI_DEV] || summary[ROLE_FRONTEND] || 0)
     + Number(summary[ROLE_BACKEND] || 0);
   const aiQuality = Number(summary[ROLE_AI_QUALITY] || summary[ROLE_TEST] || 0);
+  const voip = Number(summary[ROLE_VOIP] || 0);
   return {
     [ROLE_AI_DEV]: aiDev,
+    [ROLE_VOIP]: voip,
     [ROLE_AI_QUALITY]: aiQuality,
     [ROLE_FRONTEND]: aiDev,
     [ROLE_BACKEND]: 0,
@@ -96,8 +108,20 @@ async function ensureStaffRoleSchema() {
   `);
 }
 
+async function ensureMatchGroupRoleSchema() {
+  const queryInterface = sequelize.getQueryInterface();
+  const table = await queryInterface.describeTable('match_groups');
+  if (!table.voip) {
+    await queryInterface.addColumn('match_groups', 'voip', {
+      type: DataTypes.JSON,
+      allowNull: true
+    });
+  }
+}
+
 module.exports = {
   ROLE_AI_DEV,
+  ROLE_VOIP,
   ROLE_AI_QUALITY,
   ROLE_FRONTEND,
   ROLE_BACKEND,
@@ -107,9 +131,11 @@ module.exports = {
   ROLE_LABEL,
   normalizeStaffRole,
   isAiDevelopmentRole,
+  isVoipRole,
   createRoleSummary,
   addRoleHours,
   withRoleAliases,
   decorateRolePayload,
-  ensureStaffRoleSchema
+  ensureStaffRoleSchema,
+  ensureMatchGroupRoleSchema
 };

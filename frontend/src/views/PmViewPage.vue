@@ -7,7 +7,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import api from '../api'
 import { ElMessage } from 'element-plus'
-import { ROLE_AI_DEV, ROLE_AI_QUALITY, ROLE_LABEL, ROLE_SHORT_LABEL, ROLE_TAG_CLASS } from '../utils/roles'
+import { ROLE_AI_DEV, ROLE_VOIP, ROLE_AI_QUALITY, ROLE_LABEL, ROLE_SHORT_LABEL, ROLE_TAG_CLASS } from '../utils/roles'
 
 const route = useRoute()
 const token = computed(() => route.params.token)
@@ -69,12 +69,11 @@ watch(filterQuarter, (val) => {
   if (!val) filterMonth.value = 0
 })
 
-const ROLE_TAG_STYLE = {
-  ...Object.fromEntries(Object.entries(ROLE_TAG_CLASS).map(([key]) => [key, key === ROLE_AI_QUALITY || key === 'test'
-    ? { background: '#FFF7E8', color: '#FF7D00' }
-    : { background: '#E8F3FF', color: '#165DFF' }
-  ]))
-}
+const ROLE_TAG_STYLE = Object.fromEntries(Object.keys(ROLE_TAG_CLASS).map((key) => {
+  if (key === ROLE_VOIP) return [key, { background: '#E8FFEA', color: '#00B42A' }]
+  if (key === ROLE_AI_QUALITY || key === 'test') return [key, { background: '#FFF7E8', color: '#FF7D00' }]
+  return [key, { background: '#E8F3FF', color: '#165DFF' }]
+}))
 
 /* ========== 金银铜牌 ========== */
 const MEDAL_EMOJI = ['🥇', '🥈', '🥉']
@@ -135,6 +134,7 @@ const roleSummary = computed(() => {
   const legacyAiDev = Number(summary.frontend || 0) + Number(summary.backend || 0)
   return {
     [ROLE_AI_DEV]: Number(summary[ROLE_AI_DEV] ?? legacyAiDev),
+    [ROLE_VOIP]: Number(summary[ROLE_VOIP] || 0),
     [ROLE_AI_QUALITY]: Number(summary[ROLE_AI_QUALITY] ?? summary.test ?? 0)
   }
 })
@@ -190,6 +190,10 @@ const roleSummary = computed(() => {
           <div class="pm-stat-item pm-stat-fe">
             <span class="pm-stat-val">{{ roleSummary.ai_dev.toFixed(1) }}</span>
             <span class="pm-stat-label">AI开发</span>
+          </div>
+          <div class="pm-stat-item pm-stat-be">
+            <span class="pm-stat-val">{{ roleSummary.voip.toFixed(1) }}</span>
+            <span class="pm-stat-label">VOIP</span>
           </div>
           <div class="pm-stat-item pm-stat-te">
             <span class="pm-stat-val">{{ roleSummary.ai_quality.toFixed(1) }}</span>
@@ -358,6 +362,12 @@ const roleSummary = computed(() => {
 .pm-stat-fe .pm-stat-val { color: #93C5FD; }
 .pm-stat-be .pm-stat-val { color: #86EFAC; }
 .pm-stat-te .pm-stat-val { color: #FDE68A; }
+
+@media (max-width: 900px) {
+  .pm-header { align-items: flex-start; flex-wrap: wrap; }
+  .pm-info { min-width: 120px; }
+  .pm-stats { width: 100%; justify-content: space-between; gap: 8px; overflow-x: auto; }
+}
 
 /* === 筛选 === */
 .pm-filter {
