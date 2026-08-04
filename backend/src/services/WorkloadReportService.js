@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { execFile } = require('child_process');
 const { QueryTypes } = require('sequelize');
 const { sequelize } = require('../models');
@@ -59,6 +60,10 @@ async function currentDataSignature() {
       (SELECT MAX(GREATEST(COALESCE(updated_at, created_at), created_at)) FROM collection_tasks) AS task_updated_at,
       (SELECT COUNT(*) FROM staff) AS staff_count,
       (SELECT MAX(GREATEST(COALESCE(status_changed_at, created_at), created_at)) FROM staff) AS staff_updated_at,
+      (SELECT COALESCE(GROUP_CONCAT(
+        CONCAT_WS(':', id, COALESCE(name, ''), COALESCE(role, ''), COALESCE(employment_status, ''), COALESCE(is_active, 0))
+        ORDER BY id SEPARATOR '|'
+      ), '') FROM staff) AS staff_roster_signature,
       (SELECT COUNT(*) FROM staff_status_history) AS staff_status_history_count,
       (SELECT MAX(GREATEST(COALESCE(ended_at, started_at), started_at, created_at)) FROM staff_status_history) AS staff_status_history_updated_at,
       (SELECT COUNT(*) FROM product_managers) AS pm_count,
@@ -67,8 +72,14 @@ async function currentDataSignature() {
       (SELECT MAX(GREATEST(COALESCE(ended_at, started_at), started_at, created_at)) FROM product_manager_status_history) AS pm_status_history_updated_at
   `, { type: QueryTypes.SELECT });
 
+  const generatorHash = crypto
+    .createHash('sha256')
+    .update(await fs.promises.readFile(ANALYZE_SCRIPT))
+    .digest('hex');
+
   return JSON.stringify(Object.fromEntries(
-    Object.entries(row || {}).map(([key, value]) => [key, normalizeSignatureValue(value)])
+    Object.entries({ ...row, workload_generator_sha256: generatorHash })
+      .map(([key, value]) => [key, normalizeSignatureValue(value)])
   ));
 }
 
