@@ -16,3 +16,4 @@
 {"id":"PROD-SYNC-LOCAL-SCHEMA","status":"PASS","evidence":"本地幂等增加 4 个角色并迁移 425 个 role_buckets，业务记录和 8847.5h 守恒"}
 {"id":"PROD-SYNC-UI","status":"PASS","evidence":"生产快照下人员、需求报表、周期统计、离线报告回归通过；12 位 PM 显示 8 位、隐藏全 0 的 4 位"}
 {"id":"RELEASE-GATE-20260807","status":"PASS","evidence":"Vite 1684 模块构建通过；20 个后端 JS 语法检查通过；API 测试前后 staff=11 records=694 groups=427 roles=4 totalHours=9247.5 守恒；UI 角色、报表、图表、五卡单行及移动端回归通过；新增差异无清空逻辑"}
+{"id":"PRODUCTION-RELEASE-20260807","status":"PASS","evidence":"4e7b555 已推送 gitee/master；备份 1139283 字节 SHA256=28891272672AC699B0358CB6BB4A7D4366DEB7AC416EFBAAB79083D8779675DE；--skip-db 发布；生产前后 staff=10 records=692 groups=425 totalHours=8847.5；425 个 role_buckets 与旧列 8871.5h 逐项守恒；生产浏览器写请求/控制台错误/失败请求均为 0"}
