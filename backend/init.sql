@@ -24,11 +24,31 @@ CREATE TABLE IF NOT EXISTS collection_tasks (
   INDEX idx_start_date (start_date)
 ) ENGINE=InnoDB COMMENT='收集任务';
 
+-- 研发角色配置表
+CREATE TABLE IF NOT EXISTS staff_roles (
+  `key` VARCHAR(50) PRIMARY KEY,
+  name VARCHAR(30) NOT NULL UNIQUE COMMENT '角色完整名称',
+  short_name VARCHAR(12) NOT NULL COMMENT '紧凑显示名称',
+  color VARCHAR(7) NOT NULL COMMENT '#RRGGBB',
+  sort_order INT NOT NULL DEFAULT 0,
+  is_system BOOLEAN NOT NULL DEFAULT FALSE,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB COMMENT='研发角色全局配置';
+
+INSERT INTO staff_roles (`key`, name, short_name, color, sort_order, is_system, is_active) VALUES
+('ai_dev', 'AI开发工程师', 'AI开发', '#165DFF', 10, TRUE, TRUE),
+('voip', 'VOIP工程师', 'VOIP', '#00B42A', 20, TRUE, TRUE),
+('ai_quality', 'AI质量工程师', 'AI质量', '#FF7D00', 30, TRUE, TRUE),
+('embedded', '嵌入式软件工程师', '嵌入式', '#14B8A6', 40, TRUE, TRUE)
+ON DUPLICATE KEY UPDATE `key` = VALUES(`key`);
+
 -- 人员表
 CREATE TABLE IF NOT EXISTS staff (
   id CHAR(36) PRIMARY KEY,
   name VARCHAR(50) NOT NULL COMMENT '姓名',
-  role ENUM('ai_dev','voip','ai_quality') NOT NULL COMMENT '岗位：AI开发工程师/VOIP工程师/AI质量工程师',
+  role VARCHAR(50) NOT NULL COMMENT '研发角色稳定标识，关联staff_roles.key',
   is_active BOOLEAN DEFAULT TRUE COMMENT '在职状态',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_role (role),
@@ -77,6 +97,7 @@ CREATE TABLE IF NOT EXISTS match_groups (
   backend JSON COMMENT '历史后端兼容列；重构后新增数据置空',
   voip JSON COMMENT 'VOIP工程师工时',
   test_role JSON COMMENT 'AI质量工程师工时',
+  role_buckets JSON COMMENT '通用角色工时 {roleKey:[{staffName,hours}]}',
   remark TEXT COMMENT '备注',
   confidence DECIMAL(3,2) DEFAULT 0 COMMENT '匹配置信度',
   status ENUM('auto_merged','pending_review','manual_merged') DEFAULT 'auto_merged',

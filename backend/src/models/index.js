@@ -20,6 +20,7 @@ const Quote = require('./Quote');
 const QuoteConfig = require('./QuoteConfig');
 const StaffStatusHistory = require('./StaffStatusHistory');
 const ProductManagerStatusHistory = require('./ProductManagerStatusHistory');
+const StaffRole = require('./StaffRole');
 
 /* ========== 关联定义 ========== */
 
@@ -89,5 +90,6 @@ module.exports = {
   Quote,
   QuoteConfig,
   StaffStatusHistory,
-  ProductManagerStatusHistory
+  ProductManagerStatusHistory,
+  StaffRole
 };

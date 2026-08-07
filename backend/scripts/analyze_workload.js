@@ -15,25 +15,33 @@ const path = require('path');
 const mysql = require('mysql2/promise');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env'), quiet: true });
 
-const ROLE_KEYS = ['frontend', 'voip', 'test'];
-const ROLE_TEXT = {
+let ROLE_KEYS = ['frontend', 'voip', 'test', 'embedded'];
+let ROLE_DEFINITIONS = [
+  { key: 'frontend', sourceKey: 'ai_dev', name: 'AI开发工程师', shortName: 'AI开发', color: '#2563eb' },
+  { key: 'voip', sourceKey: 'voip', name: 'VOIP工程师', shortName: 'VOIP', color: '#00b42a' },
+  { key: 'test', sourceKey: 'ai_quality', name: 'AI质量工程师', shortName: 'AI质量', color: '#f97316' },
+  { key: 'embedded', sourceKey: 'embedded', name: '嵌入式软件工程师', shortName: '嵌入式', color: '#14b8a6' }
+];
+let ROLE_TEXT = {
   frontend: 'AI开发工程师',
   backend: 'AI开发工程师',
   ai_dev: 'AI开发工程师',
   voip: 'VOIP工程师',
   test: 'AI质量工程师',
-  ai_quality: 'AI质量工程师'
+  ai_quality: 'AI质量工程师',
+  embedded: '嵌入式软件工程师'
 };
-const ROLE_CHART_TEXT = {
+let ROLE_CHART_TEXT = {
   frontend: 'AI开发',
   backend: 'AI开发',
   ai_dev: 'AI开发',
   voip: 'VOIP',
   test: 'AI质量',
-  ai_quality: 'AI质量'
+  ai_quality: 'AI质量',
+  embedded: '嵌入式'
 };
-const ROLE_CLASS = { frontend: 'fe', backend: 'fe', ai_dev: 'fe', voip: 'be', test: 'qa', ai_quality: 'qa' };
-const ROLE_COLORS = { frontend: '#2563eb', backend: '#2563eb', ai_dev: '#2563eb', voip: '#00b42a', test: '#f97316', ai_quality: '#f97316' };
+let ROLE_CLASS = { frontend: 'fe', backend: 'fe', ai_dev: 'fe', voip: 'be', test: 'qa', ai_quality: 'qa', embedded: 'role-embedded' };
+let ROLE_COLORS = { frontend: '#2563eb', backend: '#2563eb', ai_dev: '#2563eb', voip: '#00b42a', test: '#f97316', ai_quality: '#f97316', embedded: '#14b8a6' };
 const DEFAULT_PM = '不在上述';
 const RESIGNED_STATUS = 'resigned';
 
@@ -55,7 +63,63 @@ function normalizeRoleKey(role) {
   if (value === 'frontend' || value === 'backend' || value === 'ai_dev') return 'frontend';
   if (value === 'voip') return 'voip';
   if (value === 'test' || value === 'ai_quality') return 'test';
+  if (ROLE_KEYS.includes(value)) return value;
   return 'frontend';
+}
+
+function roleDataKey(key) {
+  if (key === 'ai_dev' || key === 'frontend' || key === 'backend') return 'frontend';
+  if (key === 'ai_quality' || key === 'test') return 'test';
+  return key;
+}
+
+function roleCssClass(key) {
+  if (key === 'frontend') return 'fe';
+  if (key === 'voip') return 'be';
+  if (key === 'test') return 'qa';
+  return `role-${String(key).replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+}
+
+function applyRoleDefinitions(rows) {
+  const source = Array.isArray(rows) && rows.length ? rows : ROLE_DEFINITIONS.map(role => ({
+    key: role.sourceKey,
+    name: role.name,
+    short_name: role.shortName,
+    color: role.color,
+    sort_order: 0,
+    is_active: true
+  }));
+  const seen = new Set();
+  ROLE_DEFINITIONS = source
+    .filter(role => role && role.key && role.is_active !== 0 && role.is_active !== false)
+    .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0))
+    .map(role => ({
+      key: roleDataKey(role.key),
+      sourceKey: role.key,
+      name: String(role.name || role.key),
+      shortName: String(role.short_name || role.name || role.key),
+      color: /^#[0-9a-f]{6}$/i.test(String(role.color || '')) ? String(role.color) : '#86909c'
+    }))
+    .filter(role => !seen.has(role.key) && seen.add(role.key));
+  ROLE_KEYS = ROLE_DEFINITIONS.map(role => role.key);
+  ROLE_TEXT = {};
+  ROLE_CHART_TEXT = {};
+  ROLE_CLASS = {};
+  ROLE_COLORS = {};
+  for (const role of ROLE_DEFINITIONS) {
+    ROLE_TEXT[role.key] = role.name;
+    ROLE_TEXT[role.sourceKey] = role.name;
+    ROLE_CHART_TEXT[role.key] = role.shortName;
+    ROLE_CHART_TEXT[role.sourceKey] = role.shortName;
+    ROLE_CLASS[role.key] = roleCssClass(role.key);
+    ROLE_CLASS[role.sourceKey] = ROLE_CLASS[role.key];
+    ROLE_COLORS[role.key] = role.color;
+    ROLE_COLORS[role.sourceKey] = role.color;
+  }
+  ROLE_TEXT.backend = ROLE_TEXT.frontend;
+  ROLE_CHART_TEXT.backend = ROLE_CHART_TEXT.frontend;
+  ROLE_CLASS.backend = ROLE_CLASS.frontend;
+  ROLE_COLORS.backend = ROLE_COLORS.frontend;
 }
 
 function parseArgs(argv) {
@@ -221,16 +285,15 @@ function filterRowsByEmploymentStatus(rows, staffHistories, pmHistoriesByName) {
 }
 
 function emptyGroup() {
-  return {
+  const group = {
     total: 0,
-    frontend: 0,
-    backend: 0,
-    voip: 0,
-    test: 0,
     records: 0,
     tasks: new Set(),
     requirements: new Set()
   };
+  for (const role of ROLE_KEYS) group[role] = 0;
+  group.backend = 0;
+  return group;
 }
 
 function isCurrentResignedPerson(person) {
@@ -298,22 +361,21 @@ function versionDisplayName(version, title) {
 
 function groupToRows(map, totalHours, limit = Infinity) {
   return Object.entries(map)
-    .map(([name, group]) => ({
-      name,
-      total: round(group.total),
-      frontend: round(group.frontend),
-      backend: round(group.backend),
-      voip: round(group.voip),
-      test: round(group.test),
-      records: group.records,
-      taskCount: group.tasks.size,
-      requirementCount: group.requirements.size,
-      share: pct(group.total, totalHours),
-      frontendShare: pct(group.frontend, group.total),
-      backendShare: pct(group.backend, group.total),
-      voipShare: pct(group.voip, group.total),
-      testShare: pct(group.test, group.total)
-    }))
+    .map(([name, group]) => {
+      const row = {
+        name,
+        total: round(group.total),
+        records: group.records,
+        taskCount: group.tasks.size,
+        requirementCount: group.requirements.size,
+        share: pct(group.total, totalHours)
+      };
+      for (const role of ROLE_KEYS) {
+        row[role] = round(group[role]);
+        row[`${role}Share`] = pct(group[role], group.total);
+      }
+      return row;
+    })
     .sort((a, b) => b.total - a.total)
     .slice(0, limit);
 }
@@ -332,22 +394,21 @@ function periodSortValue(name) {
 
 function periodRows(map, direction = 'desc') {
   return Object.entries(map)
-    .map(([name, group]) => ({
-      name,
-      sortKey: periodSortValue(name),
-      total: round(group.total),
-      frontend: round(group.frontend),
-      backend: round(group.backend),
-      voip: round(group.voip),
-      test: round(group.test),
-      records: group.records,
-      taskCount: group.tasks.size,
-      requirementCount: group.requirements.size,
-      frontendShare: pct(group.frontend, group.total),
-      backendShare: pct(group.backend, group.total),
-      voipShare: pct(group.voip, group.total),
-      testShare: pct(group.test, group.total)
-    }))
+    .map(([name, group]) => {
+      const row = {
+        name,
+        sortKey: periodSortValue(name),
+        total: round(group.total),
+        records: group.records,
+        taskCount: group.tasks.size,
+        requirementCount: group.requirements.size
+      };
+      for (const role of ROLE_KEYS) {
+        row[role] = round(group[role]);
+        row[`${role}Share`] = pct(group[role], group.total);
+      }
+      return row;
+    })
     .sort((a, b) => {
       const compare = String(a.sortKey).localeCompare(String(b.sortKey), 'zh-CN', { numeric: true });
       return direction === 'asc' ? compare : -compare;
@@ -524,7 +585,7 @@ function roleComposition(summary) {
         ${items.map(item => `
           <div class="composition-item">
             <div class="composition-top">
-              <span><i class="dot ${ROLE_CLASS[item.role]}"></i>${item.label}</span>
+              <span><i class="dot ${ROLE_CLASS[item.role]}"></i>${escapeHtml(item.label)}</span>
               <strong>${fmt(item.hours)}h / ${item.share}%</strong>
             </div>
             <div class="composition-track"><span class="${ROLE_CLASS[item.role]}" style="width:${item.share}%"></span></div>
@@ -533,6 +594,37 @@ function roleComposition(summary) {
       </div>
     </section>
   `;
+}
+
+function roleMetricCards(summary) {
+  return ROLE_KEYS.map(role => `
+    <button type="button" class="card" data-jump-tab="requirements" data-filter-tab="requirements" data-filter-value="${escapeHtml(role)}">
+      <div class="label">${escapeHtml(ROLE_TEXT[role])}总工时</div>
+      <div class="value" style="color:${escapeHtml(ROLE_COLORS[role])}">${fmt(summary[role])}</div>
+      <div class="sub">${summary[`${role}Share`] || 0}% · 点击看${escapeHtml(ROLE_CHART_TEXT[role])}相关需求</div>
+    </button>
+  `).join('');
+}
+
+function roleSummaryNarrative(summary) {
+  return ROLE_KEYS.map(role => `${escapeHtml(ROLE_TEXT[role])}投入 <strong style="color:${escapeHtml(ROLE_COLORS[role])};font-weight:800">${fmt(summary[role])}h</strong>，占 <strong style="color:${escapeHtml(ROLE_COLORS[role])};font-weight:800">${summary[`${role}Share`] || 0}%</strong>`).join('；');
+}
+
+function roleFilterChips() {
+  return ROLE_KEYS.map(role => `<button type="button" class="chip" data-filter-tab="requirements" data-filter-value="${escapeHtml(role)}">包含${escapeHtml(ROLE_TEXT[role])}</button>`).join('');
+}
+
+function dynamicRoleStyles() {
+  return ROLE_KEYS.map(role => {
+    const className = ROLE_CLASS[role];
+    const color = ROLE_COLORS[role];
+    return `
+      .${className} { background:${color} !important; }
+      .${className}-text { color:${color} !important; }
+      .dot.${className} { background:${color} !important; }
+      .segment-pill.${className} { color:${color}; border-color:${color}55; background:${color}12; }
+    `;
+  }).join('');
 }
 
 function buildWhere(args) {
@@ -613,6 +705,11 @@ async function loadData(args) {
       ORDER BY ct.end_date
     `, where.taskParams);
     const [staff] = await conn.query('SELECT id, name, role, is_active, employment_status, status_changed_at, sort_order FROM staff ORDER BY role, sort_order, name');
+    const [roleTable] = await conn.query("SHOW TABLES LIKE 'staff_roles'");
+    const [roleDefinitions] = roleTable.length
+      ? await conn.query('SELECT `key`, name, short_name, color, sort_order, is_active FROM staff_roles WHERE is_active = 1 ORDER BY sort_order, created_at')
+      : [[]];
+    applyRoleDefinitions(roleDefinitions);
     const [pms] = await conn.query('SELECT id, name, is_active, employment_status, status_changed_at, sort_order FROM product_managers ORDER BY sort_order, name');
     const [staffStatusHistory] = await conn.query('SELECT staff_id, status, started_at, ended_at FROM staff_status_history ORDER BY staff_id, started_at');
     const [pmStatusHistoryRows] = await conn.query(`
@@ -626,7 +723,7 @@ async function loadData(args) {
     const filteredRows = filterRowsByEmploymentStatus(rows, staffHistories, pmHistoriesByName);
 
     await conn.query('COMMIT');
-    return { rows: filteredRows, tasks, staff, pms, scopeText: where.scopeText };
+    return { rows: filteredRows, tasks, staff, pms, roleDefinitions: ROLE_DEFINITIONS, scopeText: where.scopeText };
   } catch (err) {
     await conn.query('ROLLBACK');
     throw err;
@@ -636,7 +733,7 @@ async function loadData(args) {
 }
 
 function analyze(data) {
-  const { rows, tasks, staff, pms, scopeText } = data;
+  const { rows, tasks, staff, pms, roleDefinitions, scopeText } = data;
   const totalGroup = emptyGroup();
   const byQuarter = {};
   const byMonth = {};
@@ -726,13 +823,12 @@ function analyze(data) {
       taskSort: dateStr(row.end_date),
       pm: firstPm,
       total: 0,
-      frontend: 0,
-      backend: 0,
-      voip: 0,
-      test: 0,
       records: 0,
       staff: new Set()
     };
+    for (const roleKey of ROLE_KEYS) {
+      if (req[roleKey] === undefined) req[roleKey] = 0;
+    }
     req.total += hours;
     req.records += 1;
     req.staff.add(row.staff_name);
@@ -772,7 +868,7 @@ function analyze(data) {
   const requirements = Object.values(reqMap)
     .map(req => {
       const roleCombo = ROLE_KEYS.filter(role => req[role] > 0).map(role => ROLE_CHART_TEXT[role] || ROLE_TEXT[role]).join('+') || '无角色';
-      return {
+      const row = {
         title: req.title,
         version: req.version,
         task: req.task,
@@ -780,13 +876,11 @@ function analyze(data) {
         pm: req.pm,
         roleCombo,
         total: round(req.total),
-        frontend: round(req.frontend),
-        backend: round(req.backend),
-        voip: round(req.voip),
-        test: round(req.test),
         records: req.records,
         staffCount: req.staff.size
       };
+      for (const role of ROLE_KEYS) row[role] = round(req[role]);
+      return row;
     })
     .sort((a, b) => b.total - a.total);
 
@@ -842,21 +936,20 @@ function analyze(data) {
 
   const summary = {
     total: round(totalGroup.total),
-    frontend: round(totalGroup.frontend),
-    backend: round(totalGroup.backend),
-    voip: round(totalGroup.voip),
-    test: round(totalGroup.test),
-    frontendShare: pct(totalGroup.frontend, totalGroup.total),
-    backendShare: pct(totalGroup.backend, totalGroup.total),
-    voipShare: pct(totalGroup.voip, totalGroup.total),
-    testShare: pct(totalGroup.test, totalGroup.total),
     records: totalGroup.records,
     avgRecordHours: round(totalGroup.total / Math.max(totalGroup.records, 1)),
     avgRequirementHours: round(totalGroup.total / Math.max(requirements.length, 1))
   };
+  for (const role of ROLE_KEYS) {
+    summary[role] = round(totalGroup[role]);
+    summary[`${role}Share`] = pct(totalGroup[role], totalGroup.total);
+  }
+  summary.backend = 0;
+  summary.backendShare = 0;
 
   return {
     generatedAt: new Date().toISOString(),
+    roleDefinitions: roleDefinitions || ROLE_DEFINITIONS,
     dataset,
     summary,
     quarters: periodRows(byQuarter),
@@ -939,6 +1032,7 @@ function buildScopedReport(data, key, grain, label, rows, tasks, scopeText, extr
     tasks,
     staff: data.staff,
     pms: data.pms,
+    roleDefinitions: data.roleDefinitions,
     scopeText
   });
   report.dataset.periodKey = key;
@@ -1183,7 +1277,7 @@ function formulasHtml() {
       <ol>
         <li><strong>周期归属</strong>：先按任务结束日期，把每条工时归到对应的年、季度、月份和周。</li>
         <li><strong>工时合计</strong>：把当前范围内符合条件的每条填报工时相加。</li>
-        <li><strong>岗位工时</strong>：分别把AI开发工程师、VOIP工程师、AI质量工程师填写的工时相加；历史前端/后端岗位统一并入AI开发工程师。</li>
+        <li><strong>岗位工时</strong>：按系统当前研发角色配置分别汇总人员填写的工时；历史前端/后端岗位统一并入AI开发工程师。</li>
         <li><strong>岗位占比</strong>：用某个岗位的工时除以当前范围总工时，再换算成百分比。</li>
         <li><strong>需求数量</strong>：同一个周期内，需求名称和版本相同的内容视为同一个需求。</li>
         <li><strong>AI产品经理归属</strong>：优先使用填报时选择的第一个AI产品经理；没有填写时归入“不在上述”。</li>
@@ -1260,7 +1354,7 @@ function lineChart(rows, title, options = {}) {
   }).join('');
   const polylines = series.map(item => {
     const points = data.map((row, index) => `${x(index)},${y(row[item.key])}`).join(' ');
-    const circles = data.map((row, index) => `<circle cx="${x(index)}" cy="${y(row[item.key])}" r="${item.key === 'total' ? 3.5 : 2.5}" fill="${item.color}"><title>${escapeHtml(row.name)} ${item.label}: ${fmt(row[item.key])}h</title></circle>`).join('');
+    const circles = data.map((row, index) => `<circle cx="${x(index)}" cy="${y(row[item.key])}" r="${item.key === 'total' ? 3.5 : 2.5}" fill="${item.color}"><title>${escapeHtml(row.name)} ${escapeHtml(item.label)}: ${fmt(row[item.key])}h</title></circle>`).join('');
     return `<polyline points="${points}" fill="none" stroke="${item.color}" stroke-width="${item.width}" stroke-linejoin="round" stroke-linecap="round"></polyline>${circles}`;
   }).join('');
   const labels = data.map((row, index) => {
@@ -1271,7 +1365,7 @@ function lineChart(rows, title, options = {}) {
     <section class="panel chart-panel">
       <div class="section-head">
         <h2>${escapeHtml(title)}</h2>
-        <div class="legend">${series.map(item => `<span><i class="dot" style="background:${item.color}"></i>${item.label}</span>`).join('')}</div>
+        <div class="legend">${series.map(item => `<span><i class="dot" style="background:${item.color}"></i>${escapeHtml(item.label)}</span>`).join('')}</div>
       </div>
       <svg class="line-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(title)}">
         ${grid}
@@ -1295,7 +1389,7 @@ function roleValueBarChart(row, title, options = {}) {
     <section class="panel chart-panel">
       <div class="section-head">
         <h2>${escapeHtml(title)}</h2>
-        <div class="legend">${data.map(item => `<span><i class="dot" style="background:${item.color}"></i>${item.label}</span>`).join('')}</div>
+        <div class="legend">${data.map(item => `<span><i class="dot" style="background:${item.color}"></i>${escapeHtml(item.label)}</span>`).join('')}</div>
       </div>
       <div class="role-bar-chart" aria-label="${escapeHtml(title)}">
         ${data.map(item => `
@@ -1506,11 +1600,12 @@ function renderHtml(report, options = {}) {
 
   const rolePieRows = ROLE_KEYS.map(role => ({ name: ROLE_CHART_TEXT[role] || ROLE_TEXT[role], total: report.summary[role] }));
   const titleScopeText = reportTitleScopeText(report);
+  const roleNameText = ROLE_KEYS.map(role => ROLE_TEXT[role]).join('、');
   const referenceNoticeLines = [
     '当前数据统计依据，为人工每周填写数据所统计，存在一定的统一性偏差，工时填写预估性为主等因素，因此数据仅供参考；详细可查看~',
-    'AI Agent需求对应AI开发、VOIP和AI质量工时在AI组占相当一部分未被统计进当前数据分析；'
+    `AI Agent需求对应${ROLE_KEYS.map(role => ROLE_CHART_TEXT[role]).join('、')}工时在AI组占相当一部分未被统计进当前数据分析；`
   ];
-  const referenceTip = '1，需求存在如：工单需求，有多个AI产品经理负责，AI开发工程师、VOIP工程师或AI质量工程师参与，最后填写工时只选择了其中一个AI产品经理，因此存在偏差；\n2，工时都是人工自己预估，存在不绝对准确的情况，因此不具备绝对工时参考，仅做相对数据参考；';
+  const referenceTip = `1，需求存在如：工单需求，有多个AI产品经理负责，${roleNameText}参与，最后填写工时只选择了其中一个AI产品经理，因此存在偏差；\n2，工时都是人工自己预估，存在不绝对准确的情况，因此不具备绝对工时参考，仅做相对数据参考；`;
 
   const periodReports = Array.isArray(options.periodReports) ? options.periodReports : null;
   const naturalWeeks = Array.isArray(options.naturalWeeks) ? options.naturalWeeks : [];
@@ -1807,6 +1902,12 @@ function renderHtml(report, options = {}) {
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
     .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+    .grid.overview-metric-grid {
+      grid-template-columns: repeat(var(--overview-card-count), minmax(230px, 1fr));
+      overflow-x: auto;
+    }
+    .overview-metric-grid .label,
+    .overview-metric-grid .sub { white-space: nowrap; }
     .dimension-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
     .card, .panel {
       background: var(--panel);
@@ -1930,6 +2031,7 @@ function renderHtml(report, options = {}) {
     }
     .formulas ol { margin: 0; padding-left: 22px; }
     .formulas li { margin: 8px 0; }
+    ${dynamicRoleStyles()}
     @media (max-width: 980px) {
       .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .dimension-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1982,11 +2084,9 @@ function renderHtml(report, options = {}) {
     </nav>
 
     <section class="tab-panel active" id="tab-overview">
-      <section class="grid">
+      <section class="grid overview-metric-grid" style="--overview-card-count:${ROLE_KEYS.length + 1}">
         <button type="button" class="card" data-jump-tab="trend"><div class="label">总工时</div><div class="value">${fmt(report.summary.total)}</div><div class="sub">${fmt(report.dataset.recordCount)} 条记录 / ${fmt(report.dataset.requirementCount)} 个需求</div></button>
-        <button type="button" class="card" data-jump-tab="requirements" data-filter-tab="requirements" data-filter-value="frontend"><div class="label">AI开发工程师总工时</div><div class="value fe-text">${fmt(report.summary.frontend)}</div><div class="sub">${report.summary.frontendShare}% · 点击看AI开发相关需求</div></button>
-        <button type="button" class="card" data-jump-tab="requirements" data-filter-tab="requirements" data-filter-value="voip"><div class="label">VOIP工程师总工时</div><div class="value be-text">${fmt(report.summary.voip)}</div><div class="sub">${report.summary.voipShare}% · 点击看VOIP相关需求</div></button>
-        <button type="button" class="card" data-jump-tab="requirements" data-filter-tab="requirements" data-filter-value="test"><div class="label">AI质量工程师总工时</div><div class="value qa-text">${fmt(report.summary.test)}</div><div class="sub">${report.summary.testShare}% · 点击看AI质量相关需求</div></button>
+        ${roleMetricCards(report.summary)}
       </section>
       <section class="dimension-grid">
         ${insightCard({ tab: 'trend', title: '周期峰值', value: `${fmt(topWeek?.total || 0)}h`, detail: topWeek?.name || '-', filterTab: '', filterValue: '' })}
@@ -2007,7 +2107,7 @@ function renderHtml(report, options = {}) {
           <div class="section-head"><h2>总览解读</h2></div>
           <ul class="finding-list">
             <li>当前范围共有 <strong class="metric-value">${fmt(report.dataset.recordCount)}</strong> 条填报记录、<strong class="metric-value">${fmt(report.dataset.requirementCount)}</strong> 个需求粒度、<strong class="metric-value">${fmt(report.dataset.taskCount)}</strong> 个采集周期。</li>
-            <li>AI开发工程师投入 <strong class="metric-fe">${fmt(report.summary.frontend)}h</strong>，占 <strong class="metric-fe">${report.summary.frontendShare}%</strong>；VOIP工程师投入 <strong class="metric-be">${fmt(report.summary.voip)}h</strong>，占 <strong class="metric-be">${report.summary.voipShare}%</strong>；AI质量工程师投入 <strong class="metric-qa">${fmt(report.summary.test)}h</strong>，占 <strong class="metric-qa">${report.summary.testShare}%</strong>。</li>
+            <li>${roleSummaryNarrative(report.summary)}。</li>
             <li>平均每条记录 <strong class="metric-value">${fmt(report.summary.avgRecordHours)}h</strong>，平均每个需求粒度 <strong class="metric-value">${fmt(report.summary.avgRequirementHours)}h</strong>。</li>
             <li>点击上方卡片会进入对应页签，并按卡片维度自动筛选明细。</li>
           </ul>
@@ -2018,7 +2118,7 @@ function renderHtml(report, options = {}) {
 
     <section class="tab-panel" id="tab-trend">
       <section class="chart-grid">
-        ${trendChart(report, report.months, '月份折线趋势', { note: '折线同时展示总计、AI开发工程师、VOIP工程师、AI质量工程师；季度报告中月线更适合看结构变化。' })}
+        ${trendChart(report, report.months, '月份折线趋势', { note: `折线同时展示总计、${ROLE_KEYS.map(role => ROLE_TEXT[role]).join('、')}；季度报告中月线更适合看结构变化。` })}
         ${pieChart(report.quarters, '季度总工时占比')}
       </section>
       ${stackedBarChart(report.weeks, '按周期堆叠趋势：岗位工时')}
@@ -2086,9 +2186,7 @@ function renderHtml(report, options = {}) {
         </div>
         <div class="filter-row" data-filter-group="requirements">
           <button type="button" class="chip active" data-filter-tab="requirements" data-filter-value="__all">全部</button>
-          <button type="button" class="chip" data-filter-tab="requirements" data-filter-value="frontend">包含AI开发工程师</button>
-          <button type="button" class="chip" data-filter-tab="requirements" data-filter-value="voip">包含VOIP工程师</button>
-          <button type="button" class="chip" data-filter-tab="requirements" data-filter-value="test">包含AI质量工程师</button>
+          ${roleFilterChips()}
         </div>
         <div class="table-wrap">
           <table class="sortable-table requirement-detail-table">
@@ -2622,7 +2720,7 @@ async function main() {
   console.log(`[OK] 最新 HTML: ${latestHtmlPath}`);
   console.log(`[OK] 最新 JSON: ${latestJsonPath}`);
   console.log(`[OK] 周期页面: ${shouldWriteSharedPeriodPages ? periodReports.length - 1 : 0} 个${shouldWriteSharedPeriodPages ? '' : '（筛选报告不覆盖共享周期页）'}`);
-  console.log(`[OK] 总工时: ${report.summary.total}h；AI开发工程师: ${report.summary.frontend}h；VOIP工程师: ${report.summary.voip}h；AI质量工程师: ${report.summary.test}h`);
+  console.log(`[OK] 总工时: ${report.summary.total}h；${ROLE_KEYS.map(role => `${ROLE_TEXT[role]}: ${report.summary[role]}h`).join('；')}`);
 }
 
 main().catch(err => {

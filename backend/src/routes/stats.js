@@ -26,6 +26,7 @@ const {
 const {
   addRoleHours,
   createRoleSummary,
+  getRoleDefinitions,
   normalizeStaffRole,
   withRoleAliases
 } = require('../services/RoleService');
@@ -33,8 +34,6 @@ const {
 /* 季度月份映射 */
 const QUARTER_MONTHS = { Q1: [1,2,3], Q2: [4,5,6], Q3: [7,8,9], Q4: [10,11,12] };
 
-/* 角色常量 */
-const ROLE_KEYS = ['ai_dev', 'voip', 'ai_quality'];
 const PM_DEFAULT_NAME = '不在上述';
 
 function recordBelongsToPm(pms, pmName) {
@@ -106,6 +105,7 @@ router.get('/', async (req, res, next) => {
       order: [['sort_order', 'ASC'], ['created_at', 'ASC']]
     });
     const currentStaff = currentStaffRows.map(s => ({ ...s.toJSON(), ...buildCurrentStatusPayload(s) }));
+    const roleDefinitions = getRoleDefinitions();
 
     // 空数组保护
     if (taskIds.length === 0 || taskIdOutOfRange) {
@@ -113,7 +113,7 @@ router.get('/', async (req, res, next) => {
         code: 0,
         data: {
           tasks, records: [], matchGroups: [], staff: currentStaff,
-          currentStaff,
+          currentStaff, roleDefinitions,
           summary: { totalHours: 0, recordCount: 0, staffCount: currentStaff.length, taskCount: 0 },
           roleSummary: withRoleAliases(createRoleSummary()),
           pmDistribution: []
@@ -220,7 +220,7 @@ router.get('/', async (req, res, next) => {
           plain.product_managers = await filterPmNamesForRecord(r, taskById.get(r.task_id), pmContextByName);
           return plain;
         })),
-        matchGroups, staff: visibleStaff, currentStaff,
+        matchGroups, staff: visibleStaff, currentStaff, roleDefinitions,
         summary: {
           totalHours,
           recordCount: records.length,
@@ -265,7 +265,7 @@ router.get('/personal/:staffId', async (req, res, next) => {
             totalHours: 0,
             recordCount: 0,
             taskCount: 0,
-            tasks: []
+            tasks: [], roleDefinitions: getRoleDefinitions()
           }
         });
       }
@@ -280,7 +280,7 @@ router.get('/personal/:staffId', async (req, res, next) => {
           totalHours: 0,
           recordCount: 0,
           taskCount: 0,
-          tasks: []
+          tasks: [], roleDefinitions: getRoleDefinitions()
         }
       });
     }
@@ -303,7 +303,7 @@ router.get('/personal/:staffId', async (req, res, next) => {
           totalHours: 0,
           recordCount: 0,
           taskCount: 0,
-          tasks: []
+          tasks: [], roleDefinitions: getRoleDefinitions()
         }
       });
     }
@@ -336,7 +336,8 @@ router.get('/personal/:staffId', async (req, res, next) => {
         totalHours,
         recordCount: records.length,
         taskCount: tasksWithRecords.length,
-        tasks: allTasks
+        tasks: allTasks,
+        roleDefinitions: getRoleDefinitions()
       }
     });
   } catch (err) { next(err); }
@@ -366,7 +367,7 @@ router.get('/pm/:pmId', async (req, res, next) => {
       if (!taskIds.includes(taskId)) {
         return res.json({
           code: 0,
-          data: { pm: { id: pm.id, name: pm.name }, totalHours: 0, recordCount: 0, taskCount: 0, tasks: [] }
+          data: { pm: { id: pm.id, name: pm.name }, totalHours: 0, recordCount: 0, taskCount: 0, tasks: [], roleDefinitions: getRoleDefinitions() }
         });
       }
       taskIds = [taskId];
@@ -375,7 +376,7 @@ router.get('/pm/:pmId', async (req, res, next) => {
     if (taskIds.length === 0) {
       return res.json({
         code: 0,
-        data: { pm: { id: pm.id, name: pm.name }, totalHours: 0, recordCount: 0, taskCount: 0, tasks: [] }
+        data: { pm: { id: pm.id, name: pm.name }, totalHours: 0, recordCount: 0, taskCount: 0, tasks: [], roleDefinitions: getRoleDefinitions() }
       });
     }
 
@@ -393,7 +394,7 @@ router.get('/pm/:pmId', async (req, res, next) => {
     if (!isNonResigned(pm) && pmRecords.length === 0) {
       return res.json({
         code: 0,
-        data: { pm: null, totalHours: 0, recordCount: 0, taskCount: 0, tasks: [] }
+        data: { pm: null, totalHours: 0, recordCount: 0, taskCount: 0, tasks: [], roleDefinitions: getRoleDefinitions() }
       });
     }
 
@@ -440,6 +441,7 @@ router.get('/pm/:pmId', async (req, res, next) => {
         recordCount: pmRecords.length,
         taskCount: tasksWithRecords.length,
         roleSummary: withRoleAliases(roleSummary),
+        roleDefinitions: getRoleDefinitions(),
         tasks: allTasks
       }
     });

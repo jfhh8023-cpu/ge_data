@@ -11,7 +11,8 @@ const CHANNEL_NAME = 'devtracker_sync'
 
 /** 事件类型常量 */
 export const SYNC_EVENTS = {
-  WORK_RECORD_CHANGED: 'work_record_changed'
+  WORK_RECORD_CHANGED: 'work_record_changed',
+  ROLE_CONFIG_CHANGED: 'role_config_changed'
 }
 
 /** 发送数据变更通知 */

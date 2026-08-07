@@ -4,12 +4,23 @@
  * 管理端：Header + router-view + Footer
  * 填写页：独立布局（无Header/Footer）
  */
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import AppHeader from './components/AppHeader.vue'
 import { APP_VERSION, AUTHOR } from './version'
+import { useRoleStore } from './stores/roles'
+import { onDataChange, SYNC_EVENTS } from './utils/sync'
 
 const route = useRoute()
+const roleStore = useRoleStore()
+let stopRoleSync = () => {}
+
+onMounted(() => {
+  roleStore.fetchAll()
+  stopRoleSync = onDataChange(SYNC_EVENTS.ROLE_CONFIG_CHANGED, () => roleStore.fetchAll({ force: true }))
+})
+
+onBeforeUnmount(() => stopRoleSync())
 
 /** 填写页使用独立布局，不显示管理端导航 */
 const isFillLayout = computed(() => route.meta.layout === 'fill')

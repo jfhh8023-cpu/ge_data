@@ -16,18 +16,17 @@ const { v4: uuidv4 } = require('uuid');
 
 /* ========== 人员定义 ========== */
 const STAFF_LIST = [
-  // 后端
-  { name: '邬涛', role: 'backend' },
-  { name: '张希亮', role: 'backend' },
-  { name: '郑家成', role: 'backend' },
-  { name: '唐兵', role: 'backend' },
+  // AI开发
+  { name: '邬涛', role: 'ai_dev' },
+  { name: '张希亮', role: 'ai_dev' },
+  { name: '郑家成', role: 'ai_dev' },
+  { name: '唐兵', role: 'ai_dev' },
   { name: '赖香山', role: 'voip' },
-  // 前端
-  { name: '刘君', role: 'frontend' },
-  { name: '温嘉敦', role: 'frontend' },
-  // 测试
-  { name: '朱俊锋', role: 'test' },
-  { name: '艾婉', role: 'test' },
+  { name: '刘君', role: 'ai_dev' },
+  { name: '温嘉敦', role: 'ai_dev' },
+  // AI质量
+  { name: '朱俊锋', role: 'ai_quality' },
+  { name: '艾婉', role: 'ai_quality' },
 ];
 
 /* 名字别名映射 */
@@ -441,6 +440,11 @@ async function main() {
         backend: JSON.stringify(beJson),
         voip: JSON.stringify(voipJson),
         test_role: JSON.stringify(testJson),
+        role_buckets: {
+          ai_dev: [...feJson, ...beJson],
+          voip: voipJson,
+          ai_quality: testJson
+        },
         remark: remarkStr,
         confidence: 1.00,
         status: 'auto_merged'

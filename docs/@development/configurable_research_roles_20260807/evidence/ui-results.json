@@ -1,0 +1,144 @@
+{
+  "status": "PASS",
+  "personnel": {
+    "filterCount": 1,
+    "roleTagMetrics": [
+      {
+        "text": "AI开发工程师",
+        "whiteSpace": "nowrap",
+        "height": 20.796875,
+        "lineHeight": 16.8
+      },
+      {
+        "text": "AI开发工程师",
+        "whiteSpace": "nowrap",
+        "height": 20.796875,
+        "lineHeight": 16.8
+      },
+      {
+        "text": "AI开发工程师",
+        "whiteSpace": "nowrap",
+        "height": 20.796875,
+        "lineHeight": 16.8
+      },
+      {
+        "text": "AI开发工程师",
+        "whiteSpace": "nowrap",
+        "height": 20.796875,
+        "lineHeight": 16.8
+      },
+      {
+        "text": "AI开发工程师",
+        "whiteSpace": "nowrap",
+        "height": 20.796875,
+        "lineHeight": 16.8
+      },
+      {
+        "text": "AI开发工程师",
+        "whiteSpace": "nowrap",
+        "height": 20.796875,
+        "lineHeight": 16.8
+      },
+      {
+        "text": "VOIP工程师",
+        "whiteSpace": "nowrap",
+        "height": 20.796875,
+        "lineHeight": 16.8
+      },
+      {
+        "text": "VOIP工程师",
+        "whiteSpace": "nowrap",
+        "height": 20.796875,
+        "lineHeight": 16.8
+      },
+      {
+        "text": "AI质量工程师",
+        "whiteSpace": "nowrap",
+        "height": 20.796875,
+        "lineHeight": 16.8
+      },
+      {
+        "text": "AI质量工程师",
+        "whiteSpace": "nowrap",
+        "height": 20.796875,
+        "lineHeight": 16.8
+      },
+      {
+        "text": "嵌入式软件工程师",
+        "whiteSpace": "nowrap",
+        "height": 20.796875,
+        "lineHeight": 16.8
+      }
+    ],
+    "roleConfigCount": 4
+  },
+  "report": {
+    "headers": [
+      "AI开发工程师",
+      "VOIP工程师",
+      "AI质量工程师",
+      "嵌入式软件工程师"
+    ],
+    "nowrapHeaders": [
+      {
+        "text": "AI开发工程师",
+        "whiteSpace": "nowrap",
+        "clipped": false
+      },
+      {
+        "text": "VOIP工程师",
+        "whiteSpace": "nowrap",
+        "clipped": false
+      },
+      {
+        "text": "AI质量工程师",
+        "whiteSpace": "nowrap",
+        "clipped": false
+      },
+      {
+        "text": "嵌入式软件工程师",
+        "whiteSpace": "nowrap",
+        "clipped": false
+      }
+    ]
+  },
+  "stats": {
+    "canvasInfo": {
+      "width": 1520,
+      "height": 360,
+      "dataLength": 77174
+    },
+    "pmCount": 13,
+    "displayedPmCount": 9,
+    "hiddenZeroPmCount": 4,
+    "legends": [
+      "AI开发",
+      "VOIP",
+      "AI质量",
+      "嵌入式",
+      "总计"
+    ]
+  },
+  "workloadReport": {
+    "embedded": true,
+    "voipStaff": [
+      "赖香山",
+      "赵鲁鹏"
+    ],
+    "summaryCardLayout": {
+      "count": 5,
+      "sameRow": true,
+      "fullyVisible": true,
+      "allTextSingleLine": true
+    }
+  },
+  "mobile": {
+    "viewport": "390x844",
+    "roleTagsNowrap": 11
+  },
+  "runtime": {
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedResponses": []
+  }
+}

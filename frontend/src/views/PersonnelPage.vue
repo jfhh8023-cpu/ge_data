@@ -8,16 +8,20 @@
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useStaffStore } from '../stores/staff'
 import { usePmStore } from '../stores/pm'
+import { useRoleStore } from '../stores/roles'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Refresh, Setting } from '@element-plus/icons-vue'
 import BackButton from '../components/BackButton.vue'
 import api from '../api'
 import { useAuthStore } from '../stores/auth'
 import Sortable from 'sortablejs'
 import { buildAppUrl, copyToClipboard } from '../utils/url'
-import { ROLE_AI_DEV, ROLE_LABEL, ROLE_OPTIONS, ROLE_TAG_CLASS } from '../utils/roles'
+import { ROLE_AI_DEV, roleLabel, roleTagStyle } from '../utils/roles'
+import { broadcastDataChange, SYNC_EVENTS } from '../utils/sync'
 
 const staffStore = useStaffStore()
 const pmStore = usePmStore()
+const roleStore = useRoleStore()
 const authStore = useAuthStore()
 const pageLoading = ref(true)
 
@@ -29,6 +33,24 @@ const dialogVisible = ref(false)
 const isEditing = ref(false)
 const editingId = ref('')
 const form = ref({ name: '', phone: '', role: ROLE_AI_DEV })
+
+const staffFilters = ref({ name: '', phone: '', role: '', status: '' })
+const hasStaffFilters = computed(() => Object.values(staffFilters.value).some(value => String(value || '').trim()))
+const filteredStaffList = computed(() => {
+  const name = staffFilters.value.name.trim().toLocaleLowerCase()
+  const phone = staffFilters.value.phone.trim()
+  return staffStore.list.filter(staff => {
+    if (name && !String(staff.name || '').toLocaleLowerCase().includes(name)) return false
+    if (phone && !String(staff.phone || '').includes(phone)) return false
+    if (staffFilters.value.role && staff.role !== staffFilters.value.role) return false
+    if (staffFilters.value.status && normalizedEmploymentStatus(staff) !== staffFilters.value.status) return false
+    return true
+  })
+})
+
+function resetStaffFilters() {
+  staffFilters.value = { name: '', phone: '', role: '', status: '' }
+}
 
 /** 预设文本（带标题链接用） */
 const presetText = ref('请填写上周工作内容，您的专属链接如下：')
@@ -81,7 +103,7 @@ const transferTargetOptions = computed(() => {
 
 onMounted(async () => {
   pageLoading.value = true
-  await Promise.all([staffStore.fetchAll(), pmStore.fetchAll()])
+  await Promise.all([staffStore.fetchAll(), pmStore.fetchAll(), roleStore.fetchAll({ force: true })])
   pageLoading.value = false
   await nextTick()
   initSortable()
@@ -106,6 +128,7 @@ function destroySortable(type) {
 
 function initTableSortable(type) {
   destroySortable(type)
+  if (type === 'staff' && hasStaffFilters.value) return
   const selector = type === 'staff' ? '.staff-sortable-table' : '.pm-sortable-table'
   const el = document.querySelector(`${selector} .el-table__body-wrapper tbody`)
   if (!el) return
@@ -163,6 +186,19 @@ watch(activeTab, async () => {
   setTimeout(() => initTableSortable(activeTab.value), 200)
 })
 
+watch(staffFilters, async () => {
+  await nextTick()
+  setTimeout(() => initTableSortable('staff'), 100)
+}, { deep: true })
+
+async function refreshCurrent() {
+  if (activeTab.value === 'staff') {
+    await Promise.all([staffStore.fetchAll(), roleStore.fetchAll({ force: true })])
+  } else {
+    await pmStore.fetchAll()
+  }
+}
+
 function getFillUrl(token) {
   if (!token) return null
   return buildAppUrl(`fill/${token}`)
@@ -201,8 +237,59 @@ async function handleSubmit() {
     }
     dialogVisible.value = false
     await staffStore.fetchAll()
-  } catch {
-    ElMessage.error('操作失败')
+  } catch (err) {
+    ElMessage.error(err.response?.data?.message || '操作失败')
+  }
+}
+
+/* ========== 研发角色配置 ========== */
+const roleConfigVisible = ref(false)
+const roleDrafts = ref([])
+const roleSavingKey = ref('')
+const newRoleSaving = ref(false)
+const newRole = ref({ name: '', short_name: '', color: '#14B8A6' })
+
+function refreshRoleDrafts() {
+  roleDrafts.value = roleStore.list.map(role => ({ ...role }))
+}
+
+async function openRoleConfig() {
+  await roleStore.fetchAll({ force: true })
+  refreshRoleDrafts()
+  newRole.value = { name: '', short_name: '', color: '#14B8A6' }
+  roleConfigVisible.value = true
+}
+
+async function saveRoleConfig(role) {
+  roleSavingKey.value = role.key
+  try {
+    await roleStore.updateRole(role.key, {
+      name: role.name,
+      short_name: role.short_name,
+      color: role.color
+    })
+    refreshRoleDrafts()
+    broadcastDataChange(SYNC_EVENTS.ROLE_CONFIG_CHANGED, { key: role.key })
+    ElMessage.success('角色配置已保存并全局生效')
+  } catch (err) {
+    ElMessage.error(err.response?.data?.message || '角色配置保存失败')
+  } finally {
+    roleSavingKey.value = ''
+  }
+}
+
+async function createRoleConfig() {
+  newRoleSaving.value = true
+  try {
+    await roleStore.createRole(newRole.value)
+    refreshRoleDrafts()
+    newRole.value = { name: '', short_name: '', color: '#14B8A6' }
+    broadcastDataChange(SYNC_EVENTS.ROLE_CONFIG_CHANGED)
+    ElMessage.success('新角色已新增并全局生效')
+  } catch (err) {
+    ElMessage.error(err.response?.data?.message || '角色新增失败')
+  } finally {
+    newRoleSaving.value = false
   }
 }
 
@@ -466,8 +553,9 @@ async function updatePmStatus(pm, status) {
           <p class="dt-page-description">管理研发团队成员与AI产品经理名单</p>
         </div>
         <div style="display:flex; gap:8px;">
-          <el-button circle @click="activeTab === 'staff' ? staffStore.fetchAll() : pmStore.fetchAll()" title="刷新数据" style="font-size:16px;">🔄</el-button>
-          <el-button v-if="activeTab === 'staff' && authStore.hasPermission('btn:personnel:create', 'view')" type="primary" @click="openCreate">+ 新增人员</el-button>
+          <el-button circle :icon="Refresh" @click="refreshCurrent" title="刷新数据" />
+          <el-button v-if="activeTab === 'staff' && authStore.hasPermission('btn:personnel:create', 'view')" type="primary" @click="openCreate">+ 新增研发人员</el-button>
+          <el-button v-if="activeTab === 'staff'" :icon="Setting" @click="openRoleConfig">配置</el-button>
           <el-button v-if="activeTab === 'pm'" type="primary" @click="openPmCreate">+ 新增AI产品经理</el-button>
         </div>
       </div>
@@ -484,18 +572,34 @@ async function updatePmStatus(pm, status) {
             <span class="dt-preset-hint">点击"复制带标题"会发送：姓名同学 + 此文本 + 换行 + 专属链接</span>
           </div>
 
+          <div class="dt-staff-filter-bar">
+            <el-input v-model="staffFilters.name" clearable placeholder="按姓名筛选" />
+            <el-input v-model="staffFilters.phone" clearable placeholder="按手机号码筛选" />
+            <el-select v-model="staffFilters.role" clearable placeholder="全部角色">
+              <el-option v-for="role in roleStore.list" :key="role.key" :label="role.name" :value="role.key" />
+            </el-select>
+            <el-select v-model="staffFilters.status" clearable placeholder="全部状态">
+              <el-option v-for="item in EMPLOYMENT_STATUS_OPTIONS" :key="item.value" :label="item.label" :value="item.value" />
+            </el-select>
+            <el-button :disabled="!hasStaffFilters" @click="resetStaffFilters">重置</el-button>
+          </div>
+
           <el-skeleton v-if="staffStore.loading" :rows="5" animated />
           <div v-else-if="staffStore.list.length === 0" class="dt-empty" style="padding:60px;">
             <div class="dt-empty-icon">👥</div>
             <p class="dt-empty-text">暂无团队人员，请点击上方按钮添加</p>
           </div>
 
+          <div v-else-if="filteredStaffList.length === 0" class="dt-empty" style="padding:48px;">
+            <p class="dt-empty-text">未找到符合条件的研发人员</p>
+          </div>
+
           <!-- 表格列表 -->
           <div v-else class="dt-data-card">
-            <el-table :data="staffStore.list" style="width:100%;" class="staff-sortable-table" row-key="id">
+            <el-table :data="filteredStaffList" style="width:100%;" class="staff-sortable-table" row-key="id">
               <el-table-column width="40" align="center">
                 <template #default>
-                  <span class="drag-handle" style="cursor:grab; font-size:16px; color:var(--color-text-4);" title="拖动排序">☰</span>
+                  <span class="drag-handle" :class="{ 'is-disabled': hasStaffFilters }" style="font-size:16px; color:var(--color-text-4);" :title="hasStaffFilters ? '清空筛选后可拖动排序' : '拖动排序'">☰</span>
                 </template>
               </el-table-column>
               <el-table-column label="姓名" width="100">
@@ -508,9 +612,9 @@ async function updatePmStatus(pm, status) {
                   <span>{{ row.phone || '' }}</span>
                 </template>
               </el-table-column>
-              <el-table-column label="角色" width="120">
+              <el-table-column label="角色" width="180">
                 <template #default="{ row }">
-                  <span class="dt-tag dt-role-tag" :class="ROLE_TAG_CLASS[row.role]">{{ ROLE_LABEL[row.role] || '-' }}</span>
+                  <span class="dt-tag dt-role-tag" :style="roleTagStyle(row.role)">{{ roleLabel(row.role) }}</span>
                 </template>
               </el-table-column>
               <el-table-column label="状态" width="70">
@@ -637,7 +741,7 @@ async function updatePmStatus(pm, status) {
       </el-tabs>
 
       <!-- 研发人员 新增/编辑弹窗 -->
-      <el-dialog v-model="dialogVisible" :title="isEditing ? '编辑人员' : '新增人员'" width="400px" :close-on-click-modal="false">
+      <el-dialog v-model="dialogVisible" :title="isEditing ? '编辑研发人员' : '新增研发人员'" width="440px" :close-on-click-modal="false">
         <el-form :model="form" label-width="70px">
           <el-form-item label="姓名">
             <el-input v-model="form.name" placeholder="请输入姓名（2-20字）" maxlength="20" />
@@ -646,14 +750,37 @@ async function updatePmStatus(pm, status) {
             <el-input v-model="form.phone" placeholder="用于钉钉群 webhook @，可为空" maxlength="30" />
           </el-form-item>
           <el-form-item label="角色">
-            <el-radio-group v-model="form.role">
-              <el-radio v-for="opt in ROLE_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</el-radio>
-            </el-radio-group>
+            <el-select v-model="form.role" filterable style="width:100%;" placeholder="请选择研发角色">
+              <el-option v-for="opt in roleStore.options" :key="opt.value" :label="opt.label" :value="opt.value" />
+            </el-select>
           </el-form-item>
         </el-form>
         <template #footer>
           <el-button @click="dialogVisible = false">取消</el-button>
           <el-button type="primary" @click="handleSubmit">{{ isEditing ? '保存' : '新增' }}</el-button>
+        </template>
+      </el-dialog>
+
+      <el-dialog v-model="roleConfigVisible" title="研发角色配置" width="720px" :close-on-click-modal="false">
+        <div class="dt-role-config-list">
+          <div v-for="role in roleDrafts" :key="role.key" class="dt-role-config-row">
+            <el-color-picker v-model="role.color" />
+            <el-input v-model="role.name" maxlength="30" placeholder="角色完整名称" />
+            <el-input v-model="role.short_name" maxlength="12" placeholder="角色简称" />
+            <el-button type="primary" :loading="roleSavingKey === role.key" @click="saveRoleConfig(role)">保存</el-button>
+          </div>
+        </div>
+        <div class="dt-role-config-add">
+          <div class="dt-role-config-add-title">新增角色</div>
+          <div class="dt-role-config-row">
+            <el-color-picker v-model="newRole.color" />
+            <el-input v-model="newRole.name" maxlength="30" placeholder="角色完整名称" />
+            <el-input v-model="newRole.short_name" maxlength="12" placeholder="角色简称" />
+            <el-button type="primary" :loading="newRoleSaving" @click="createRoleConfig">新增</el-button>
+          </div>
+        </div>
+        <template #footer>
+          <el-button @click="roleConfigVisible = false">关闭</el-button>
         </template>
       </el-dialog>
 
@@ -701,7 +828,7 @@ async function updatePmStatus(pm, status) {
             <div style="display:flex; align-items:center; gap:12px;">
               <span style="font-size:14px; font-weight:500; white-space:nowrap;">交接给：</span>
               <el-select v-model="transferTargetId" placeholder="请选择交接目标人员" style="flex:1;" filterable>
-                <el-option v-for="s in transferTargetOptions" :key="s.id" :label="`${s.name}（${ROLE_LABEL[s.role] || s.role}）`" :value="s.id" />
+                <el-option v-for="s in transferTargetOptions" :key="s.id" :label="`${s.name}（${roleLabel(s.role)}）`" :value="s.id" />
               </el-select>
             </div>
           </template>
@@ -798,6 +925,14 @@ async function updatePmStatus(pm, status) {
   color: var(--color-text-4, #C9CDD4);
 }
 
+.dt-staff-filter-bar {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(170px, 1fr) minmax(180px, 1fr) minmax(130px, 0.75fr) auto;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
 /* v1.6.1: 完整链接显示 */
 .dt-link-url-full {
   font-size: 12px;
@@ -817,8 +952,29 @@ async function updatePmStatus(pm, status) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 92px;
+  min-width: 110px;
   white-space: nowrap;
+}
+
+.dt-role-config-list {
+  display: grid;
+  gap: 10px;
+}
+.dt-role-config-row {
+  display: grid;
+  grid-template-columns: 40px minmax(200px, 1fr) minmax(120px, 0.6fr) 72px;
+  gap: 10px;
+  align-items: center;
+}
+.dt-role-config-add {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border-light, #E5E6EB);
+}
+.dt-role-config-add-title {
+  margin-bottom: 10px;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 /* v1.6.1: 链接操作按钮横排加粗加大 */
@@ -878,6 +1034,16 @@ async function updatePmStatus(pm, status) {
 }
 .drag-handle:active {
   cursor: grabbing !important;
+}
+.drag-handle.is-disabled {
+  cursor: not-allowed !important;
+  opacity: 0.2;
+}
+
+@media (max-width: 980px) {
+  .dt-staff-filter-bar {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 /* Sortable ghost（拖拽占位） */

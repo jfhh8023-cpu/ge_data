@@ -11,6 +11,7 @@ const multer = require('multer');
 const XLSX = require('xlsx');
 const { v4: uuidv4 } = require('uuid');
 const { ExcelFile } = require('../models');
+const { getRoleDefinitions } = require('../services/RoleService');
 
 /* ========== multer 内存存储 ========== */
 const upload = multer({
@@ -62,16 +63,21 @@ const TEMPLATES = {
     headers: ['人员姓名', '需求标题', '版本号', 'AI产品经理', '工时(小时)'],
     sample: ['邬涛', '示例需求', 'V4.633.0', '张三', '16']
   },
-  report: {
-    filename: '需求工时统计导入模板.xlsx',
-    headers: ['版本号', '需求名称', 'AI产品经理', 'AI开发工程师姓名', 'AI开发工程师工时', 'VOIP工程师姓名', 'VOIP工程师工时', 'AI质量工程师姓名', 'AI质量工程师工时', '备注'],
-    sample: ['V4.633.0', '示例需求', '张三', '李四,王五', '24', '赵七', '8', '赵六', '4', '']
-  }
+  report: null
 };
+
+function reportTemplate() {
+  const roles = getRoleDefinitions();
+  return {
+    filename: '需求工时统计导入模板.xlsx',
+    headers: ['版本号', '需求名称', 'AI产品经理', ...roles.flatMap(role => [`${role.name}姓名`, `${role.name}工时`]), '备注'],
+    sample: ['V4.633.0', '示例需求', '张三', ...roles.flatMap((role, index) => [index === 0 ? '李四,王五' : '', index === 0 ? '24' : '0']), '']
+  };
+}
 
 /* ========== GET /api/excel/template/:page — 下载导入模板 ========== */
 router.get('/template/:page', (req, res) => {
-  const tpl = TEMPLATES[req.params.page];
+  const tpl = req.params.page === 'report' ? reportTemplate() : TEMPLATES[req.params.page];
   if (!tpl) return res.status(404).json({ code: 1, message: '模板不存在' });
 
   const wb = XLSX.utils.book_new();

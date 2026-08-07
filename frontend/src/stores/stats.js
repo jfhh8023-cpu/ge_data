@@ -1,10 +1,10 @@
 import { defineStore } from 'pinia'
 import api from '../api'
-import { ROLE_AI_DEV, ROLE_VOIP, ROLE_AI_QUALITY } from '../utils/roles'
+import { ROLE_AI_DEV, ROLE_AI_QUALITY, getRoleDefinitions } from '../utils/roles'
 
 const emptyRoleSummary = () => ({
+  ...Object.fromEntries(getRoleDefinitions().map(role => [role.key, 0])),
   [ROLE_AI_DEV]: 0,
-  [ROLE_VOIP]: 0,
   [ROLE_AI_QUALITY]: 0,
   frontend: 0,
   backend: 0,
@@ -18,6 +18,7 @@ export const useStatsStore = defineStore('stats', {
     matchGroups: [],
     staff: [],
     currentStaff: [],
+    roleDefinitions: [],
     summary: { totalHours: 0, recordCount: 0, staffCount: 0, taskCount: 0 },
     /* v1.1.0: 基于 WorkRecord + Staff.role 的聚合统计（REQ-11） */
     roleSummary: emptyRoleSummary(),
@@ -48,6 +49,7 @@ export const useStatsStore = defineStore('stats', {
         this.matchGroups = data.matchGroups || []
         this.staff = data.staff || []
         this.currentStaff = data.currentStaff || data.staff || []
+        this.roleDefinitions = data.roleDefinitions || []
         this.summary = data.summary || {}
         this.roleSummary = data.roleSummary || emptyRoleSummary()
         this.pmDistribution = data.pmDistribution || []

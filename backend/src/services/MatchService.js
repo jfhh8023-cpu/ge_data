@@ -10,7 +10,12 @@
  */
 const { v4: uuidv4 } = require('uuid');
 const { safeParseJsonArray } = require('../utils/parseJson');
-const { isAiDevelopmentRole, isVoipRole } = require('./RoleService');
+const {
+  ROLE_AI_DEV,
+  ROLE_AI_QUALITY,
+  ROLE_VOIP,
+  normalizeStaffRole
+} = require('./RoleService');
 
 /* ========== 常量 ========== */
 const THRESHOLD_NO_VER = 0.5;
@@ -92,16 +97,19 @@ function buildGroup(clusterRecords, confidence, status) {
   const backend = [];
   const voip = [];
   const testRole = [];
+  const roleBuckets = {};
 
   for (const r of clusterRecords) {
     const staffName = r.staff?.name || r.staffName || '未知';
-    const role = r.staff?.role || r.role || 'frontend';
+    const role = normalizeStaffRole(r.staff?.role || r.role);
     const hours = parseFloat(r.hours);
     const entry = { staffName, hours };
 
-    if (isAiDevelopmentRole(role)) frontend.push(entry);
-    else if (isVoipRole(role)) voip.push(entry);
-    else testRole.push(entry);
+    if (!roleBuckets[role]) roleBuckets[role] = [];
+    roleBuckets[role].push(entry);
+    if (role === ROLE_AI_DEV) frontend.push(entry);
+    else if (role === ROLE_VOIP) voip.push(entry);
+    else if (role === ROLE_AI_QUALITY) testRole.push(entry);
   }
 
   const allPMs = new Set();
@@ -119,6 +127,7 @@ function buildGroup(clusterRecords, confidence, status) {
     backend: JSON.stringify(backend),
     voip: JSON.stringify(voip),
     test_role: JSON.stringify(testRole),
+    role_buckets: roleBuckets,
     confidence: Math.round(confidence * 100) / 100,
     status,
     remark: ''

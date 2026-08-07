@@ -22,6 +22,7 @@ app.use(express.urlencoded({ extended: true }));
 
 /* ========== 路由注册 ========== */
 app.use('/api/staff',       require('./routes/staff'));
+app.use('/api/roles',       require('./routes/roles'));
 app.use('/api/tasks',       require('./routes/tasks'));
 app.use('/api/records',     require('./routes/records'));
 app.use('/api/report',      require('./routes/report'));
@@ -61,7 +62,7 @@ async function start() {
     await ensureAutoTaskTables();
     app.listen(PORT, () => {
       console.log(`[API] DevTracker v3.0.0 运行在 http://localhost:${PORT}`);
-      console.log('[API] 路由: /api/staff | /api/tasks | /api/records | /api/report | /api/fill | /api/stats | /api/permissions | /api/excel | /api/settings');
+      console.log('[API] 路由: /api/staff | /api/roles | /api/tasks | /api/records | /api/report | /api/fill | /api/stats | /api/permissions | /api/excel | /api/settings');
       startAutoTaskScheduler();
     });
   } catch (err) {

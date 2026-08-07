@@ -1,0 +1,66 @@
+{
+  "startedAt": "2026-08-07T12:42:55.354Z",
+  "baseline": {
+    "staff": 11,
+    "records": 694,
+    "groups": 427,
+    "roles": 4,
+    "totalHours": 9247.5
+  },
+  "checks": [
+    {
+      "id": "ROLE-DEFAULT",
+      "status": "PASS",
+      "roles": [
+        "AI开发工程师",
+        "VOIP工程师",
+        "AI质量工程师",
+        "嵌入式软件工程师"
+      ]
+    },
+    {
+      "id": "ROLE-VALIDATION",
+      "status": "PASS",
+      "message": "角色无效"
+    },
+    {
+      "id": "ROLE-CRUD",
+      "status": "PASS",
+      "key": "custom_1db96c039efb46f2",
+      "name": "验收动态角色575293"
+    },
+    {
+      "id": "STAFF-FILTERS",
+      "status": "PASS",
+      "count": 1
+    },
+    {
+      "id": "DYNAMIC-STATS",
+      "status": "PASS",
+      "roleHours": 1.25,
+      "pmRoleHours": 1.25
+    },
+    {
+      "id": "REPORT-IMPORT-EDIT",
+      "status": "PASS",
+      "productManagers": [
+        "其他-底层【语音底层】"
+      ]
+    },
+    {
+      "id": "DYNAMIC-EXCEL",
+      "status": "PASS",
+      "templateRole": "验收动态角色575293",
+      "sheets": 30
+    }
+  ],
+  "afterCleanup": {
+    "staff": 11,
+    "records": 694,
+    "groups": 427,
+    "roles": 4,
+    "totalHours": 9247.5
+  },
+  "dataConserved": true,
+  "finishedAt": "2026-08-07T12:42:55.630Z"
+}

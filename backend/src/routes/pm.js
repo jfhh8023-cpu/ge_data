@@ -22,6 +22,7 @@ const {
 const {
   addRoleHours,
   createRoleSummary,
+  getRoleDefinitions,
   normalizeStaffRole,
   withRoleAliases
 } = require('../services/RoleService');
@@ -302,7 +303,7 @@ router.get('/view/:token', async (req, res, next) => {
     if (taskIds.length === 0) {
       return res.json({
         code: 0,
-        data: { pm: { id: pm.id, name: pm.name }, year, quarter, month, tasks: [], totalHours: 0, totalRecords: 0 }
+        data: { pm: { id: pm.id, name: pm.name }, year, quarter, month, tasks: [], totalHours: 0, totalRecords: 0, roleDefinitions: getRoleDefinitions() }
       });
     }
 
@@ -355,6 +356,7 @@ router.get('/view/:token', async (req, res, next) => {
         tasks: taskList,
         totalHours,
         roleSummary: withRoleAliases(roleSummary),
+        roleDefinitions: getRoleDefinitions(),
         totalRecords: pmRecords.length
       }
     });

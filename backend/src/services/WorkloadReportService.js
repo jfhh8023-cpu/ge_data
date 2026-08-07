@@ -66,6 +66,11 @@ async function currentDataSignature() {
       ), '') FROM staff) AS staff_roster_signature,
       (SELECT COUNT(*) FROM staff_status_history) AS staff_status_history_count,
       (SELECT MAX(GREATEST(COALESCE(ended_at, started_at), started_at, created_at)) FROM staff_status_history) AS staff_status_history_updated_at,
+      (SELECT COUNT(*) FROM staff_roles) AS staff_role_count,
+      (SELECT COALESCE(GROUP_CONCAT(
+        CONCAT_WS(':', \`key\`, COALESCE(name, ''), COALESCE(short_name, ''), COALESCE(color, ''), COALESCE(sort_order, 0), COALESCE(is_active, 0))
+        ORDER BY sort_order, \`key\` SEPARATOR '|'
+      ), '') FROM staff_roles) AS staff_role_signature,
       (SELECT COUNT(*) FROM product_managers) AS pm_count,
       (SELECT MAX(GREATEST(COALESCE(updated_at, created_at), COALESCE(status_changed_at, created_at), created_at)) FROM product_managers) AS pm_updated_at,
       (SELECT COUNT(*) FROM product_manager_status_history) AS pm_status_history_count,

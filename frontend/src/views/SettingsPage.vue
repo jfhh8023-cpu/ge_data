@@ -9,7 +9,7 @@ import { Delete, Download, Plus, Promotion } from '@element-plus/icons-vue'
 import api from '../api'
 import BackButton from '../components/BackButton.vue'
 import { useAuthStore } from '../stores/auth'
-import { ROLE_LABEL, ROLE_SHORT_LABEL } from '../utils/roles'
+import { roleLabel } from '../utils/roles'
 
 const authStore = useAuthStore()
 const loading = ref(true)
@@ -3117,7 +3117,7 @@ onUnmounted(() => {
                     />
                   </td>
                   <td>{{ staff.name }}</td>
-                  <td class="dt-recipient-role">{{ ROLE_SHORT_LABEL[staff.role] || ROLE_LABEL[staff.role] || staff.role || '' }}</td>
+                  <td class="dt-recipient-role">{{ roleLabel(staff.role, true) }}</td>
                   <td>{{ staff.phone || '' }}</td>
                 </tr>
               </tbody>

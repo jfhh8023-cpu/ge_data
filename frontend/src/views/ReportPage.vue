@@ -5,11 +5,12 @@
  * v1.4.2: 本周/上周逻辑重写、默认选中修正、编辑模式“不可编辑”提示
  * v1.1.0: 改名 · 上下周期切换 · 默认上一周期 · 编辑模式 · 工时加粗 · 合计修正
  */
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, h, onMounted, onUnmounted, watch } from 'vue'
 import { useReportStore } from '../stores/report'
 import { useTaskStore } from '../stores/task'
 import { useStaffStore } from '../stores/staff'
 import { usePmStore } from '../stores/pm'
+import { useRoleStore } from '../stores/roles'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { broadcastDataChange, onDataChange, SYNC_EVENTS } from '../utils/sync'
 import api from '../api'
@@ -20,21 +21,15 @@ const reportStore = useReportStore()
 const taskStore = useTaskStore()
 const staffStore = useStaffStore()
 const pmStore = usePmStore()
+const roleStore = useRoleStore()
 const authStore = useAuthStore()
 
 /* ========== 常量 ========== */
 const PAGE_SIZE = 20
-const SORT_OPTIONS = [
+const SORT_OPTIONS = computed(() => [
   { key: 'pm', label: 'AI产品' },
-  { key: 'ai_dev', label: 'AI开发' },
-  { key: 'voip', label: 'VOIP' },
-  { key: 'ai_quality', label: 'AI质量' }
-]
-const ROLE_EDITORS = [
-  { field: 'ai_developers', role: 'ai_dev' },
-  { field: 'voip', role: 'voip' },
-  { field: 'ai_quality', role: 'ai_quality' }
-]
+  ...roleStore.list.map(role => ({ key: role.key, label: role.short_name }))
+])
 const DIMENSION_LABEL = {
   day: '日', week: '周', half_month: '半月', month: '月',
   quarter: '季度', half_year: '半年', year: '年'
@@ -93,7 +88,8 @@ onMounted(async () => {
   await Promise.all([
     taskStore.fetchAll(),
     staffStore.fetchAll(),
-    pmStore.fetchAll()
+    pmStore.fetchAll(),
+    roleStore.fetchAll({ force: true })
   ])
   if (taskStore.list.length > 0) {
     // 1. 优先找上周任务
@@ -238,10 +234,17 @@ function roleOptions(role) {
   return staffStore.byRole(role)
 }
 
-function editableRoleRows(row, field) {
-  if (!Array.isArray(row[field])) row[field] = []
-  if (row[field].length === 0) row[field].push({ staffName: '', hours: null })
-  return row[field]
+function roleHeaderLabel(role) {
+  const fullName = String(role?.name || '')
+  const visualUnits = [...fullName].reduce((sum, char) => sum + (/^[\x00-\x7F]$/.test(char) ? 0.6 : 1), 0)
+  return visualUnits <= 13 ? fullName : String(role?.short_name || fullName)
+}
+
+function editableRoleRows(row, roleKey) {
+  if (!row.role_buckets || typeof row.role_buckets !== 'object') row.role_buckets = {}
+  if (!Array.isArray(row.role_buckets[roleKey])) row.role_buckets[roleKey] = []
+  if (row.role_buckets[roleKey].length === 0) row.role_buckets[roleKey].push({ staffName: '', hours: null })
+  return row.role_buckets[roleKey]
 }
 
 function normalizeNameArray(value) {
@@ -266,9 +269,7 @@ function buildRowPayload(row) {
     merged_title: row.merged_title || '',
     version: row.version || '',
     product_managers: normalizeNameArray(row.product_managers),
-    ai_developers: normalizeRoleRows(row.ai_developers),
-    voip: normalizeRoleRows(row.voip),
-    ai_quality: normalizeRoleRows(row.ai_quality),
+    role_buckets: Object.fromEntries(roleStore.list.map(role => [role.key, normalizeRoleRows(row.role_buckets?.[role.key])])),
     remark: row.remark || ''
   }
 }
@@ -300,10 +301,10 @@ async function flushRowAutoSave(row) {
   await saveRowEdit(row, { silent: true })
 }
 
-function removeRolePerson(row, field, index) {
-  if (!Array.isArray(row[field])) return
-  row[field].splice(index, 1)
-  if (row[field].length === 0) row[field].push({ staffName: '', hours: null })
+function removeRolePerson(row, roleKey, index) {
+  if (!Array.isArray(row.role_buckets?.[roleKey])) return
+  row.role_buckets[roleKey].splice(index, 1)
+  if (row.role_buckets[roleKey].length === 0) row.role_buckets[roleKey].push({ staffName: '', hours: null })
   scheduleRowAutoSave(row)
 }
 
@@ -316,14 +317,8 @@ const sortedGroups = computed(() => {
         const pmB = Array.isArray(b.product_managers) ? b.product_managers.join('') : ''
         return pmA.localeCompare(pmB, 'zh-Hans') || (a.version || '').localeCompare(b.version || '')
       })
-    case 'ai_dev':
-      return groups.sort((a, b) => (a.ai_developers?.[0]?.staffName || '').localeCompare(b.ai_developers?.[0]?.staffName || '', 'zh-Hans'))
-    case 'voip':
-      return groups.sort((a, b) => (a.voip?.[0]?.staffName || '').localeCompare(b.voip?.[0]?.staffName || '', 'zh-Hans'))
-    case 'ai_quality':
-      return groups.sort((a, b) => (a.ai_quality?.[0]?.staffName || '').localeCompare(b.ai_quality?.[0]?.staffName || '', 'zh-Hans'))
     default:
-      return groups
+      return groups.sort((a, b) => (a.role_buckets?.[sortMode.value]?.[0]?.staffName || '').localeCompare(b.role_buckets?.[sortMode.value]?.[0]?.staffName || '', 'zh-Hans'))
   }
 })
 
@@ -339,7 +334,7 @@ async function addManualRow() {
   if (!selectedTaskId.value) return
   try {
     const row = await reportStore.addManualRow(selectedTaskId.value)
-    ROLE_EDITORS.forEach(({ field }) => editableRoleRows(row, field))
+    roleStore.list.forEach(role => editableRoleRows(row, role.key))
     editMode.value = true
     currentPage.value = 1
     broadcastReportChange('report_manual_row_added')
@@ -396,25 +391,28 @@ function exportReportData() {
     return
   }
 
-  const headers = ['序号', '版本号', '需求名称', 'AI产品经理', 'AI开发工程师姓名', 'AI开发工程师工时', 'VOIP工程师姓名', 'VOIP工程师工时', 'AI质量工程师姓名', 'AI质量工程师工时', '总计/小时', '备注']
-  const rows = groups.map((g, idx) => [
-    idx + 1,
-    g.version || '',
-    g.merged_title || '',
-    Array.isArray(g.product_managers) ? g.product_managers.join(', ') : '',
-    formatNames(g.ai_developers).join(', '),
-    g._aiDevTotal ? g._aiDevTotal.toFixed(1) : '0',
-    formatNames(g.voip).join(', '),
-    g._voipTotal ? g._voipTotal.toFixed(1) : '0',
-    formatNames(g.ai_quality).join(', '),
-    g._aiQualityTotal ? g._aiQualityTotal.toFixed(1) : '0',
-    g._rowTotal ? g._rowTotal.toFixed(1) : '0',
-    g.remark || ''
-  ])
+  const roleHeaders = roleStore.list.flatMap(role => [`${role.name}姓名`, `${role.name}工时`])
+  const headers = ['序号', '版本号', '需求名称', 'AI产品经理', ...roleHeaders, '总计/小时', '备注']
+  const rows = groups.map((g, idx) => {
+    const roleCells = roleStore.list.flatMap(role => [
+      formatNames(g.role_buckets?.[role.key]).join(', '),
+      Number(g._roleTotals?.[role.key] || 0).toFixed(1)
+    ])
+    return [
+      idx + 1,
+      g.version || '',
+      g.merged_title || '',
+      Array.isArray(g.product_managers) ? g.product_managers.join(', ') : '',
+      ...roleCells,
+      g._rowTotal ? g._rowTotal.toFixed(1) : '0',
+      g.remark || ''
+    ]
+  })
 
   // 合计行
   const totals = reportStore.columnTotals
-  rows.push(['', '', '', '', '合计', totals.ai_dev.toFixed(1), '', totals.voip.toFixed(1), '', totals.ai_quality.toFixed(1), totals.total.toFixed(1), ''])
+  const totalRoleCells = roleStore.list.flatMap(role => ['', Number(totals[role.key] || 0).toFixed(1)])
+  rows.push(['', '', '', '合计', ...totalRoleCells, totals.total.toFixed(1), ''])
 
   const taskTitle = selectedTask.value?.title || '需求工时统计'
   const filename = `${taskTitle}_需求工时统计.xlsx`
@@ -424,7 +422,7 @@ function exportReportData() {
     sheets: [{
       name: '需求工时统计',
       data: [headers, ...rows],
-      colWidths: [6, 12, 30, 14, 18, 14, 18, 14, 18, 14, 10, 18]
+      colWidths: [6, 12, 30, 14, ...roleStore.list.flatMap(() => [18, 14]), 10, 18]
     }]
   })
 
@@ -442,6 +440,42 @@ function exportReportData() {
 /* ========== v2.0.0: 导入功能 ========== */
 const importFileInput = ref(null)
 
+function importRoleRows(row, nameHeader, hoursHeader) {
+  const names = String(row[nameHeader] || '').split(/[,，、\s]+/).map(name => name.trim()).filter(Boolean)
+  const total = parseFloat(row[hoursHeader]) || 0
+  const each = names.length ? total / names.length : 0
+  return names.map(staffName => ({ staffName, hours: each }))
+}
+
+function buildImportedRoleBuckets(row, headers) {
+  return Object.fromEntries(roleStore.list.map(role => {
+    const currentNameHeader = `${role.name}姓名`
+    const currentHoursHeader = `${role.name}工时`
+    if (headers.includes(currentNameHeader)) {
+      return [role.key, importRoleRows(row, currentNameHeader, currentHoursHeader)]
+    }
+    if (role.key === 'ai_dev') {
+      if (headers.includes('AI开发工程师姓名')) {
+        return [role.key, importRoleRows(row, 'AI开发工程师姓名', 'AI开发工程师工时')]
+      }
+      return [role.key, [
+        ...importRoleRows(row, '前端姓名', '前端工时'),
+        ...importRoleRows(row, '后端姓名', '后端工时')
+      ]]
+    }
+    if (role.key === 'voip' && headers.includes('VOIP工程师姓名')) {
+      return [role.key, importRoleRows(row, 'VOIP工程师姓名', 'VOIP工程师工时')]
+    }
+    if (role.key === 'ai_quality') {
+      if (headers.includes('AI质量工程师姓名')) {
+        return [role.key, importRoleRows(row, 'AI质量工程师姓名', 'AI质量工程师工时')]
+      }
+      return [role.key, importRoleRows(row, '测试姓名', '测试工时')]
+    }
+    return [role.key, []]
+  }))
+}
+
 function triggerImport() {
   importFileInput.value?.click()
 }
@@ -454,7 +488,7 @@ async function handleImportFile(event) {
 
   try {
     const { headers, rows } = await parseExcelFile(file)
-    const expectedHeaders = ['版本号', '需求名称', 'AI产品经理', 'AI开发工程师姓名', 'AI开发工程师工时', 'VOIP工程师姓名', 'VOIP工程师工时', 'AI质量工程师姓名', 'AI质量工程师工时', '备注']
+    const expectedHeaders = ['版本号', '需求名称', 'AI产品经理', ...roleStore.list.flatMap(role => [`${role.name}姓名`, `${role.name}工时`]), '备注']
     const previousHeaders = ['版本号', '需求名称', 'AI产品经理', 'AI开发工程师姓名', 'AI开发工程师工时', 'AI质量工程师姓名', 'AI质量工程师工时', '备注']
     const legacyHeaders = ['版本号', '需求名称', '产品经理', '前端姓名', '前端工时', '后端姓名', '后端工时', '测试姓名', '测试工时', '备注']
     if (!validateHeaders(headers, expectedHeaders) && !validateHeaders(headers, previousHeaders) && !validateHeaders(headers, legacyHeaders)) {
@@ -475,10 +509,13 @@ async function handleImportFile(event) {
     // 发送到后端导入
     const res = await api.post('/report/import', {
       task_id: selectedTaskId.value,
-      rows: rows.map(r => ({
+      rows: rows.map(r => {
+        const roleBuckets = buildImportedRoleBuckets(r, headers)
+        return {
         version: String(r['版本号'] || '').trim(),
         merged_title: String(r['需求名称'] || '').trim(),
         product_managers: String((r['AI产品经理'] ?? r['产品经理']) || '').trim(),
+        role_buckets: roleBuckets,
         ai_dev_name: String(r['AI开发工程师姓名'] || '').trim(),
         ai_dev_hours: parseFloat(r['AI开发工程师工时']) || 0,
         voip_name: String(r['VOIP工程师姓名'] || '').trim(),
@@ -492,7 +529,7 @@ async function handleImportFile(event) {
         test_name: String(r['测试姓名'] || '').trim(),
         test_hours: parseFloat(r['测试工时']) || 0,
         remark: String(r['备注'] || '').trim()
-      }))
+      }})
     })
 
     // 上传原始文件存档
@@ -514,6 +551,23 @@ async function handleImportFile(event) {
 
 function handleDownloadTemplate() {
   downloadTemplate('report')
+}
+
+function getSummary({ columns, data }) {
+  return columns.map((column, index) => {
+    if (index === 0) return h('span', { style: 'font-weight:800; font-size:16px; color:#1D2129;' }, '合计')
+    if (column.property?.startsWith('role_') && column.property.endsWith('_hours')) {
+      const roleKey = column.property.slice(5, -6)
+      const role = roleStore.byKey(roleKey)
+      const total = data.reduce((sum, row) => sum + Number(row._roleTotals?.[roleKey] || 0), 0).toFixed(1)
+      return h('span', { style: `font-weight:700; font-size:14px; color:${role?.color || '#165DFF'};` }, total)
+    }
+    if (column.label?.startsWith('总计')) {
+      const total = data.reduce((sum, row) => sum + Number(row._rowTotal || 0), 0).toFixed(1)
+      return h('span', { style: 'font-weight:800; font-size:15px; color:var(--color-primary);' }, total)
+    }
+    return ''
+  })
 }
 </script>
 
@@ -626,28 +680,31 @@ function handleDownloadTemplate() {
             <span v-else style="color:var(--color-text-4);">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="AI开发工程师" align="center">
-          <el-table-column label="姓名" width="130">
+        <el-table-column v-for="role in roleStore.list" :key="role.key" align="center">
+          <template #header>
+            <span class="dt-report-role-header" :title="role.name">{{ roleHeaderLabel(role) }}</span>
+          </template>
+          <el-table-column :prop="`role_${role.key}_names`" label="姓名" width="130">
             <template #default="{ row }">
               <div v-if="canEditRow(row)" class="role-editor">
-                <div v-for="(person, i) in editableRoleRows(row, 'ai_developers')" :key="i" class="role-editor-row">
-                  <el-select v-model="person.staffName" filterable clearable size="small" placeholder="AI开发" class="role-staff-select" @change="scheduleRowAutoSave(row)">
-                    <el-option v-for="staff in roleOptions('ai_dev')" :key="staff.id" :label="staff.name" :value="staff.name" />
+                <div v-for="(person, i) in editableRoleRows(row, role.key)" :key="i" class="role-editor-row">
+                  <el-select v-model="person.staffName" filterable clearable size="small" :placeholder="role.short_name" class="role-staff-select" @change="scheduleRowAutoSave(row)">
+                    <el-option v-for="staff in roleOptions(role.key)" :key="staff.id" :label="staff.name" :value="staff.name" />
                   </el-select>
-                  <el-button link type="danger" size="small" class="role-remove-btn" @click="removeRolePerson(row, 'ai_developers', i)">×</el-button>
+                  <el-button link type="danger" size="small" class="role-remove-btn" @click="removeRolePerson(row, role.key, i)">×</el-button>
                 </div>
               </div>
-              <div v-else-if="formatNames(row.ai_developers).length">
-                <div v-for="(n, i) in formatNames(row.ai_developers)" :key="i" style="line-height:1.6;">{{ n }}</div>
+              <div v-else-if="formatNames(row.role_buckets?.[role.key]).length">
+                <div v-for="(name, i) in formatNames(row.role_buckets?.[role.key])" :key="i" style="line-height:1.6;">{{ name }}</div>
               </div>
               <span v-else style="color:var(--color-text-4);">-</span>
             </template>
           </el-table-column>
-          <el-table-column label="工时/H" width="88" align="center" header-class-name="dt-nowrap-header">
+          <el-table-column :prop="`role_${role.key}_hours`" label="工时/H" width="88" align="center" header-class-name="dt-nowrap-header">
             <template #default="{ row }">
               <div v-if="canEditRow(row)" class="hours-editor">
                 <el-input-number
-                  v-for="(person, i) in editableRoleRows(row, 'ai_developers')"
+                  v-for="(person, i) in editableRoleRows(row, role.key)"
                   :key="i"
                   v-model="person.hours"
                   :controls="false"
@@ -659,88 +716,8 @@ function handleDownloadTemplate() {
                   @blur="flushRowAutoSave(row)"
                 />
               </div>
-              <div v-else-if="formatHoursList(row.ai_developers).length">
-                <div v-for="(h, i) in formatHoursList(row.ai_developers)" :key="i" style="line-height:1.6; font-weight:700; color:#165DFF;">{{ h }}</div>
-              </div>
-              <span v-else style="color:var(--color-text-4);">-</span>
-            </template>
-          </el-table-column>
-        </el-table-column>
-        <el-table-column label="VOIP工程师" align="center">
-          <el-table-column label="姓名" width="130">
-            <template #default="{ row }">
-              <div v-if="canEditRow(row)" class="role-editor">
-                <div v-for="(person, i) in editableRoleRows(row, 'voip')" :key="i" class="role-editor-row">
-                  <el-select v-model="person.staffName" filterable clearable size="small" placeholder="VOIP" class="role-staff-select" @change="scheduleRowAutoSave(row)">
-                    <el-option v-for="staff in roleOptions('voip')" :key="staff.id" :label="staff.name" :value="staff.name" />
-                  </el-select>
-                  <el-button link type="danger" size="small" class="role-remove-btn" @click="removeRolePerson(row, 'voip', i)">×</el-button>
-                </div>
-              </div>
-              <div v-else-if="formatNames(row.voip).length">
-                <div v-for="(n, i) in formatNames(row.voip)" :key="i" style="line-height:1.6;">{{ n }}</div>
-              </div>
-              <span v-else style="color:var(--color-text-4);">-</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="工时/H" width="88" align="center" header-class-name="dt-nowrap-header">
-            <template #default="{ row }">
-              <div v-if="canEditRow(row)" class="hours-editor">
-                <el-input-number
-                  v-for="(person, i) in editableRoleRows(row, 'voip')"
-                  :key="i"
-                  v-model="person.hours"
-                  :controls="false"
-                  :min="0"
-                  :precision="1"
-                  size="small"
-                  class="manual-hours-input"
-                  @change="scheduleRowAutoSave(row)"
-                  @blur="flushRowAutoSave(row)"
-                />
-              </div>
-              <div v-else-if="formatHoursList(row.voip).length">
-                <div v-for="(h, i) in formatHoursList(row.voip)" :key="i" style="line-height:1.6; font-weight:700; color:#00B42A;">{{ h }}</div>
-              </div>
-              <span v-else style="color:var(--color-text-4);">-</span>
-            </template>
-          </el-table-column>
-        </el-table-column>
-        <el-table-column label="AI质量工程师" align="center">
-          <el-table-column label="姓名" width="130">
-            <template #default="{ row }">
-              <div v-if="canEditRow(row)" class="role-editor">
-                <div v-for="(person, i) in editableRoleRows(row, 'ai_quality')" :key="i" class="role-editor-row">
-                  <el-select v-model="person.staffName" filterable clearable size="small" placeholder="AI质量" class="role-staff-select" @change="scheduleRowAutoSave(row)">
-                    <el-option v-for="staff in roleOptions('ai_quality')" :key="staff.id" :label="staff.name" :value="staff.name" />
-                  </el-select>
-                  <el-button link type="danger" size="small" class="role-remove-btn" @click="removeRolePerson(row, 'ai_quality', i)">×</el-button>
-                </div>
-              </div>
-              <div v-else-if="formatNames(row.ai_quality).length">
-                <div v-for="(n, i) in formatNames(row.ai_quality)" :key="i" style="line-height:1.6;">{{ n }}</div>
-              </div>
-              <span v-else style="color:var(--color-text-4);">-</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="工时/H" width="88" align="center" header-class-name="dt-nowrap-header">
-            <template #default="{ row }">
-              <div v-if="canEditRow(row)" class="hours-editor">
-                <el-input-number
-                  v-for="(person, i) in editableRoleRows(row, 'ai_quality')"
-                  :key="i"
-                  v-model="person.hours"
-                  :controls="false"
-                  :min="0"
-                  :precision="1"
-                  size="small"
-                  class="manual-hours-input"
-                  @change="scheduleRowAutoSave(row)"
-                  @blur="flushRowAutoSave(row)"
-                />
-              </div>
-              <div v-else-if="formatHoursList(row.ai_quality).length">
-                <div v-for="(h, i) in formatHoursList(row.ai_quality)" :key="i" style="line-height:1.6; font-weight:700; color:#FF7D00;">{{ h }}</div>
+              <div v-else-if="formatHoursList(row.role_buckets?.[role.key]).length">
+                <div v-for="(hours, i) in formatHoursList(row.role_buckets?.[role.key])" :key="i" :style="{ lineHeight: 1.6, fontWeight: 700, color: role.color }">{{ hours }}</div>
               </div>
               <span v-else style="color:var(--color-text-4);">-</span>
             </template>
@@ -784,56 +761,19 @@ function handleDownloadTemplate() {
   </div>
 </template>
 
-<script>
-import { h } from 'vue'
-export default {
-  methods: {
-    getSummary({ columns, data }) {
-      const sums = []
-      columns.forEach((col, idx) => {
-        if (idx === 0) {
-          sums[idx] = h('span', { style: 'font-weight:800; font-size:16px; color:#1D2129;' }, '合计')
-          return
-        }
-        if (col.property === 'version' || col.property === 'merged_title') { sums[idx] = ''; return }
-        // 姓名列留空
-        if (col.label === '姓名' || col.label === '产品经理' || col.label === 'AI产品经理') { sums[idx] = ''; return }
-        // AI开发工程师工时
-        if (col.label === '工时/H' && idx <= 6) {
-          const val = data.reduce((s, row) => s + (row._aiDevTotal || 0), 0).toFixed(1)
-          sums[idx] = h('span', { style: 'font-weight:700; font-size:14px; color:#165DFF;' }, val)
-          return
-        }
-        // VOIP工程师工时
-        if (col.label === '工时/H' && idx <= 8) {
-          const val = data.reduce((s, row) => s + (row._voipTotal || 0), 0).toFixed(1)
-          sums[idx] = h('span', { style: 'font-weight:700; font-size:14px; color:#00B42A;' }, val)
-          return
-        }
-        // AI质量工程师工时
-        if (col.label === '工时/H' && idx <= 10) {
-          const val = data.reduce((s, row) => s + (row._aiQualityTotal || 0), 0).toFixed(1)
-          sums[idx] = h('span', { style: 'font-weight:700; font-size:14px; color:#FF7D00;' }, val)
-          return
-        }
-        // 总计列
-        if (col.label && col.label.startsWith('总计')) {
-          const val = data.reduce((s, row) => s + (row._rowTotal || 0), 0).toFixed(1)
-          sums[idx] = h('span', { style: 'font-weight:800; font-size:15px; color:var(--color-primary);' }, val)
-          return
-        }
-        sums[idx] = ''
-      })
-      return sums
-    }
-  }
-}
-</script>
-
 <style scoped>
 /* REQ-29: 工时/H列头不换行 */
 :deep(.dt-nowrap-header .cell) {
   white-space: nowrap;
+}
+
+.dt-report-role-header {
+  display: inline-block;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
 }
 
 .manual-cell-select {

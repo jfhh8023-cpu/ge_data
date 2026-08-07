@@ -13,7 +13,7 @@ import { ElMessage } from 'element-plus'
 import api from '../api'
 import { broadcastDataChange, SYNC_EVENTS } from '../utils/sync'
 import { parseExcelFile, validateHeaders, generateAndDownloadExcel, uploadExcelToServer, downloadTemplate } from '../utils/excel'
-import { ROLE_LABEL } from '../utils/roles'
+import { roleLabel } from '../utils/roles'
 
 const route = useRoute()
 const loading = ref(true)
@@ -600,7 +600,7 @@ function exportHistory() {
                     {{ currentTask?.title || '工作统计' }}
                   </h1>
                   <p style="font-size:13px; line-height:1.35; color:var(--color-text-3);">
-                    【{{ ROLE_LABEL[fillData?.staff?.role] }}】{{ fillData?.staff?.name }} 工作内容填写
+                    【{{ roleLabel(fillData?.staff?.role) }}】{{ fillData?.staff?.name }} 工作内容填写
                   </p>
                 </div>
                 <span

@@ -17,15 +17,14 @@ const {
   setStaffStatus
 } = require('../services/PersonStatusService');
 const {
-  STAFF_ROLE_OPTIONS,
   decorateRolePayload,
+  isValidStaffRole,
   normalizeStaffRole
 } = require('../services/RoleService');
 
 /* 常量 */
 const MIN_NAME_LENGTH = 2;
 const MAX_NAME_LENGTH = 20;
-const VALID_ROLES = STAFF_ROLE_OPTIONS.map(item => item.value);
 const PHONE_PATTERN = /^\d{5,20}$/;
 
 function normalizePhone(phone) {
@@ -42,7 +41,17 @@ function normalizePhone(phone) {
 /* GET /api/staff — v1.6.0: 携带 fillToken */
 router.get('/', async (req, res, next) => {
   try {
+    const where = {};
+    const name = String(req.query.name || '').trim();
+    const phone = String(req.query.phone || '').trim();
+    const role = normalizeStaffRole(req.query.role, '');
+    const status = String(req.query.status || '').trim();
+    if (name) where.name = { [Op.like]: `%${name}%` };
+    if (phone) where.phone = { [Op.like]: `%${phone}%` };
+    if (role) where.role = role;
+    if (status) where.employment_status = status;
     const list = await Staff.findAll({
+      where,
       order: [['sort_order', 'ASC'], ['created_at', 'ASC']],
       include: [{ model: StaffFillLink, as: 'fillLink', attributes: ['token'] }]
     });
@@ -176,7 +185,7 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ code: 1, message: `姓名长度须为${MIN_NAME_LENGTH}-${MAX_NAME_LENGTH}个字符` });
     }
     const normalizedRole = normalizeStaffRole(role, '');
-    if (!VALID_ROLES.includes(normalizedRole)) {
+    if (!(await isValidStaffRole(normalizedRole))) {
       return res.status(400).json({ code: 1, message: '角色无效' });
     }
     const staffId = uuidv4();
@@ -201,7 +210,10 @@ router.put('/:id', async (req, res, next) => {
     }
     if (role !== undefined) {
       const normalizedRole = normalizeStaffRole(role, '');
-      if (VALID_ROLES.includes(normalizedRole)) staff.role = normalizedRole;
+      if (!(await isValidStaffRole(normalizedRole))) {
+        return res.status(400).json({ code: 1, message: '角色无效' });
+      }
+      staff.role = normalizedRole;
     }
     if (req.body.phone !== undefined) staff.phone = normalizePhone(req.body.phone);
     if (is_active !== undefined) {

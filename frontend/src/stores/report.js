@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import api from '../api'
+import { ROLE_AI_DEV, ROLE_AI_QUALITY, ROLE_VOIP, getRoleDefinitions } from '../utils/roles'
 
 function parseJsonArray(value) {
   if (Array.isArray(value)) return value
@@ -31,6 +32,15 @@ function normalizeRoleList(value) {
     .filter(item => item.staffName || item.hours > 0)
 }
 
+function parseRoleBuckets(value) {
+  let source = value
+  if (typeof source === 'string') {
+    try { source = JSON.parse(source) } catch { source = {} }
+  }
+  if (!source || Array.isArray(source) || typeof source !== 'object') return {}
+  return Object.fromEntries(Object.entries(source).map(([key, rows]) => [key, normalizeRoleList(rows)]))
+}
+
 function normalizeGroup(group) {
   const frontend = normalizeRoleList(group.frontend)
   const backend = normalizeRoleList(group.backend)
@@ -38,6 +48,15 @@ function normalizeGroup(group) {
   const testRole = normalizeRoleList(group.test_role)
   const aiDevelopers = normalizeRoleList(group.ai_developers)
   const aiQuality = normalizeRoleList(group.ai_quality)
+  const parsedBuckets = parseRoleBuckets(group.role_buckets)
+  const roleBuckets = Object.keys(parsedBuckets).length ? parsedBuckets : {
+    [ROLE_AI_DEV]: aiDevelopers.length ? aiDevelopers : [...frontend, ...backend],
+    [ROLE_VOIP]: voip,
+    [ROLE_AI_QUALITY]: aiQuality.length ? aiQuality : testRole
+  }
+  for (const role of getRoleDefinitions()) {
+    if (!roleBuckets[role.key]) roleBuckets[role.key] = []
+  }
   return {
     ...group,
     product_managers: parseJsonArray(group.product_managers).map(item => String(item || '').trim()).filter(Boolean),
@@ -45,8 +64,10 @@ function normalizeGroup(group) {
     backend,
     voip,
     test_role: testRole,
-    ai_developers: aiDevelopers.length ? aiDevelopers : [...frontend, ...backend],
-    ai_quality: aiQuality.length ? aiQuality : testRole
+    role_buckets: roleBuckets,
+    ai_developers: roleBuckets[ROLE_AI_DEV] || [],
+    voip: roleBuckets[ROLE_VOIP] || [],
+    ai_quality: roleBuckets[ROLE_AI_QUALITY] || []
   }
 }
 
@@ -59,28 +80,37 @@ export const useReportStore = defineStore('report', {
     /** 计算每行工时总计 */
     groupsWithTotal: (state) => {
       return state.matchGroups.map(g => {
-        const dev = Array.isArray(g.ai_developers) ? g.ai_developers : []
-        const qa = Array.isArray(g.ai_quality) ? g.ai_quality : []
-        const voip = Array.isArray(g.voip) ? g.voip : []
-        const aiDevTotal = dev.reduce((s, p) => s + (parseFloat(p.hours) || 0), 0)
-        const aiQualityTotal = qa.reduce((s, p) => s + (parseFloat(p.hours) || 0), 0)
-        const voipTotal = voip.reduce((s, p) => s + (parseFloat(p.hours) || 0), 0)
+        const roleTotals = Object.fromEntries(Object.entries(g.role_buckets || {}).map(([key, rows]) => [
+          key,
+          (Array.isArray(rows) ? rows : []).reduce((sum, person) => sum + (parseFloat(person.hours) || 0), 0)
+        ]))
+        const aiDevTotal = roleTotals[ROLE_AI_DEV] || 0
+        const aiQualityTotal = roleTotals[ROLE_AI_QUALITY] || 0
+        const voipTotal = roleTotals[ROLE_VOIP] || 0
         return {
           ...g,
+          _roleTotals: roleTotals,
           _aiDevTotal: aiDevTotal,
           _aiQualityTotal: aiQualityTotal,
           _voipTotal: voipTotal,
           _frontendTotal: aiDevTotal,
           _backendTotal: 0,
           _testTotal: aiQualityTotal,
-          _rowTotal: aiDevTotal + voipTotal + aiQualityTotal
+          _rowTotal: Object.values(roleTotals).reduce((sum, value) => sum + value, 0)
         }
       })
     },
     /** 各列合计 */
     columnTotals() {
       const groups = this.groupsWithTotal
+      const totals = {}
+      for (const group of groups) {
+        for (const [key, value] of Object.entries(group._roleTotals || {})) {
+          totals[key] = (totals[key] || 0) + value
+        }
+      }
       return {
+        ...totals,
         ai_dev: groups.reduce((s, g) => s + g._aiDevTotal, 0),
         voip: groups.reduce((s, g) => s + g._voipTotal, 0),
         ai_quality: groups.reduce((s, g) => s + g._aiQualityTotal, 0),

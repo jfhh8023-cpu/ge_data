@@ -1,0 +1,18 @@
+{"id":"ROLE-DEFAULT","status":"PASS","evidence":"/api/roles 返回 AI开发、VOIP、AI质量、嵌入式软件工程师四个角色"}
+{"id":"ROLE-VALIDATION","status":"PASS","evidence":"未知角色新增人员返回 400 角色无效"}
+{"id":"ROLE-CRUD","status":"PASS","evidence":"临时自定义角色新增和编辑后全局返回更新名称、简称、颜色"}
+{"id":"STAFF-FILTERS","status":"PASS","evidence":"姓名、手机号、角色、状态四条件组合筛选仅返回目标人员"}
+{"id":"DYNAMIC-STATS","status":"PASS","evidence":"临时角色 1.25h 同时进入部门 roleSummary 与 PM 分布"}
+{"id":"REPORT-IMPORT-EDIT","status":"PASS","evidence":"数组 PM、动态 role_buckets 导入、整行编辑和回读正确"}
+{"id":"DYNAMIC-EXCEL","status":"PASS","evidence":"动态模板与 26 个工作表的全量备份包含临时角色和嵌入式角色"}
+{"id":"PM-ZERO-FILTER","status":"PASS","evidence":"11 位 PM 中 5 位有值显示、6 位全 0 隐藏，导出复用同一数据源"}
+{"id":"ROLE-NOWRAP","status":"PASS","evidence":"人员标签及四个需求报表角色表头 white-space=nowrap 且未裁剪"}
+{"id":"WORKLOAD-REPORT","status":"PASS","evidence":"重新生成 36 个周期页面，含嵌入式角色和两位 VOIP 工程师"}
+{"id":"SECURITY-ESCAPE","status":"PASS","evidence":"动态角色名称在离线 HTML 图例和 SVG title 中统一转义，颜色仅允许 #RRGGBB"}
+{"id":"DATA-CONSERVATION","status":"PASS","evidence":"测试前后均为 staff=10 records=597 groups=351 roles=4 totalHours=7545.5"}
+{"id":"BUILD-RUNTIME","status":"PASS","evidence":"20 个后端 JS 语法检查、Vite 构建、健康检查、浏览器控制台与请求检查通过"}
+{"id":"PROD-SYNC-READONLY","status":"PASS","evidence":"生产仅执行 SHOW/SELECT/mysqldump 流式导出；导出前后核心指标一致，无生产写入"}
+{"id":"PROD-SYNC-TABLES","status":"PASS","evidence":"生产 17 张业务表导入本地后逐表行数差异 0，缺失表 0"}
+{"id":"PROD-SYNC-LOCAL-SCHEMA","status":"PASS","evidence":"本地幂等增加 4 个角色并迁移 425 个 role_buckets，业务记录和 8847.5h 守恒"}
+{"id":"PROD-SYNC-UI","status":"PASS","evidence":"生产快照下人员、需求报表、周期统计、离线报告回归通过；12 位 PM 显示 8 位、隐藏全 0 的 4 位"}
+{"id":"RELEASE-GATE-20260807","status":"PASS","evidence":"Vite 1684 模块构建通过；20 个后端 JS 语法检查通过；API 测试前后 staff=11 records=694 groups=427 roles=4 totalHours=9247.5 守恒；UI 角色、报表、图表、五卡单行及移动端回归通过；新增差异无清空逻辑"}

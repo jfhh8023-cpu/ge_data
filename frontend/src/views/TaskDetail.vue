@@ -11,6 +11,7 @@ import { useRoute } from 'vue-router'
 import { useTaskStore } from '../stores/task'
 import { useRecordStore } from '../stores/record'
 import { usePmStore } from '../stores/pm'
+import { useRoleStore } from '../stores/roles'
 
 import { ElMessage, ElMessageBox } from 'element-plus'
 import BackButton from '../components/BackButton.vue'
@@ -18,13 +19,14 @@ import api from '../api'
 import { onDataChange, SYNC_EVENTS } from '../utils/sync'
 import { parseExcelFile, validateHeaders, uploadExcelToServer, downloadTemplate } from '../utils/excel'
 import { useAuthStore } from '../stores/auth'
-import { ROLE_LABEL, ROLE_SHORT_LABEL, ROLE_TAG_CLASS, normalizeRole } from '../utils/roles'
+import { normalizeRole, roleLabel, roleTagStyle } from '../utils/roles'
 
 const route = useRoute()
 const taskStore = useTaskStore()
 const recordStore = useRecordStore()
 const authStore = useAuthStore()
 const pmStore = usePmStore()
+const roleStore = useRoleStore()
 
 
 const activeTab = ref('records')
@@ -86,13 +88,12 @@ onUnmounted(() => {
 /* ========== Tab 1: 提交数据 — 内联编辑 ========== */
 const editingRowId = ref('')
 
-/* REQ-26a: 角色排序常量（AI开发→VOIP→AI质量） */
-const ROLE_SORT_ORDER = { ai_dev: 0, voip: 1, ai_quality: 2 }
+const roleSortOrder = computed(() => Object.fromEntries(roleStore.list.map((role, index) => [role.key, index])))
 
 const sortedRecords = computed(() => {
   return [...recordStore.list].sort((a, b) => {
-    const ra = ROLE_SORT_ORDER[normalizeRole(a.staff?.role)] ?? 99
-    const rb = ROLE_SORT_ORDER[normalizeRole(b.staff?.role)] ?? 99
+    const ra = roleSortOrder.value[normalizeRole(a.staff?.role)] ?? 99
+    const rb = roleSortOrder.value[normalizeRole(b.staff?.role)] ?? 99
     return ra - rb
   })
 })
@@ -311,8 +312,8 @@ function handleDownloadTemplate() {
 
             <el-table-column label="角色" width="82">
               <template #default="{ row }">
-                <span class="dt-tag dt-role-short-tag" :class="ROLE_TAG_CLASS[row.staff?.role]">
-                  {{ ROLE_SHORT_LABEL[row.staff?.role] || ROLE_LABEL[row.staff?.role] || '-' }}
+                <span class="dt-tag dt-role-short-tag" :style="roleTagStyle(row.staff?.role)">
+                  {{ roleLabel(row.staff?.role, true) }}
                 </span>
               </template>
             </el-table-column>

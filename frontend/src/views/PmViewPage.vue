@@ -7,9 +7,11 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import api from '../api'
 import { ElMessage } from 'element-plus'
-import { ROLE_AI_DEV, ROLE_VOIP, ROLE_AI_QUALITY, ROLE_LABEL, ROLE_SHORT_LABEL, ROLE_TAG_CLASS } from '../utils/roles'
+import { useRoleStore } from '../stores/roles'
+import { ROLE_AI_DEV, ROLE_AI_QUALITY, roleLabel, roleTagStyle } from '../utils/roles'
 
 const route = useRoute()
+const roleStore = useRoleStore()
 const token = computed(() => route.params.token)
 
 const loading = ref(true)
@@ -69,12 +71,6 @@ watch(filterQuarter, (val) => {
   if (!val) filterMonth.value = 0
 })
 
-const ROLE_TAG_STYLE = Object.fromEntries(Object.keys(ROLE_TAG_CLASS).map((key) => {
-  if (key === ROLE_VOIP) return [key, { background: '#E8FFEA', color: '#00B42A' }]
-  if (key === ROLE_AI_QUALITY || key === 'test') return [key, { background: '#FFF7E8', color: '#FF7D00' }]
-  return [key, { background: '#E8F3FF', color: '#165DFF' }]
-}))
-
 /* ========== 金银铜牌 ========== */
 const MEDAL_EMOJI = ['🥇', '🥈', '🥉']
 const MEDAL_CLASS = ['medal-gold', 'medal-silver', 'medal-bronze']
@@ -131,12 +127,11 @@ function toggleFullYear() {
 
 const roleSummary = computed(() => {
   const summary = pmData.value?.roleSummary || {}
-  const legacyAiDev = Number(summary.frontend || 0) + Number(summary.backend || 0)
-  return {
-    [ROLE_AI_DEV]: Number(summary[ROLE_AI_DEV] ?? legacyAiDev),
-    [ROLE_VOIP]: Number(summary[ROLE_VOIP] || 0),
-    [ROLE_AI_QUALITY]: Number(summary[ROLE_AI_QUALITY] ?? summary.test ?? 0)
-  }
+  return Object.fromEntries(roleStore.list.map(role => {
+    if (role.key === ROLE_AI_DEV && summary[role.key] === undefined) return [role.key, Number(summary.frontend || 0) + Number(summary.backend || 0)]
+    if (role.key === ROLE_AI_QUALITY && summary[role.key] === undefined) return [role.key, Number(summary.test || 0)]
+    return [role.key, Number(summary[role.key] || 0)]
+  }))
 })
 </script>
 
@@ -187,17 +182,9 @@ const roleSummary = computed(() => {
             <span class="pm-stat-label">总工时</span>
           </div>
           <div class="pm-stat-divider"></div>
-          <div class="pm-stat-item pm-stat-fe">
-            <span class="pm-stat-val">{{ roleSummary.ai_dev.toFixed(1) }}</span>
-            <span class="pm-stat-label">AI开发</span>
-          </div>
-          <div class="pm-stat-item pm-stat-be">
-            <span class="pm-stat-val">{{ roleSummary.voip.toFixed(1) }}</span>
-            <span class="pm-stat-label">VOIP</span>
-          </div>
-          <div class="pm-stat-item pm-stat-te">
-            <span class="pm-stat-val">{{ roleSummary.ai_quality.toFixed(1) }}</span>
-            <span class="pm-stat-label">AI质量</span>
+          <div v-for="role in roleStore.list" :key="role.key" class="pm-stat-item" :style="{ color: role.color }">
+            <span class="pm-stat-val">{{ Number(roleSummary[role.key] || 0).toFixed(1) }}</span>
+            <span class="pm-stat-label">{{ role.short_name }}</span>
           </div>
           <div class="pm-stat-divider"></div>
           <div class="pm-stat-item">
@@ -270,9 +257,9 @@ const roleSummary = computed(() => {
                     padding:'1px 5px', borderRadius:'9999px',
                     minWidth:'42px', lineHeight:'16px', whiteSpace:'nowrap',
                     fontSize:'10px', fontWeight:'500',
-                    ...(ROLE_TAG_STYLE[row.role] || {background:'#F2F3F5',color:'#86909C'})
+                    ...roleTagStyle(row.role)
                   }"
-                >{{ ROLE_SHORT_LABEL[row.role] || ROLE_LABEL[row.role] || row.role }}</span>
+                >{{ roleLabel(row.role, true) }}</span>
                 <span v-else style="color:#C9CDD4;">-</span>
               </template>
             </el-table-column>
