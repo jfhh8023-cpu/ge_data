@@ -87,6 +87,7 @@ const activeTab = ref('department')
 const pageLoading = ref(true)  // v1.4.3: 页面初始加载状态
 const pmSortOrder = ref('desc')  // v3.2.1: 默认工时降序（'' | 'asc' | 'desc'）
 const showBackTop = ref(false)
+const hideZeroValueBars = ref(true)
 
 /* ========== 弹窗状态 ========== */
 const reqStatsDialogVisible = ref(false)
@@ -390,6 +391,7 @@ onMounted(async () => {
     weekSelectorResizeObserver.observe(weekSelectorRef.value)
   }
   window.addEventListener('resize', updateWeekWindowSize)
+  window.addEventListener('resize', drawChart)
   window.addEventListener('scroll', updateBackTopVisibility, { passive: true })
   updateBackTopVisibility()
   // 监听工时变更广播，自动刷新统计
@@ -406,6 +408,7 @@ onUnmounted(() => {
   if (cleanupSync) cleanupSync()
   if (weekSelectorResizeObserver) weekSelectorResizeObserver.disconnect()
   window.removeEventListener('resize', updateWeekWindowSize)
+  window.removeEventListener('resize', drawChart)
   window.removeEventListener('scroll', updateBackTopVisibility)
 })
 
@@ -426,6 +429,11 @@ watch(activeTab, async (tab) => {
     await nextTick()
     drawChart()
   }
+})
+
+watch(hideZeroValueBars, async () => {
+  await nextTick()
+  drawChart()
 })
 
 watch([selectedYear, selectedQuarter, selectedTaskId, selectedNaturalWeekTaskId], async ([year, quarter], [oldYear, oldQuarter]) => {
@@ -520,6 +528,8 @@ const chartData = computed(() => {
     return roleStore.list.some(role => roleSummaryHours(pm, role.key) > 0)
   })
 })
+
+const departmentSummaryCardCount = computed(() => roleStore.list.length + 5)
 
 /* ========== v3.2.1: 需求总数统计（从 pmDistribution 计算） ========== */
 const reqStats = computed(() => {
@@ -995,10 +1005,7 @@ function drawChart() {
 
   const groupCount = data.length
   const bars = barMeta.value
-  const barTypes = bars.length
   const groupWidth = chartW / groupCount
-  const barWidth = Math.max(Math.min(groupWidth / (barTypes + 1.5), 40), 8)
-  const groupGap = (groupWidth - barWidth * barTypes) / 2
 
   // 绘制 Y 轴网格线
   const GRID_COUNT = 5
@@ -1019,12 +1026,16 @@ function drawChart() {
   }
 
   // 绘制柱形
-  const colors = bars.map(item => item.color)
-
   data.forEach((d, gi) => {
+    const visibleBars = hideZeroValueBars.value
+      ? bars.filter(bar => Number(d[bar.key] || 0) > 0)
+      : bars
+    const visibleBarCount = visibleBars.length || 1
+    const barWidth = Math.max(Math.min(groupWidth / (visibleBarCount + 1.5), 40), 8)
+    const groupGap = (groupWidth - barWidth * visibleBars.length) / 2
     const groupX = padding.left + gi * groupWidth + groupGap
 
-    bars.forEach((bar, bi) => {
+    visibleBars.forEach((bar, bi) => {
       const key = bar.key
       const val = d[key] || 0
       const barH = val * yScale
@@ -1032,7 +1043,7 @@ function drawChart() {
       const y = padding.top + chartH - barH
 
       // 柱形（圆角顶部）
-      ctx.fillStyle = colors[bi]
+      ctx.fillStyle = bar.color
       ctx.beginPath()
       const r = 3
       if (barH > r) {
@@ -1061,7 +1072,7 @@ function drawChart() {
     ctx.fillStyle = '#1D2129'
     ctx.font = '13px "Inter", "Microsoft YaHei", sans-serif'
     ctx.textAlign = 'center'
-    const labelX = groupX + barWidth * ((barTypes - 1) / 2)
+    const labelX = padding.left + (gi + 0.5) * groupWidth
     const displayName = d.name.length > 5 ? d.name.substring(0, 5) + '...' : d.name
     const labelW = ctx.measureText(displayName).width
     const labelY = padding.top + chartH + 22
@@ -1073,16 +1084,22 @@ function drawChart() {
 
   // 图例
   const legendY = 18
-  const legendItemWidth = Math.max(72, Math.min(120, (W - padding.left - padding.right) / Math.max(bars.length, 1)))
-  let legendX = Math.max(padding.left, W - padding.right - legendItemWidth * bars.length)
+  const legendMarkerSize = 10
+  const legendMarkerGap = 5
+  const legendItemGap = 18
+  const legendControlReserve = 112
+  ctx.font = '13px "Inter", "Microsoft YaHei", sans-serif'
+  const legendItemWidths = bars.map(bar => legendMarkerSize + legendMarkerGap + ctx.measureText(bar.label).width)
+  const legendWidth = legendItemWidths.reduce((sum, width) => sum + width, 0) + legendItemGap * Math.max(bars.length - 1, 0)
+  const legendRight = W - padding.right - legendControlReserve
+  let legendX = Math.max(padding.left, legendRight - legendWidth)
   bars.forEach((bar, i) => {
-    ctx.fillStyle = colors[i]
-    ctx.fillRect(legendX, legendY - 8, 12, 12)
+    ctx.fillStyle = bar.color
+    ctx.fillRect(legendX, legendY - 7, legendMarkerSize, legendMarkerSize)
     ctx.fillStyle = '#4E5969'
-    ctx.font = '13px "Inter", "Microsoft YaHei", sans-serif'
     ctx.textAlign = 'left'
-    ctx.fillText(bar.label, legendX + 16, legendY + 3)
-    legendX += legendItemWidth
+    ctx.fillText(bar.label, legendX + legendMarkerSize + legendMarkerGap, legendY + 2)
+    legendX += legendItemWidths[i] + legendItemGap
   })
 }
 
@@ -1203,6 +1220,8 @@ watch(activeTab, async (tab) => {
 /* ========== 研发聚焦双模式 ========== */
 const viewMode = ref('individual')  // 'individual' | 'all'
 const allPersonalData = ref({})
+const expandAllLatestWeek = ref(true)
+const allExpandedMap = ref({})
 const coreRoleKeys = [ROLE_AI_DEV, ROLE_VOIP, ROLE_AI_QUALITY]
 const additionalRoles = computed(() => roleStore.list.filter(role => !coreRoleKeys.includes(role.key)))
 
@@ -1214,6 +1233,23 @@ function roleSectionHeaderStyle(role) {
 function rolePersonGroupStyle(role, index) {
   const alternate = index % 2 === 1
   return { marginBottom: '16px', background: alternate ? `${roleColor(role)}0F` : 'transparent', borderRadius: '8px', padding: alternate ? '10px' : '0' }
+}
+
+function syncCollectiveLatestWeekExpansion() {
+  const nextExpandedMap = {}
+  if (expandAllLatestWeek.value) {
+    Object.values(allPersonalData.value).forEach(group => {
+      if (!Array.isArray(group)) return
+      group.forEach(person => {
+        const staffId = person.staff?.id
+        const latestTask = person.tasks?.[0]
+        if (staffId && latestTask?.id) {
+          nextExpandedMap[`${staffId}_${latestTask.id}`] = true
+        }
+      })
+    })
+  }
+  allExpandedMap.value = nextExpandedMap
 }
 
 async function loadAllPersonalData() {
@@ -1235,6 +1271,7 @@ async function loadAllPersonalData() {
     } catch { /* skip */ }
   }
   allPersonalData.value = grouped
+  syncCollectiveLatestWeekExpansion()
 }
 
 async function switchViewMode(mode) {
@@ -1255,7 +1292,6 @@ function toggleTask(taskId) {
 }
 
 /* REQ-25a: 一起查看模式下的折叠状态管理 */
-const allExpandedMap = ref({})
 function toggleAllTask(staffId, taskId) {
   const key = `${staffId}_${taskId}`
   allExpandedMap.value[key] = !allExpandedMap.value[key]
@@ -1567,7 +1603,10 @@ function exportStatsData() {
       <el-tab-pane label="部门全观" name="department">
 
         <!-- 概要卡片（v1.4.2：总工时→角色→通用，排序调整） -->
-        <div class="dt-stat-cards">
+        <div
+          class="dt-stat-cards dt-stat-cards-single-row"
+          :style="{ '--dt-stat-card-count': departmentSummaryCardCount }"
+        >
           <div class="dt-stat-card dt-stat-card-clickable" @click="openAnalysisDialog('total')">
             <div class="dt-stat-card-label">{{ filterLabel }} 总工时</div>
             <div class="dt-stat-card-value" style="color:#F53F3F;">
@@ -1605,7 +1644,13 @@ function exportStatsData() {
           <h3 style="font-size:15px; font-weight:600; color:var(--color-text-1); margin-bottom:16px;">
             按AI产品经理工时分布 — {{ filterLabel }}
           </h3>
-          <canvas ref="chartRef" :height="CANVAS_HEIGHT" @click="onChartClick" @mousemove="onChartMouseMove"></canvas>
+          <div class="dt-pm-chart-stage" :data-hide-zero-bars="hideZeroValueBars ? 'true' : 'false'">
+            <canvas ref="chartRef" :height="CANVAS_HEIGHT" @click="onChartClick" @mousemove="onChartMouseMove"></canvas>
+            <div class="dt-pm-chart-zero-toggle" title="开启后隐藏数值为0的柱子">
+              <span>隐藏零值</span>
+              <el-switch v-model="hideZeroValueBars" size="small" aria-label="隐藏零值柱状图" />
+            </div>
+          </div>
         </div>
 
         <!-- 明细表（REQ-13：PM 合并单元格） -->
@@ -1692,15 +1737,26 @@ function exportStatsData() {
       <!-- ===== Tab 2: 研发聚焦 ===== -->
       <el-tab-pane label="研发聚焦" name="personal">
         <!-- 模式切换按钮 -->
-        <div style="display:flex; gap:8px; margin-bottom:16px;">
-          <button
-            :class="['dt-btn', 'dt-btn-sm', viewMode === 'individual' ? 'dt-btn-primary' : 'dt-btn-outline']"
-            @click="switchViewMode('individual')"
-          >单独查看</button>
-          <button
-            :class="['dt-btn', 'dt-btn-sm', viewMode === 'all' ? 'dt-btn-primary' : 'dt-btn-outline']"
-            @click="switchViewMode('all')"
-          >一起查看</button>
+        <div class="dt-focus-mode-toolbar">
+          <div class="dt-focus-mode-buttons">
+            <button
+              :class="['dt-btn', 'dt-btn-sm', viewMode === 'individual' ? 'dt-btn-primary' : 'dt-btn-outline']"
+              @click="switchViewMode('individual')"
+            >单独查看</button>
+            <button
+              :class="['dt-btn', 'dt-btn-sm', viewMode === 'all' ? 'dt-btn-primary' : 'dt-btn-outline']"
+              @click="switchViewMode('all')"
+            >一起查看</button>
+          </div>
+          <label v-if="viewMode === 'all'" class="dt-focus-collective-toggle">
+            <span>集体展开最近一周</span>
+            <el-switch
+              v-model="expandAllLatestWeek"
+              size="small"
+              aria-label="集体展开最近一周"
+              @change="syncCollectiveLatestWeekExpansion"
+            />
+          </label>
         </div>
 
         <!-- ====== 单独查看模式 ====== -->
@@ -1822,14 +1878,14 @@ function exportStatsData() {
             <!-- AI开发工程师列 -->
             <div>
               <h3 :style="roleSectionHeaderStyle(ROLE_AI_DEV)">{{ roleDisplay(ROLE_AI_DEV) }}</h3>
-              <div v-for="(person, pIdx) in allPersonalData.ai_dev" :key="person.staff?.id" :style="rolePersonGroupStyle(ROLE_AI_DEV, pIdx)">
+              <div v-for="(person, pIdx) in allPersonalData.ai_dev" :key="person.staff?.id" class="dt-research-person-group" :style="rolePersonGroupStyle(ROLE_AI_DEV, pIdx)">
                 <div style="display:flex; align-items:center; gap:8px; padding:8px 12px; background:var(--color-bg-2); border-radius:8px; margin-bottom:4px;">
                   <div class="dt-role-avatar" :style="{ background: roleColor(ROLE_AI_DEV) }">{{ getInitial(person.staff?.name) }}</div>
                   <span style="font-weight:600; font-size:13px;">{{ person.staff?.name }}</span>
                   <span style="margin-left:auto; font-weight:700; color:var(--color-primary); font-size:13px;">{{ person.totalHours?.toFixed(1) || 0 }}H</span>
                 </div>
                 <div v-if="person.tasks?.length" style="padding-left:8px;">
-                  <div v-for="task in person.tasks" :key="task.id" style="border-bottom:1px solid var(--color-border-light);">
+                  <div v-for="(task, taskIndex) in person.tasks" :key="task.id" class="dt-research-person-task" :data-latest="taskIndex === 0 ? 'true' : 'false'" :data-expanded="isAllExpanded(person.staff?.id, task.id) ? 'true' : 'false'" style="border-bottom:1px solid var(--color-border-light);">
                     <div
                       style="display:flex; justify-content:space-between; padding:4px 4px; cursor:pointer; font-size:13px;"
                       @click="toggleAllTask(person.staff?.id, task.id)"
@@ -1840,7 +1896,7 @@ function exportStatsData() {
                       </span>
                       <span style="font-weight:700; color:var(--color-primary); font-size:13px;">{{ task.records.reduce((s,r) => s + parseFloat(r.hours || 0), 0).toFixed(1) }}H</span>
                     </div>
-                    <div v-if="isAllExpanded(person.staff?.id, task.id)" style="padding:4px 8px 8px 20px; font-size:12px; color:var(--color-text-3);">
+                    <div v-if="isAllExpanded(person.staff?.id, task.id)" class="dt-research-person-task-body" style="padding:4px 8px 8px 20px; font-size:12px; color:var(--color-text-3);">
                       <div v-for="(rec, ri) in task.records" :key="ri" style="display:flex; justify-content:space-between; padding:2px 0;">
                         <span>{{ rec.requirement_title || '-' }}</span>
                         <span style="font-weight:600; color:var(--color-text-2);">{{ rec.hours }}H</span>
@@ -1854,14 +1910,14 @@ function exportStatsData() {
             <!-- VOIP工程师列 -->
             <div>
               <h3 :style="roleSectionHeaderStyle(ROLE_VOIP)">{{ roleDisplay(ROLE_VOIP) }}</h3>
-              <div v-for="(person, pIdx) in allPersonalData.voip" :key="person.staff?.id" :style="rolePersonGroupStyle(ROLE_VOIP, pIdx)">
+              <div v-for="(person, pIdx) in allPersonalData.voip" :key="person.staff?.id" class="dt-research-person-group" :style="rolePersonGroupStyle(ROLE_VOIP, pIdx)">
                 <div style="display:flex; align-items:center; gap:8px; padding:8px 12px; background:var(--color-bg-2); border-radius:8px; margin-bottom:4px;">
                   <div class="dt-role-avatar" :style="{ background: roleColor(ROLE_VOIP) }">{{ getInitial(person.staff?.name) }}</div>
                   <span style="font-weight:600; font-size:13px;">{{ person.staff?.name }}</span>
                   <span style="margin-left:auto; font-weight:700; color:#00B42A; font-size:13px;">{{ person.totalHours?.toFixed(1) || 0 }}H</span>
                 </div>
                 <div v-if="person.tasks?.length" style="padding-left:8px;">
-                  <div v-for="task in person.tasks" :key="task.id" style="border-bottom:1px solid var(--color-border-light);">
+                  <div v-for="(task, taskIndex) in person.tasks" :key="task.id" class="dt-research-person-task" :data-latest="taskIndex === 0 ? 'true' : 'false'" :data-expanded="isAllExpanded(person.staff?.id, task.id) ? 'true' : 'false'" style="border-bottom:1px solid var(--color-border-light);">
                     <div
                       style="display:flex; justify-content:space-between; padding:4px 4px; cursor:pointer; font-size:13px;"
                       @click="toggleAllTask(person.staff?.id, task.id)"
@@ -1872,7 +1928,7 @@ function exportStatsData() {
                       </span>
                       <span style="font-weight:700; color:#00B42A; font-size:13px;">{{ task.records.reduce((s,r) => s + parseFloat(r.hours || 0), 0).toFixed(1) }}H</span>
                     </div>
-                    <div v-if="isAllExpanded(person.staff?.id, task.id)" style="padding:4px 8px 8px 20px; font-size:12px; color:var(--color-text-3);">
+                    <div v-if="isAllExpanded(person.staff?.id, task.id)" class="dt-research-person-task-body" style="padding:4px 8px 8px 20px; font-size:12px; color:var(--color-text-3);">
                       <div v-for="(rec, ri) in task.records" :key="ri" style="display:flex; justify-content:space-between; padding:2px 0;">
                         <span>{{ rec.requirement_title || '-' }}</span>
                         <span style="font-weight:600; color:var(--color-text-2);">{{ rec.hours }}H</span>
@@ -1886,14 +1942,14 @@ function exportStatsData() {
             <!-- AI质量工程师列 -->
             <div>
               <h3 :style="roleSectionHeaderStyle(ROLE_AI_QUALITY)">{{ roleDisplay(ROLE_AI_QUALITY) }}</h3>
-              <div v-for="(person, pIdx) in allPersonalData.ai_quality" :key="person.staff?.id" :style="rolePersonGroupStyle(ROLE_AI_QUALITY, pIdx)">
+              <div v-for="(person, pIdx) in allPersonalData.ai_quality" :key="person.staff?.id" class="dt-research-person-group" :style="rolePersonGroupStyle(ROLE_AI_QUALITY, pIdx)">
                 <div style="display:flex; align-items:center; gap:8px; padding:8px 12px; background:var(--color-bg-2); border-radius:8px; margin-bottom:4px;">
                   <div class="dt-role-avatar" :style="{ background: roleColor(ROLE_AI_QUALITY) }">{{ getInitial(person.staff?.name) }}</div>
                   <span style="font-weight:600; font-size:13px;">{{ person.staff?.name }}</span>
                   <span style="margin-left:auto; font-weight:700; color:var(--color-primary); font-size:13px;">{{ person.totalHours?.toFixed(1) || 0 }}H</span>
                 </div>
                 <div v-if="person.tasks?.length" style="padding-left:8px;">
-                  <div v-for="task in person.tasks" :key="task.id" style="border-bottom:1px solid var(--color-border-light);">
+                  <div v-for="(task, taskIndex) in person.tasks" :key="task.id" class="dt-research-person-task" :data-latest="taskIndex === 0 ? 'true' : 'false'" :data-expanded="isAllExpanded(person.staff?.id, task.id) ? 'true' : 'false'" style="border-bottom:1px solid var(--color-border-light);">
                     <div
                       style="display:flex; justify-content:space-between; padding:4px 4px; cursor:pointer; font-size:13px;"
                       @click="toggleAllTask(person.staff?.id, task.id)"
@@ -1904,7 +1960,7 @@ function exportStatsData() {
                       </span>
                       <span style="font-weight:700; color:var(--color-primary); font-size:13px;">{{ task.records.reduce((s,r) => s + parseFloat(r.hours || 0), 0).toFixed(1) }}H</span>
                     </div>
-                    <div v-if="isAllExpanded(person.staff?.id, task.id)" style="padding:4px 8px 8px 20px; font-size:12px; color:var(--color-text-3);">
+                    <div v-if="isAllExpanded(person.staff?.id, task.id)" class="dt-research-person-task-body" style="padding:4px 8px 8px 20px; font-size:12px; color:var(--color-text-3);">
                       <div v-for="(rec, ri) in task.records" :key="ri" style="display:flex; justify-content:space-between; padding:2px 0;">
                         <span>{{ rec.requirement_title || '-' }}</span>
                         <span style="font-weight:600; color:var(--color-text-2);">{{ rec.hours }}H</span>
@@ -1917,14 +1973,14 @@ function exportStatsData() {
             </div>
             <div v-for="role in additionalRoles" :key="role.key">
               <h3 :style="roleSectionHeaderStyle(role.key)">{{ role.name }}</h3>
-              <div v-for="(person, pIdx) in (allPersonalData[role.key] || [])" :key="person.staff?.id" :style="rolePersonGroupStyle(role.key, pIdx)">
+              <div v-for="(person, pIdx) in (allPersonalData[role.key] || [])" :key="person.staff?.id" class="dt-research-person-group" :style="rolePersonGroupStyle(role.key, pIdx)">
                 <div style="display:flex; align-items:center; gap:8px; padding:8px 12px; background:var(--color-bg-2); border-radius:8px; margin-bottom:4px;">
                   <div class="dt-role-avatar" :style="{ background: role.color }">{{ getInitial(person.staff?.name) }}</div>
                   <span style="font-weight:600; font-size:13px;">{{ person.staff?.name }}</span>
                   <span :style="{ marginLeft: 'auto', fontWeight: 700, color: role.color, fontSize: '13px' }">{{ person.totalHours?.toFixed(1) || 0 }}H</span>
                 </div>
                 <div v-if="person.tasks?.length" style="padding-left:8px;">
-                  <div v-for="task in person.tasks" :key="task.id" style="border-bottom:1px solid var(--color-border-light);">
+                  <div v-for="(task, taskIndex) in person.tasks" :key="task.id" class="dt-research-person-task" :data-latest="taskIndex === 0 ? 'true' : 'false'" :data-expanded="isAllExpanded(person.staff?.id, task.id) ? 'true' : 'false'" style="border-bottom:1px solid var(--color-border-light);">
                     <div style="display:flex; justify-content:space-between; padding:4px; cursor:pointer; font-size:13px;" @click="toggleAllTask(person.staff?.id, task.id)">
                       <span style="color:var(--color-text-2); display:flex; align-items:center; gap:4px;">
                         <span :style="{ transform: isAllExpanded(person.staff?.id, task.id) ? 'rotate(90deg)' : 'rotate(0)', transition: 'transform 0.2s', fontSize: '10px', color: 'var(--color-text-4)' }">▶</span>
@@ -1932,7 +1988,7 @@ function exportStatsData() {
                       </span>
                       <span :style="{ fontWeight: 700, color: role.color, fontSize: '13px' }">{{ task.records.reduce((sum, record) => sum + parseFloat(record.hours || 0), 0).toFixed(1) }}H</span>
                     </div>
-                    <div v-if="isAllExpanded(person.staff?.id, task.id)" style="padding:4px 8px 8px 20px; font-size:12px; color:var(--color-text-3);">
+                    <div v-if="isAllExpanded(person.staff?.id, task.id)" class="dt-research-person-task-body" style="padding:4px 8px 8px 20px; font-size:12px; color:var(--color-text-3);">
                       <div v-for="(record, recordIndex) in task.records" :key="recordIndex" style="display:flex; justify-content:space-between; padding:2px 0;">
                         <span>{{ record.requirement_title || '-' }}</span>
                         <span style="font-weight:600; color:var(--color-text-2);">{{ record.hours }}H</span>
@@ -2429,6 +2485,80 @@ function exportStatsData() {
 </template>
 
 <style scoped>
+.dt-focus-mode-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 32px;
+  margin-bottom: 16px;
+}
+
+.dt-focus-mode-buttons,
+.dt-focus-collective-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dt-focus-collective-toggle {
+  color: var(--color-text-2, #4E5969);
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.dt-stat-cards.dt-stat-cards-single-row {
+  grid-template-columns: repeat(var(--dt-stat-card-count), minmax(180px, 1fr));
+  gap: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 2px 8px;
+}
+
+.dt-stat-cards-single-row .dt-stat-card {
+  min-width: 0;
+  padding: 16px 12px;
+}
+
+.dt-stat-cards-single-row .dt-stat-card-label,
+.dt-stat-cards-single-row .dt-stat-card-value {
+  white-space: nowrap;
+}
+
+.dt-stat-cards-single-row .dt-stat-card-label {
+  font-size: 12px;
+}
+
+.dt-pm-chart-stage {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.dt-pm-chart-stage canvas {
+  display: block;
+  width: 100%;
+}
+
+.dt-pm-chart-zero-toggle {
+  position: absolute;
+  top: 2px;
+  right: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  color: var(--color-text-2, #4E5969);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.dt-pm-chart-zero-toggle :deep(.el-switch) {
+  height: 22px;
+}
+
 .dt-stats-actions {
   flex: 0 0 auto;
   min-height: 32px;
