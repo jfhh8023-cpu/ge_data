@@ -16,6 +16,7 @@ const ProductManager = require('./ProductManager');
 const AutoTaskRule = require('./AutoTaskRule');
 const AutoTaskRunLog = require('./AutoTaskRunLog');
 const AutoTaskMessage = require('./AutoTaskMessage');
+const AutoTaskChildNotification = require('./AutoTaskChildNotification');
 const Quote = require('./Quote');
 const QuoteConfig = require('./QuoteConfig');
 const StaffStatusHistory = require('./StaffStatusHistory');
@@ -68,6 +69,9 @@ AutoTaskRunLog.belongsTo(AutoTaskRule, { foreignKey: 'rule_id', as: 'rule' });
 AutoTaskRule.hasMany(AutoTaskMessage, { foreignKey: 'rule_id', as: 'messages' });
 AutoTaskMessage.belongsTo(AutoTaskRule, { foreignKey: 'rule_id', as: 'rule' });
 
+AutoTaskRule.hasMany(AutoTaskChildNotification, { foreignKey: 'rule_id', as: 'childNotifications' });
+AutoTaskChildNotification.belongsTo(AutoTaskRule, { foreignKey: 'rule_id', as: 'rule' });
+
 // AutoTaskRule 1:1 QuoteConfig（v3.3.0 名句搭配）
 AutoTaskRule.hasOne(QuoteConfig, { foreignKey: 'rule_id', as: 'quoteConfig' });
 QuoteConfig.belongsTo(AutoTaskRule, { foreignKey: 'rule_id', as: 'rule' });
@@ -87,6 +91,7 @@ module.exports = {
   AutoTaskRule,
   AutoTaskRunLog,
   AutoTaskMessage,
+  AutoTaskChildNotification,
   Quote,
   QuoteConfig,
   StaffStatusHistory,

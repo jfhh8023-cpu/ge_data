@@ -5,21 +5,25 @@
 const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
-const { AutoTaskRule, AutoTaskRunLog, AutoTaskMessage } = require('../models');
+const { AutoTaskRule, AutoTaskRunLog, AutoTaskMessage, AutoTaskChildNotification } = require('../models');
 const {
+  deactivateChildNotifications,
   getNextRunAt,
+  normalizeChildNotificationPayload,
   normalizeDutyConfig,
   normalizeRulePayload,
   normalizeRecipientConfig,
   normalizeWebhookConfigs,
   normalizeWebhookList,
   runRuleOnce,
-  sendDingTalkWebhook
+  serializeChildNotification,
+  sendDingTalkWebhook,
+  testChildNotification
 } = require('../services/AutoTaskService');
 const { buildReportBackup } = require('../services/ReportBackupService');
 const { safeParseJsonArray } = require('../utils/parseJson');
 
-function serializeRule(rule) {
+function serializeRule(rule, childNotifications = []) {
   const plain = rule.toJSON ? rule.toJSON() : rule;
   const dingtalkWebhooks = normalizeWebhookConfigs(plain.dingtalk_webhook);
   const dingtalkRecipients = normalizeRecipientConfig(plain.dingtalk_recipients);
@@ -35,8 +39,17 @@ function serializeRule(rule) {
     dingtalk_webhooks: dingtalkWebhooks,
     dingtalk_recipients: dingtalkRecipients,
     duty_config: normalizeDutyConfig(plain.duty_config),
+    child_notifications: childNotifications.map(child => serializeChildNotification(child, plain)),
     next_run_at: nextRunAt ? nextRunAt.toISOString() : null
   };
+}
+
+async function serializeRuleWithChildren(rule) {
+  const children = await AutoTaskChildNotification.findAll({
+    where: { rule_id: rule.id },
+    order: [['created_at', 'ASC']]
+  });
+  return serializeRule(rule, children);
 }
 
 async function createRuleMessage(ruleId, level, action, message) {
@@ -67,10 +80,16 @@ router.get('/auto-tasks', async (req, res, next) => {
     const rules = await AutoTaskRule.findAll({ order: [['created_at', 'DESC']] });
     const logs = await AutoTaskRunLog.findAll({ order: [['created_at', 'DESC']], limit: 100 });
     const messages = await AutoTaskMessage.findAll({ order: [['created_at', 'DESC']], limit: 300 });
+    const childNotifications = await AutoTaskChildNotification.findAll({ order: [['created_at', 'ASC']] });
+    const childrenByRule = new Map();
+    childNotifications.forEach(child => {
+      if (!childrenByRule.has(child.rule_id)) childrenByRule.set(child.rule_id, []);
+      childrenByRule.get(child.rule_id).push(child);
+    });
     res.json({
       code: 0,
       data: {
-        rules: rules.map(serializeRule),
+        rules: rules.map(rule => serializeRule(rule, childrenByRule.get(rule.id) || [])),
         logs,
         messages
       }
@@ -89,7 +108,7 @@ router.post('/auto-tasks', async (req, res, next) => {
       updated_at: new Date()
     });
     await createRuleMessage(rule.id, 'success', 'create', '规则创建成功');
-    res.json({ code: 0, data: serializeRule(rule), message: '编辑成功' });
+    res.json({ code: 0, data: await serializeRuleWithChildren(rule), message: '编辑成功' });
   } catch (err) { next(err); }
 });
 
@@ -100,8 +119,11 @@ router.put('/auto-tasks/:id', async (req, res, next) => {
     if (!rule) return res.status(404).json({ code: 1, message: '自动任务规则不存在' });
     const payload = normalizeRulePayload(req.body, rule);
     await rule.update({ ...payload, updated_at: new Date() });
+    if (!payload.enabled || !payload.notify_enabled || payload.action_mode === 'run_only' || payload.task_type !== 'task_create_notify') {
+      await deactivateChildNotifications(rule.id);
+    }
     await createRuleMessage(rule.id, 'success', 'update', '规则保存成功');
-    res.json({ code: 0, data: serializeRule(rule), message: '编辑成功' });
+    res.json({ code: 0, data: await serializeRuleWithChildren(rule), message: '编辑成功' });
   } catch (err) { next(err); }
 });
 
@@ -113,8 +135,107 @@ router.patch('/auto-tasks/:id/status', async (req, res, next) => {
     rule.enabled = req.body.enabled === true;
     rule.updated_at = new Date();
     await rule.save();
+    if (!rule.enabled) await deactivateChildNotifications(rule.id);
     await createRuleMessage(rule.id, 'success', 'status', rule.enabled ? '规则已启用' : '规则已停用');
-    res.json({ code: 0, data: serializeRule(rule), message: '编辑成功' });
+    res.json({ code: 0, data: await serializeRuleWithChildren(rule), message: '编辑成功' });
+  } catch (err) { next(err); }
+});
+
+/* POST /api/settings/auto-tasks/:id/child-notifications */
+router.post('/auto-tasks/:id/child-notifications', async (req, res, next) => {
+  try {
+    const rule = await AutoTaskRule.findByPk(req.params.id);
+    if (!rule) return res.status(404).json({ code: 1, message: '自动任务规则不存在' });
+    const payload = normalizeChildNotificationPayload(req.body, null, rule);
+    const child = await AutoTaskChildNotification.create({
+      id: uuidv4(),
+      rule_id: rule.id,
+      ...payload,
+      activation_token: null,
+      status: 'inactive',
+      created_at: new Date(),
+      updated_at: new Date()
+    });
+    await createRuleMessage(rule.id, 'success', 'child_notify', '子通知已新增');
+    res.json({ code: 0, data: serializeChildNotification(child, rule), message: '子通知已保存' });
+  } catch (err) { next(err); }
+});
+
+/* PUT /api/settings/auto-tasks/:id/child-notifications/:childId */
+router.put('/auto-tasks/:id/child-notifications/:childId', async (req, res, next) => {
+  try {
+    const rule = await AutoTaskRule.findByPk(req.params.id);
+    if (!rule) return res.status(404).json({ code: 1, message: '自动任务规则不存在' });
+    const child = await AutoTaskChildNotification.findOne({
+      where: { id: req.params.childId, rule_id: rule.id }
+    });
+    if (!child) return res.status(404).json({ code: 1, message: '子通知不存在' });
+    const payload = normalizeChildNotificationPayload(req.body, child, rule);
+    const wasEnabled = child.enabled === true;
+    const nextEnabled = payload.enabled === true;
+    const lifecycleReset = wasEnabled !== nextEnabled;
+    await child.update({
+      ...payload,
+      ...(lifecycleReset ? {
+        activation_token: null,
+        activation_scheduled_at: null,
+        activated_at: null,
+        status: 'inactive',
+        last_error: null
+      } : {}),
+      updated_at: new Date()
+    });
+    await createRuleMessage(rule.id, 'success', 'child_notify', '子通知已保存');
+    res.json({ code: 0, data: serializeChildNotification(child, rule), message: '子通知已保存' });
+  } catch (err) { next(err); }
+});
+
+/* PATCH /api/settings/auto-tasks/:id/child-notifications/:childId/status */
+router.patch('/auto-tasks/:id/child-notifications/:childId/status', async (req, res, next) => {
+  try {
+    const rule = await AutoTaskRule.findByPk(req.params.id);
+    if (!rule) return res.status(404).json({ code: 1, message: '自动任务规则不存在' });
+    const child = await AutoTaskChildNotification.findOne({
+      where: { id: req.params.childId, rule_id: rule.id }
+    });
+    if (!child) return res.status(404).json({ code: 1, message: '子通知不存在' });
+    await child.update({
+      enabled: req.body.enabled === true,
+      activation_token: null,
+      activation_scheduled_at: null,
+      activated_at: null,
+      status: 'inactive',
+      last_error: null,
+      updated_at: new Date()
+    });
+    await createRuleMessage(rule.id, 'success', 'child_notify', child.enabled ? '子通知已启用，等待主通知触发' : '子通知已停用');
+    res.json({ code: 0, data: serializeChildNotification(child, rule), message: '子通知状态已更新' });
+  } catch (err) { next(err); }
+});
+
+/* POST /api/settings/auto-tasks/:id/child-notifications/:childId/test-notify */
+router.post('/auto-tasks/:id/child-notifications/:childId/test-notify', async (req, res, next) => {
+  try {
+    const rule = await AutoTaskRule.findByPk(req.params.id);
+    if (!rule) return res.status(404).json({ code: 1, message: '自动任务规则不存在' });
+    const child = await AutoTaskChildNotification.findOne({
+      where: { id: req.params.childId, rule_id: rule.id }
+    });
+    if (!child) return res.status(404).json({ code: 1, message: '子通知不存在' });
+    const result = await testChildNotification(child, rule);
+    res.json({ code: 0, data: result, message: '子通知测试发送成功' });
+  } catch (err) { next(err); }
+});
+
+/* DELETE /api/settings/auto-tasks/:id/child-notifications/:childId */
+router.delete('/auto-tasks/:id/child-notifications/:childId', async (req, res, next) => {
+  try {
+    const count = await AutoTaskChildNotification.destroy({
+      where: { id: req.params.childId, rule_id: req.params.id }
+    });
+    if (count === 0) return res.status(404).json({ code: 1, message: '子通知不存在' });
+    await createRuleMessage(req.params.id, 'success', 'child_notify', '子通知已删除');
+    res.json({ code: 0, message: '子通知已删除' });
   } catch (err) { next(err); }
 });
 
@@ -161,6 +282,7 @@ router.delete('/auto-tasks/:id/messages', async (req, res, next) => {
 /* DELETE /api/settings/auto-tasks/:id */
 router.delete('/auto-tasks/:id', async (req, res, next) => {
   try {
+    await AutoTaskChildNotification.destroy({ where: { rule_id: req.params.id } });
     await AutoTaskMessage.destroy({ where: { rule_id: req.params.id } });
     await AutoTaskRunLog.destroy({ where: { rule_id: req.params.id } });
     const count = await AutoTaskRule.destroy({ where: { id: req.params.id } });

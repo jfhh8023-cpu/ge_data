@@ -1,6 +1,15 @@
 const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 const { DataTypes, Op } = require('sequelize');
-const { sequelize, AutoTaskRule, AutoTaskRunLog, AutoTaskMessage, CollectionTask, Staff } = require('../models');
+const {
+  sequelize,
+  AutoTaskRule,
+  AutoTaskRunLog,
+  AutoTaskMessage,
+  AutoTaskChildNotification,
+  CollectionTask,
+  Staff
+} = require('../models');
 const { createPreferredTask } = require('./TaskService');
 const { isNonResigned } = require('./PersonStatusService');
 const {
@@ -29,6 +38,11 @@ const WEEKLY_DUTY_MODE_ROTATION = 'rotation';
 const DAY_MS = 24 * 60 * 60 * 1000;
 const STALE_RUNNING_LOG_MS = 60 * 1000;
 const SCHEDULE_TRIGGER_GRACE_MS = 60 * 1000;
+const CHILD_STATUS_INACTIVE = 'inactive';
+const CHILD_STATUS_PENDING = 'pending';
+const CHILD_STATUS_SENDING = 'sending';
+const CHILD_STATUS_SENT = 'sent';
+const CHILD_STATUS_FAILED = 'failed';
 let schedulerTimer = null;
 let ticking = false;
 
@@ -72,6 +86,7 @@ async function ensureRunLogEventIndex() {
 async function ensureAutoTaskTables() {
   await AutoTaskRule.sync();
   await AutoTaskMessage.sync();
+  await AutoTaskChildNotification.sync();
   if (await tableExists('auto_task_run_logs')) {
     await ensureColumn('auto_task_run_logs', 'event_type', {
       type: DataTypes.STRING(30),
@@ -119,8 +134,29 @@ function toIntList(value, min, max) {
     .sort((a, b) => a - b);
 }
 
+function toStringList(value) {
+  let raw = value;
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      raw = Array.isArray(parsed) ? parsed : raw;
+    } catch {
+      // fall through to comma split below
+    }
+  }
+  raw = Array.isArray(raw)
+    ? raw
+    : (raw === null || raw === undefined || raw === '' ? [] : String(raw).split(','));
+  return [...new Set(raw.map(item => String(item || '').trim()).filter(Boolean))];
+}
+
 function defaultWebhookName(index) {
   return `钉钉群webhook机器人${String(index + 1).padStart(2, '0')}`;
+}
+
+function stableWebhookId(url, index = 0) {
+  const source = String(url || `webhook-${index + 1}`).trim();
+  return `webhook_${crypto.createHash('sha1').update(source).digest('hex').slice(0, 20)}`;
 }
 
 function normalizeWebhookConfigs(value) {
@@ -135,14 +171,23 @@ function normalizeWebhookConfigs(value) {
   }
   if (!Array.isArray(raw)) raw = raw ? [raw] : [];
   const seen = new Set();
+  const seenIds = new Set();
   return raw
     .map((item, index) => {
       if (typeof item === 'string') {
-        return { name: defaultWebhookName(index), url: item.trim() };
+        const url = item.trim();
+        const id = stableWebhookId(url, index);
+        seenIds.add(id);
+        return { id, name: defaultWebhookName(index), url };
       }
+      const url = String(item?.url || item?.webhook || item?.value || '').trim();
+      let id = String(item?.id || stableWebhookId(url, index)).trim().slice(0, 80);
+      if (!id || seenIds.has(id)) id = stableWebhookId(url, index);
+      seenIds.add(id);
       return {
+        id,
         name: String(item?.name || defaultWebhookName(index)).trim() || defaultWebhookName(index),
-        url: String(item?.url || item?.webhook || item?.value || '').trim()
+        url
       };
     })
     .filter(item => {
@@ -244,7 +289,7 @@ function normalizeWeeklyRotationConfig(value = {}) {
   const endWeekday = Number(source.end_weekday);
   const rawStartDate = String(source.start_date || '').slice(0, 10);
   const startDate = /^\d{4}-\d{2}-\d{2}$/.test(rawStartDate)
-    ? dateToYmd(getMonday(dateFromYmd(rawStartDate)))
+    ? rawStartDate
     : dateToYmd(getMonday(getBeijingDate()));
   const staffIds = Array.isArray(source.staff_ids) ? source.staff_ids : [];
   return {
@@ -252,6 +297,29 @@ function normalizeWeeklyRotationConfig(value = {}) {
     staff_ids: [...new Set(staffIds.map(id => String(id || '').trim()).filter(Boolean))],
     start_date: startDate
   };
+}
+
+function normalizeWeeklyDutyVersion(value = {}) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const effectiveDate = String(source.effective_date || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(effectiveDate)) return null;
+  return {
+    effective_date: effectiveDate,
+    weekly: normalizeDutyDayMap(source.weekly, 1, 7),
+    weekly_mode: normalizeWeeklyDutyMode(source.weekly_mode),
+    weekly_rotation: normalizeWeeklyRotationConfig(source.weekly_rotation)
+  };
+}
+
+function normalizeWeeklyDutyVersions(value) {
+  if (!Array.isArray(value)) return [];
+  const versionsByDate = new Map();
+  value.forEach(item => {
+    const normalized = normalizeWeeklyDutyVersion(item);
+    if (normalized) versionsByDate.set(normalized.effective_date, normalized);
+  });
+  return [...versionsByDate.values()]
+    .sort((a, b) => a.effective_date.localeCompare(b.effective_date));
 }
 
 function normalizeDutyConfig(value) {
@@ -264,12 +332,41 @@ function normalizeDutyConfig(value) {
     }
   }
   const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const weekly = normalizeDutyDayMap(source.weekly, 1, 7);
+  const weeklyMode = normalizeWeeklyDutyMode(source.weekly_mode);
+  const weeklyRotation = normalizeWeeklyRotationConfig(source.weekly_rotation);
+  const weeklyVersions = normalizeWeeklyDutyVersions(source.weekly_versions);
+  if (weeklyVersions.length > 0 && weeklyVersions[0].effective_date !== '1900-01-01') {
+    weeklyVersions.unshift({
+      effective_date: '1900-01-01',
+      weekly,
+      weekly_mode: weeklyMode,
+      weekly_rotation: weeklyRotation
+    });
+  }
   return {
-    weekly: normalizeDutyDayMap(source.weekly, 1, 7),
+    weekly,
     monthly: normalizeDutyDayMap(source.monthly, 1, 31),
-    weekly_mode: normalizeWeeklyDutyMode(source.weekly_mode),
-    weekly_rotation: normalizeWeeklyRotationConfig(source.weekly_rotation)
+    weekly_mode: weeklyMode,
+    weekly_rotation: weeklyRotation,
+    weekly_versions: weeklyVersions
   };
+}
+
+function resolveWeeklyDutyProfile(dutyConfig, ymd) {
+  const config = dutyConfig && typeof dutyConfig === 'object'
+    ? dutyConfig
+    : normalizeDutyConfig(dutyConfig);
+  let profile = {
+    weekly: normalizeDutyDayMap(config.weekly, 1, 7),
+    weekly_mode: normalizeWeeklyDutyMode(config.weekly_mode),
+    weekly_rotation: normalizeWeeklyRotationConfig(config.weekly_rotation)
+  };
+  for (const version of normalizeWeeklyDutyVersions(config.weekly_versions)) {
+    if (version.effective_date > ymd) break;
+    profile = version;
+  }
+  return profile;
 }
 
 function dutyItemHasStart(item) {
@@ -305,23 +402,28 @@ function rotationSequenceIndex(rotation, ymd) {
   const config = normalizeWeeklyRotationConfig(rotation);
   if (!config.staff_ids.length) return -1;
   const current = dateFromYmd(ymd);
-  const anchor = getMonday(dateFromYmd(config.start_date));
+  const anchor = dateFromYmd(config.start_date);
   const diffDays = Math.floor((current.getTime() - anchor.getTime()) / DAY_MS);
-  const weekOffset = Math.floor(diffDays / 7);
-  const weekdayOffset = getWeekdayNumber(ymd) - 1;
-  return positiveModulo((weekOffset * config.end_weekday) + weekdayOffset, config.staff_ids.length);
+  if (diffDays < 0) return -1;
+  const fullWeeks = Math.floor(diffDays / 7);
+  let slotCount = fullWeeks * config.end_weekday;
+  for (let offset = fullWeeks * 7; offset <= diffDays; offset++) {
+    if (getWeekdayNumber(addDays(anchor, offset)) <= config.end_weekday) slotCount += 1;
+  }
+  return slotCount > 0 ? positiveModulo(slotCount - 1, config.staff_ids.length) : -1;
 }
 
 function rotationStaffIdForDate(rotation, ymd) {
   const config = normalizeWeeklyRotationConfig(rotation);
   if (!config.staff_ids.length || getWeekdayNumber(ymd) > config.end_weekday) return '';
-  return config.staff_ids[rotationSequenceIndex(config, ymd)] || '';
+  const index = rotationSequenceIndex(config, ymd);
+  return index >= 0 ? (config.staff_ids[index] || '') : '';
 }
 
-function resolveWeeklyRotationDutyItem(dutyConfig, ymd) {
+function resolveWeeklyRotationDutyItem(dutyProfile, ymd) {
   const weekday = getWeekdayNumber(ymd);
-  const baseItem = normalizeDutyItem(dutyConfig.weekly[String(weekday)] || createDefaultDutyItem());
-  const staffId = rotationStaffIdForDate(dutyConfig.weekly_rotation, ymd);
+  const baseItem = normalizeDutyItem(dutyProfile.weekly[String(weekday)] || createDefaultDutyItem());
+  const staffId = rotationStaffIdForDate(dutyProfile.weekly_rotation, ymd);
   return normalizeDutyItem({
     ...baseItem,
     staff_ids: staffId ? [staffId] : [],
@@ -330,12 +432,14 @@ function resolveWeeklyRotationDutyItem(dutyConfig, ymd) {
 }
 
 function configuredWeeklyDutyKeys(dutyConfig) {
-  if (dutyConfig.weekly_mode !== WEEKLY_DUTY_MODE_ROTATION) {
-    return configuredDutyKeys(dutyConfig.weekly, true);
+  const today = dateToYmd(getBeijingDate());
+  const profile = resolveWeeklyDutyProfile(dutyConfig, today);
+  if (profile.weekly_mode !== WEEKLY_DUTY_MODE_ROTATION) {
+    return configuredDutyKeys(profile.weekly, true);
   }
-  if (!dutyConfig.weekly_rotation.staff_ids.length) return [];
-  return rotationRangeKeys(dutyConfig.weekly_rotation).filter(key => {
-    const baseItem = normalizeDutyItem(dutyConfig.weekly[String(key)] || createDefaultDutyItem());
+  if (!profile.weekly_rotation.staff_ids.length) return [];
+  return rotationRangeKeys(profile.weekly_rotation).filter(key => {
+    const baseItem = normalizeDutyItem(profile.weekly[String(key)] || createDefaultDutyItem());
     return String(baseItem.start_message || '').trim() ||
       (baseItem.send_mode === 'start_and_end' && String(baseItem.end_message || '').trim());
   });
@@ -529,9 +633,317 @@ function normalizeRulePayload(payload, existing = null) {
   };
 }
 
+function normalizeChildNotificationPayload(payload, existing = null, parentRule = null) {
+  if (parentRule && normalizeTaskType(parentRule.task_type) !== TASK_TYPE_CREATE_NOTIFY) {
+    const err = new Error('仅自动任务创建并通知规则支持子通知');
+    err.status = 400;
+    throw err;
+  }
+  const scheduleType = payload.schedule_type ?? existing?.schedule_type ?? 'weekly';
+  if (!['monthly', 'weekly'].includes(scheduleType)) {
+    const err = new Error('子通知计划类型不合法');
+    err.status = 400;
+    throw err;
+  }
+  const rawExecuteTime = String(payload.execute_time ?? existing?.execute_time ?? '09:00:00').trim();
+  if (!/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(rawExecuteTime)) {
+    const err = new Error('子通知执行时间格式必须为 HH:mm:ss');
+    err.status = 400;
+    throw err;
+  }
+  const executeTime = rawExecuteTime;
+  const weekDays = toIntList(payload.week_days ?? existing?.week_days, 1, 7);
+  const monthDays = toIntList(payload.month_days ?? existing?.month_days, 1, 31);
+  if (scheduleType === 'weekly' && weekDays.length === 0) {
+    const err = new Error('子通知按星期执行时至少选择一个星期');
+    err.status = 400;
+    throw err;
+  }
+  if (scheduleType === 'monthly' && monthDays.length === 0) {
+    const err = new Error('子通知按月执行时至少选择一个日期');
+    err.status = 400;
+    throw err;
+  }
+  const message = String(payload.message ?? existing?.message ?? '').trim();
+  if (!message) {
+    const err = new Error('子通知内容不能为空');
+    err.status = 400;
+    throw err;
+  }
+  if (message.length > 10000) {
+    const err = new Error('子通知内容不能超过 10000 个字符');
+    err.status = 400;
+    throw err;
+  }
+
+  const targetMode = (payload.webhook_target_mode ?? existing?.webhook_target_mode) === 'selected'
+    ? 'selected'
+    : 'all';
+  const selectedWebhookIds = toStringList(payload.webhook_ids ?? existing?.webhook_ids);
+  const parentWebhooks = normalizeWebhookConfigs(parentRule?.dingtalk_webhook);
+  const allowedWebhookIds = new Set(parentWebhooks.map(item => item.id));
+  const webhookIds = selectedWebhookIds.filter(id => allowedWebhookIds.has(id));
+  if (parentRule && parentWebhooks.length === 0) {
+    const err = new Error('请先为主通知保存至少一个有效 webhook');
+    err.status = 400;
+    throw err;
+  }
+  if (targetMode === 'selected' && webhookIds.length === 0) {
+    const err = new Error('指定 webhook 模式下至少选择一个当前主通知连接');
+    err.status = 400;
+    throw err;
+  }
+
+  return {
+    enabled: payload.enabled ?? existing?.enabled ?? true,
+    schedule_type: scheduleType,
+    month_days: scheduleType === 'monthly' ? monthDays : [],
+    week_days: scheduleType === 'weekly' ? weekDays : [],
+    execute_time: executeTime,
+    message,
+    webhook_target_mode: targetMode,
+    webhook_ids: JSON.stringify(targetMode === 'selected' ? webhookIds : [])
+  };
+}
+
 function partsFromYmd(ymd) {
   const [year, month, day] = String(ymd).split('-').map(Number);
   return { year, month, day, date: ymd };
+}
+
+function isChildNotificationParentActive(rule) {
+  return Boolean(
+    rule &&
+    rule.enabled &&
+    normalizeTaskType(rule.task_type) === TASK_TYPE_CREATE_NOTIFY &&
+    normalizeActionMode(rule.action_mode) !== 'run_only' &&
+    rule.notify_enabled
+  );
+}
+
+function isChildNotificationDateMatched(child, parts) {
+  if (child.schedule_type === 'monthly') {
+    return toIntList(child.month_days, 1, 31).includes(parts.day);
+  }
+  return toIntList(child.week_days, 1, 7).includes(getWeekdayNumber(parts.date));
+}
+
+function childActivationTime(child) {
+  const raw = child?.activation_scheduled_at || child?.activated_at;
+  const value = raw ? new Date(raw).getTime() : NaN;
+  return Number.isNaN(value) ? null : value;
+}
+
+function childTouchedTime(child) {
+  const raw = child?.updated_at || child?.created_at;
+  const value = raw ? new Date(raw).getTime() : NaN;
+  return Number.isNaN(value) ? 0 : value;
+}
+
+function isChildNotificationPending(child, parentRule) {
+  return Boolean(
+    child?.enabled &&
+    child?.activation_token &&
+    child?.status === CHILD_STATUS_PENDING &&
+    isChildNotificationParentActive(parentRule)
+  );
+}
+
+function getNextChildRunAt(child, parentRule, now = new Date()) {
+  if (!isChildNotificationPending(child, parentRule)) return null;
+  const activationTime = childActivationTime(child);
+  if (activationTime === null) return null;
+  const today = getBeijingDate(now);
+  const nowTime = now.getTime();
+  for (let offset = 0; offset <= 400; offset++) {
+    const candidate = addDays(today, offset);
+    const ymd = dateToYmd(candidate);
+    const parts = partsFromYmd(ymd);
+    if (!isChildNotificationDateMatched(child, parts)) continue;
+    const runAt = getBeijingScheduledAt(parts, normalizeTime(child.execute_time));
+    const runTime = runAt.getTime();
+    if (runTime < activationTime || runTime < childTouchedTime(child)) continue;
+    if (runTime > nowTime || nowTime - runTime <= SCHEDULE_TRIGGER_GRACE_MS) return runAt;
+  }
+  return null;
+}
+
+function getDueChildScheduledAt(child, parentRule, now = new Date()) {
+  if (!isChildNotificationPending(child, parentRule)) return null;
+  const parts = getBeijingParts(now);
+  if (!isChildNotificationDateMatched(child, parts)) return null;
+  const scheduledAt = getBeijingScheduledAt(parts, normalizeTime(child.execute_time));
+  const scheduledTime = scheduledAt.getTime();
+  const activationTime = childActivationTime(child);
+  if (activationTime === null || scheduledTime < activationTime || scheduledTime < childTouchedTime(child)) return null;
+  return isScheduleEventTriggerable({ updated_at: new Date(0), created_at: new Date(0) }, scheduledAt, now)
+    ? scheduledAt
+    : null;
+}
+
+function serializeChildNotification(child, parentRule, now = new Date()) {
+  const plain = child?.toJSON ? child.toJSON() : child;
+  const parentActive = isChildNotificationParentActive(parentRule);
+  let displayStatus = plain.enabled ? plain.status : CHILD_STATUS_INACTIVE;
+  if (!parentActive || !plain.activation_token) displayStatus = CHILD_STATUS_INACTIVE;
+  const nextRunAt = getNextChildRunAt({ ...plain, status: displayStatus }, parentRule, now);
+  return {
+    ...plain,
+    month_days: toIntList(plain.month_days, 1, 31),
+    week_days: toIntList(plain.week_days, 1, 7),
+    webhook_ids: toStringList(plain.webhook_ids),
+    status: displayStatus,
+    next_run_at: nextRunAt ? nextRunAt.toISOString() : null
+  };
+}
+
+async function activateChildNotifications(rule, activationScheduledAt) {
+  if (!isChildNotificationParentActive(rule)) return 0;
+  const token = uuidv4();
+  const now = new Date();
+  const [count] = await AutoTaskChildNotification.update({
+    activation_token: token,
+    activation_scheduled_at: activationScheduledAt,
+    activated_at: now,
+    status: CHILD_STATUS_PENDING,
+    last_scheduled_at: null,
+    last_error: null,
+    updated_at: now
+  }, {
+    where: { rule_id: rule.id, enabled: true }
+  });
+  if (count > 0) {
+    await recordAutoTaskMessage(rule.id, 'success', 'child_notify', `已激活 ${count} 条子通知`);
+  }
+  return count;
+}
+
+async function activateChildNotificationsSafely(rule, activationScheduledAt) {
+  try {
+    return await activateChildNotifications(rule, activationScheduledAt);
+  } catch (err) {
+    console.error('[auto-task] 子通知激活失败:', rule.id, err.message);
+    await recordAutoTaskMessage(rule.id, 'error', 'child_notify', `主通知已发送，但子通知激活失败：${err.message}`);
+    return 0;
+  }
+}
+
+async function deactivateChildNotifications(ruleId) {
+  if (!ruleId) return 0;
+  const [count] = await AutoTaskChildNotification.update({
+    activation_token: null,
+    activation_scheduled_at: null,
+    activated_at: null,
+    status: CHILD_STATUS_INACTIVE,
+    last_error: null,
+    updated_at: new Date()
+  }, {
+    where: {
+      rule_id: ruleId,
+      status: { [Op.in]: [CHILD_STATUS_PENDING, CHILD_STATUS_SENDING] }
+    }
+  });
+  return count;
+}
+
+function childTargetWebhooks(child, parentRule) {
+  const webhooks = normalizeWebhookConfigs(parentRule.dingtalk_webhook);
+  if (child.webhook_target_mode !== 'selected') return webhooks;
+  const selectedIds = new Set(toStringList(child.webhook_ids));
+  const selected = webhooks.filter(item => selectedIds.has(item.id));
+  if (selected.length === 0) throw new Error('子通知选择的 webhook 已不存在，请重新配置');
+  return selected;
+}
+
+async function testChildNotification(child, parentRule) {
+  const content = String(child?.message || '').trim();
+  if (!content) {
+    const err = new Error('子通知内容不能为空');
+    err.status = 400;
+    throw err;
+  }
+  const webhooks = childTargetWebhooks(child, parentRule);
+  const atConfig = await resolveAtConfig(parentRule.dingtalk_recipients);
+  return sendDingTalkCard(webhooks, content, atConfig, `${DINGTALK_CARD_TITLE}（子通知测试）`);
+}
+
+async function executeChildNotification(child, parentRule, scheduledAt) {
+  const token = String(child.activation_token || '');
+  if (!token) return null;
+  const claimedAt = new Date();
+  const [claimed] = await AutoTaskChildNotification.update({
+    status: CHILD_STATUS_SENDING,
+    last_scheduled_at: scheduledAt,
+    last_error: null,
+    updated_at: claimedAt
+  }, {
+    where: {
+      id: child.id,
+      rule_id: parentRule.id,
+      enabled: true,
+      status: CHILD_STATUS_PENDING,
+      activation_token: token
+    }
+  });
+  if (claimed !== 1) return null;
+
+  try {
+    const webhooks = childTargetWebhooks(child, parentRule);
+    const atConfig = await resolveAtConfig(parentRule.dingtalk_recipients);
+    await sendDingTalkCard(webhooks, String(child.message || '').trim(), atConfig, `${DINGTALK_CARD_TITLE}（子通知）`);
+    const sentAt = new Date();
+    await AutoTaskChildNotification.update({
+      status: CHILD_STATUS_SENT,
+      last_sent_at: sentAt,
+      last_error: null,
+      updated_at: sentAt
+    }, {
+      where: { id: child.id, activation_token: token, status: CHILD_STATUS_SENDING }
+    });
+    await recordAutoTaskMessage(parentRule.id, 'success', 'child_notify', '子通知发送成功');
+    return CHILD_STATUS_SENT;
+  } catch (err) {
+    await AutoTaskChildNotification.update({
+      status: CHILD_STATUS_FAILED,
+      last_error: err.message,
+      updated_at: new Date()
+    }, {
+      where: { id: child.id, activation_token: token, status: CHILD_STATUS_SENDING }
+    });
+    await recordAutoTaskMessage(parentRule.id, 'error', 'child_notify', `子通知发送失败：${err.message}`);
+    return CHILD_STATUS_FAILED;
+  }
+}
+
+async function processDueChildNotifications(now = new Date()) {
+  const staleBefore = new Date(now.getTime() - STALE_RUNNING_LOG_MS);
+  await AutoTaskChildNotification.update({
+    status: CHILD_STATUS_FAILED,
+    last_error: '服务在发送过程中中断，本轮不再自动重发，等待下一次主通知激活',
+    updated_at: now
+  }, {
+    where: {
+      status: CHILD_STATUS_SENDING,
+      updated_at: { [Op.lt]: staleBefore }
+    }
+  });
+
+  const children = await AutoTaskChildNotification.findAll({
+    where: { enabled: true, status: CHILD_STATUS_PENDING }
+  });
+  if (children.length === 0) return 0;
+  const ruleIds = [...new Set(children.map(child => child.rule_id))];
+  const parentRules = await AutoTaskRule.findAll({ where: { id: { [Op.in]: ruleIds } } });
+  const ruleMap = new Map(parentRules.map(rule => [rule.id, rule]));
+  let executed = 0;
+  for (const child of children) {
+    const parentRule = ruleMap.get(child.rule_id);
+    const scheduledAt = getDueChildScheduledAt(child, parentRule, now);
+    if (!scheduledAt) continue;
+    await executeChildNotification(child, parentRule, scheduledAt);
+    executed += 1;
+  }
+  return executed;
 }
 
 function isRuleDateMatched(rule, parts) {
@@ -576,10 +988,11 @@ function getDutyItemForParts(rule, parts) {
     if (rule.schedule_year && Number(rule.schedule_year) !== parts.year) return null;
     return dutyConfig.monthly[String(parts.day)] || null;
   }
-  if (dutyConfig.weekly_mode === WEEKLY_DUTY_MODE_ROTATION) {
-    return resolveWeeklyRotationDutyItem(dutyConfig, parts.date);
+  const profile = resolveWeeklyDutyProfile(dutyConfig, parts.date);
+  if (profile.weekly_mode === WEEKLY_DUTY_MODE_ROTATION) {
+    return resolveWeeklyRotationDutyItem(profile, parts.date);
   }
-  return dutyConfig.weekly[String(getWeekdayNumber(parts.date))] || null;
+  return profile.weekly[String(getWeekdayNumber(parts.date))] || null;
 }
 
 function buildDutyEventsForParts(rule, parts) {
@@ -986,6 +1399,7 @@ async function executeRule(rule, scheduledAt) {
     if (actionMode === 'notify_only') {
       try {
         await sendDingTalkWebhook(rule);
+        await activateChildNotificationsSafely(rule, scheduledAt);
         await log.update({
           status: 'success',
           message: '仅通知模式，通知发送成功',
@@ -1033,6 +1447,7 @@ async function executeRule(rule, scheduledAt) {
 
     try {
       await sendDingTalkWebhook(rule);
+      await activateChildNotificationsSafely(rule, scheduledAt);
       await log.update({
         status: 'success',
         message: result.message,
@@ -1091,6 +1506,7 @@ async function schedulerTick() {
         await recordAutoTaskMessage(rule.id, 'error', 'auto_run', `自动任务规则执行失败：${ruleErr.message}`);
       }
     }
+    await processDueChildNotifications(new Date());
   } catch (err) {
     console.error('[auto-task] 调度检查失败:', err.message);
   } finally {
@@ -1112,18 +1528,27 @@ function startAutoTaskScheduler() {
 }
 
 module.exports = {
+  activateChildNotifications,
   createNextWeeklyTask,
+  deactivateChildNotifications,
   ensureAutoTaskTables,
+  getDutyItemForParts,
+  getNextChildRunAt,
   getNextRunAt,
+  normalizeChildNotificationPayload,
   normalizeDutyConfig,
   normalizeRulePayload,
   normalizeRecipientConfig,
   normalizeWebhookConfigs,
   normalizeWebhookList,
+  processDueChildNotifications,
   recordAutoTaskMessage,
+  resolveWeeklyDutyProfile,
   runRuleOnce,
+  serializeChildNotification,
   sendDingTalkWebhook,
   schedulerTick,
   startAutoTaskScheduler,
+  testChildNotification,
   SKIP_MESSAGE
 };

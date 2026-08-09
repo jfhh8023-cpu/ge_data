@@ -5,7 +5,7 @@
  */
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete, Download, Plus, Promotion } from '@element-plus/icons-vue'
+import { Delete, Download, Edit, Plus, Promotion } from '@element-plus/icons-vue'
 import api from '../api'
 import BackButton from '../components/BackButton.vue'
 import { useAuthStore } from '../stores/auth'
@@ -42,6 +42,10 @@ const dutyDetailKey = ref('')
 const dutyDetailMode = ref('weekly')
 const dutyDetailTab = ref('fixed')
 const dutyDetailForm = ref(createDefaultDutyItem())
+const dutyDetailDraftMap = ref({})
+const dutyDetailMultiKey = ref(false)
+const dutyDetailEditContext = ref('current')
+const dutyPendingOriginalEffectiveDate = ref('')
 const dutyRotationForm = ref(createDefaultWeeklyRotationConfig())
 const dutyReferenceKey = ref('')
 const dutyBulkRule = ref(null)
@@ -60,6 +64,23 @@ const dutyBulkForm = ref({
 const dutyFutureDialogVisible = ref(false)
 const dutyFutureRule = ref(null)
 const dutyFutureOpenedAt = ref(localDateOnly(new Date()))
+const dutyFutureMode = ref('upcoming')
+const dutyFutureStartDate = ref(localDateOnly(new Date()))
+const childNotificationDialogVisible = ref(false)
+const childNotificationRule = ref(null)
+const childNotificationRuleIndex = ref(-1)
+const childNotifications = ref([])
+const childNotificationSavingId = ref('')
+const childNotificationDeletingId = ref('')
+const childNotificationStatusSavingId = ref('')
+const childNotificationTestingId = ref('')
+const childNotificationEditorVisible = ref(false)
+const childNotificationEditorForm = ref(createDefaultChildNotification())
+const childNotificationEditorIndex = ref(-1)
+const dutyDetailDate = ref(localDateOnly(new Date()))
+const dutyDetailOriginalMode = ref('fixed')
+const dutyEffectiveWeek = ref('this')
+const dutyEffectiveWeekday = ref(1)
 const backupFormat = ref('xlsx')
 const nowTs = ref(Date.now())
 let countdownTimer = null
@@ -107,6 +128,11 @@ const DUTY_SEND_MODE_START = 'start_only'
 const DUTY_SEND_MODE_BOTH = 'start_and_end'
 const WEEKLY_DUTY_MODE_FIXED = 'fixed'
 const WEEKLY_DUTY_MODE_ROTATION = 'rotation'
+const WEEKLY_DUTY_BASELINE_DATE = '1900-01-01'
+const CHILD_STATUS_INACTIVE = 'inactive'
+const CHILD_STATUS_PENDING = 'pending'
+const CHILD_STATUS_SENT = 'sent'
+const CHILD_STATUS_FAILED = 'failed'
 const PHONE_PATTERN = /^\d{5,20}$/
 
 const canEditAutoTasks = computed(() =>
@@ -159,8 +185,23 @@ function localIsoWeekInfo(date) {
   return { year: weekYear, week }
 }
 
+function createLocalKey(prefix) {
+  return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`
+}
+
+function fallbackWebhookId(value, index = 0) {
+  const text = String(value || `webhook-${index + 1}`)
+  let hash = 2166136261
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return `webhook_local_${(hash >>> 0).toString(16)}`
+}
+
 function createDefaultWebhook(index = 0) {
   return {
+    id: createLocalKey('webhook'),
     name: defaultWebhookName(index),
     url: ''
   }
@@ -195,12 +236,33 @@ function createDefaultWeeklyRotationConfig() {
   }
 }
 
+function createDefaultChildNotification() {
+  return {
+    localKey: createLocalKey('child'),
+    id: '',
+    enabled: true,
+    schedule_type: 'weekly',
+    month_days: [1],
+    week_days: [1],
+    execute_time: '09:00:00',
+    message: '',
+    webhook_target_mode: 'all',
+    webhook_ids: [],
+    activation_token: null,
+    status: CHILD_STATUS_INACTIVE,
+    next_run_at: null,
+    last_sent_at: null,
+    last_error: null
+  }
+}
+
 function createDefaultDutyConfig() {
   return {
     weekly: {},
     monthly: {},
     weekly_mode: WEEKLY_DUTY_MODE_FIXED,
-    weekly_rotation: createDefaultWeeklyRotationConfig()
+    weekly_rotation: createDefaultWeeklyRotationConfig(),
+    weekly_versions: []
   }
 }
 
@@ -223,6 +285,7 @@ function createDefaultRule(taskType = TASK_TYPE_CREATE_NOTIFY) {
     dingtalk_message: '',
     dingtalk_recipients: createDefaultRecipientConfig(),
     duty_config: createDefaultDutyConfig(),
+    child_notifications: [],
     next_run_at: null,
     _savedNotificationKey: ''
   }
@@ -242,13 +305,16 @@ function normalizeWebhookConfigs(value) {
   const normalized = list.map((item, index) => {
     if (typeof item === 'string') {
       return {
+        id: fallbackWebhookId(item, index),
         name: defaultWebhookName(index),
         url: item
       }
     }
+    const url = String(item?.url || item?.webhook || item?.value || '')
     return {
+      id: String(item?.id || fallbackWebhookId(url, index)),
       name: String(item?.name || defaultWebhookName(index)),
-      url: String(item?.url || item?.webhook || item?.value || '')
+      url
     }
   })
   return normalized.length ? normalized : [createDefaultWebhook()]
@@ -257,10 +323,31 @@ function normalizeWebhookConfigs(value) {
 function compactWebhooks(rule) {
   return normalizeWebhookConfigs(rule.dingtalk_webhooks)
     .map((item, index) => ({
+      id: String(item.id || fallbackWebhookId(item.url, index)).trim(),
       name: String(item.name || defaultWebhookName(index)).trim() || defaultWebhookName(index),
       url: String(item.url || '').trim()
     }))
     .filter(item => item.url)
+}
+
+function normalizeChildNotification(value = {}) {
+  const source = value && typeof value === 'object' ? value : {}
+  return {
+    ...createDefaultChildNotification(),
+    ...source,
+    localKey: source.localKey || createLocalKey('child'),
+    month_days: Array.isArray(source.month_days) ? [...new Set(source.month_days.map(Number).filter(day => day >= 1 && day <= 31))].sort((a, b) => a - b) : [],
+    week_days: Array.isArray(source.week_days) ? [...new Set(source.week_days.map(Number).filter(day => day >= 1 && day <= 7))].sort((a, b) => a - b) : [],
+    webhook_ids: Array.isArray(source.webhook_ids) ? [...new Set(source.webhook_ids.map(String).filter(Boolean))] : [],
+    webhook_target_mode: source.webhook_target_mode === 'selected' ? 'selected' : 'all',
+    schedule_type: source.schedule_type === 'monthly' ? 'monthly' : 'weekly',
+    execute_time: normalizeTime(source.execute_time, '09:00:00'),
+    message: String(source.message || ''),
+    enabled: source.enabled !== false,
+    status: [CHILD_STATUS_PENDING, CHILD_STATUS_SENT, CHILD_STATUS_FAILED].includes(source.status)
+      ? source.status
+      : CHILD_STATUS_INACTIVE
+  }
 }
 
 function isValidPhone(phone) {
@@ -405,7 +492,7 @@ function normalizeWeeklyRotationConfig(value = {}) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {}
   const endWeekday = Number(source.end_weekday)
   const startDate = /^\d{4}-\d{2}-\d{2}$/.test(String(source.start_date || ''))
-    ? localDateToYmd(localMonday(parseLocalYmd(source.start_date)))
+    ? String(source.start_date).slice(0, 10)
     : localDateToYmd(localMonday(new Date()))
   const staffIds = Array.isArray(source.staff_ids) ? source.staff_ids : []
   return {
@@ -413,6 +500,28 @@ function normalizeWeeklyRotationConfig(value = {}) {
     staff_ids: [...new Set(staffIds.map(id => String(id || '').trim()).filter(Boolean))],
     start_date: startDate
   }
+}
+
+function normalizeWeeklyDutyVersion(value = {}) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+  const effectiveDate = String(source.effective_date || '').slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(effectiveDate)) return null
+  return {
+    effective_date: effectiveDate,
+    weekly: normalizeDutyDayMap(source.weekly, 1, 7),
+    weekly_mode: normalizeWeeklyDutyMode(source.weekly_mode),
+    weekly_rotation: normalizeWeeklyRotationConfig(source.weekly_rotation)
+  }
+}
+
+function normalizeWeeklyDutyVersions(value) {
+  if (!Array.isArray(value)) return []
+  const versions = new Map()
+  value.forEach(item => {
+    const normalized = normalizeWeeklyDutyVersion(item)
+    if (normalized) versions.set(normalized.effective_date, normalized)
+  })
+  return [...versions.values()].sort((a, b) => a.effective_date.localeCompare(b.effective_date))
 }
 
 function normalizeDutyConfig(value) {
@@ -425,12 +534,68 @@ function normalizeDutyConfig(value) {
     }
   }
   const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
-  return {
-    weekly: normalizeDutyDayMap(source.weekly, 1, 7),
-    monthly: normalizeDutyDayMap(source.monthly, 1, 31),
-    weekly_mode: normalizeWeeklyDutyMode(source.weekly_mode),
-    weekly_rotation: normalizeWeeklyRotationConfig(source.weekly_rotation)
+  const weekly = normalizeDutyDayMap(source.weekly, 1, 7)
+  const weeklyMode = normalizeWeeklyDutyMode(source.weekly_mode)
+  const weeklyRotation = normalizeWeeklyRotationConfig(source.weekly_rotation)
+  const weeklyVersions = normalizeWeeklyDutyVersions(source.weekly_versions)
+  if (weeklyVersions.length > 0 && weeklyVersions[0].effective_date !== WEEKLY_DUTY_BASELINE_DATE) {
+    weeklyVersions.unshift({
+      effective_date: WEEKLY_DUTY_BASELINE_DATE,
+      weekly,
+      weekly_mode: weeklyMode,
+      weekly_rotation: weeklyRotation
+    })
   }
+  return {
+    weekly,
+    monthly: normalizeDutyDayMap(source.monthly, 1, 31),
+    weekly_mode: weeklyMode,
+    weekly_rotation: weeklyRotation,
+    weekly_versions: weeklyVersions
+  }
+}
+
+function resolveWeeklyDutyProfile(dutyConfig, date) {
+  const config = normalizeDutyConfig(dutyConfig)
+  const ymd = typeof date === 'string' ? date.slice(0, 10) : localDateToYmd(date)
+  let profile = {
+    weekly: normalizeDutyDayMap(config.weekly, 1, 7),
+    weekly_mode: normalizeWeeklyDutyMode(config.weekly_mode),
+    weekly_rotation: normalizeWeeklyRotationConfig(config.weekly_rotation)
+  }
+  for (const version of config.weekly_versions) {
+    if (version.effective_date > ymd) break
+    profile = version
+  }
+  return profile
+}
+
+function replaceWeeklyDutyVersion(configValue, versionValue) {
+  const config = normalizeDutyConfig(configValue)
+  const version = normalizeWeeklyDutyVersion(versionValue)
+  if (!version) return config
+  const versions = new Map(config.weekly_versions.map(item => [item.effective_date, item]))
+  versions.set(version.effective_date, version)
+  config.weekly_versions = [...versions.values()].sort((a, b) => a.effective_date.localeCompare(b.effective_date))
+  const latest = config.weekly_versions[config.weekly_versions.length - 1]
+  config.weekly = latest.weekly
+  config.weekly_mode = latest.weekly_mode
+  config.weekly_rotation = latest.weekly_rotation
+  return config
+}
+
+function removeWeeklyDutyVersion(configValue, effectiveDate) {
+  const config = normalizeDutyConfig(configValue)
+  const target = String(effectiveDate || '').slice(0, 10)
+  if (!target || target === WEEKLY_DUTY_BASELINE_DATE) return config
+  config.weekly_versions = config.weekly_versions.filter(version => version.effective_date !== target)
+  if (config.weekly_versions.length) {
+    const latest = config.weekly_versions[config.weekly_versions.length - 1]
+    config.weekly = latest.weekly
+    config.weekly_mode = latest.weekly_mode
+    config.weekly_rotation = latest.weekly_rotation
+  }
+  return config
 }
 
 function dutyItemConfigured(item) {
@@ -464,6 +629,9 @@ function normalizeRule(rule) {
     dingtalk_webhooks: normalizeWebhookConfigs(rule.dingtalk_webhooks || rule.dingtalk_webhook),
     dingtalk_recipients: normalizeRecipientConfig(rule.dingtalk_recipients),
     duty_config: normalizeDutyConfig(rule.duty_config),
+    child_notifications: Array.isArray(rule.child_notifications)
+      ? rule.child_notifications.map(normalizeChildNotification)
+      : [],
     task_type: normalizeTaskType(rule.task_type)
   }
   applyActionMode(normalized)
@@ -486,6 +654,14 @@ async function loadSettings(options = {}) {
     const res = await api.get('/settings/auto-tasks')
     const data = res.data || {}
     rules.value = sortRules((data.rules || []).map(normalizeRule))
+    if (childNotificationDialogVisible.value && childNotificationRule.value?.id) {
+      const refreshedRule = rules.value.find(item => item.id === childNotificationRule.value.id)
+      if (refreshedRule) {
+        childNotificationRule.value = refreshedRule
+        childNotificationRuleIndex.value = rules.value.findIndex(item => item.id === refreshedRule.id)
+        childNotifications.value = refreshedRule.child_notifications.map(normalizeChildNotification)
+      }
+    }
     logs.value = data.logs || []
     messages.value = data.messages || []
   } finally {
@@ -561,7 +737,16 @@ function dutyFirstMessage(rule) {
 }
 
 function hasConfiguredDutyItem(rule) {
-  return dutyKeys(rule).some(key => dutyItemConfigured(getResolvedDutyItem(rule, key)))
+  if (rule.schedule_type === 'monthly') {
+    return dutyKeys(rule).some(key => dutyItemConfigured(getResolvedDutyItem(rule, key)))
+  }
+  const today = localDateOnly(new Date(nowTs.value))
+  for (let offset = 0; offset <= 21; offset += 1) {
+    const date = addLocalDays(today, offset)
+    const key = String(localWeekdayNumber(date))
+    if (dutyItemConfigured(getResolvedDutyItem(rule, key, date))) return true
+  }
+  return false
 }
 
 function validateRule(rule, options = {}) {
@@ -706,6 +891,326 @@ function removeWebhook(rule, index) {
     return
   }
   rule.dingtalk_webhooks.splice(index, 1)
+}
+
+function childNotificationKey(child) {
+  return child.id || child.localKey
+}
+
+function childRuleWebhooks() {
+  return childNotificationRule.value ? compactWebhooks(childNotificationRule.value) : []
+}
+
+function openChildNotifications(rule, index) {
+  if (!rule.id) {
+    ElMessage.warning('请先保存主规则，再配置子通知')
+    return
+  }
+  childNotificationRule.value = rule
+  childNotificationRuleIndex.value = index
+  childNotifications.value = (rule.child_notifications || []).map(normalizeChildNotification)
+  childNotificationDialogVisible.value = true
+}
+
+function closeChildNotifications() {
+  childNotificationEditorVisible.value = false
+  childNotificationDialogVisible.value = false
+  childNotificationRule.value = null
+  childNotificationRuleIndex.value = -1
+  childNotifications.value = []
+}
+
+function openChildNotificationEditor(child = null, index = -1) {
+  childNotificationEditorForm.value = child
+    ? normalizeChildNotification(child)
+    : createDefaultChildNotification()
+  childNotificationEditorIndex.value = index
+  childNotificationEditorVisible.value = true
+}
+
+function closeChildNotificationEditor() {
+  childNotificationEditorVisible.value = false
+  childNotificationEditorForm.value = createDefaultChildNotification()
+  childNotificationEditorIndex.value = -1
+}
+
+function validateChildNotification(child) {
+  if (child.schedule_type === 'weekly' && !child.week_days.length) {
+    ElMessage.warning('请至少选择一个执行星期')
+    return false
+  }
+  if (child.schedule_type === 'monthly' && !child.month_days.length) {
+    ElMessage.warning('请至少选择一个执行日期')
+    return false
+  }
+  if (!/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(child.execute_time || '')) {
+    ElMessage.warning('子通知时间格式必须为 HH:mm:ss')
+    return false
+  }
+  if (!String(child.message || '').trim()) {
+    ElMessage.warning('请填写子通知内容')
+    return false
+  }
+  if (child.webhook_target_mode === 'selected' && !child.webhook_ids.length) {
+    ElMessage.warning('请至少选择一个 webhook 连接')
+    return false
+  }
+  return true
+}
+
+function buildChildNotificationPayload(child) {
+  return {
+    enabled: child.enabled === true,
+    schedule_type: child.schedule_type,
+    month_days: child.schedule_type === 'monthly' ? child.month_days : [],
+    week_days: child.schedule_type === 'weekly' ? child.week_days : [],
+    execute_time: child.execute_time,
+    message: String(child.message || '').trim(),
+    webhook_target_mode: child.webhook_target_mode,
+    webhook_ids: child.webhook_target_mode === 'selected' ? child.webhook_ids : []
+  }
+}
+
+function syncChildNotificationsToRule() {
+  if (!childNotificationRule.value) return
+  const normalized = childNotifications.value.map(normalizeChildNotification)
+  childNotificationRule.value.child_notifications = normalized
+  if (childNotificationRuleIndex.value > -1) {
+    rules.value[childNotificationRuleIndex.value].child_notifications = normalized
+  }
+}
+
+async function saveChildNotification() {
+  const rule = childNotificationRule.value
+  const child = childNotificationEditorForm.value
+  const index = childNotificationEditorIndex.value
+  if (!rule || !validateChildNotification(child)) return
+  childNotificationSavingId.value = childNotificationKey(child)
+  try {
+    const payload = buildChildNotificationPayload(child)
+    const res = child.id
+      ? await api.put(`/settings/auto-tasks/${rule.id}/child-notifications/${child.id}`, payload)
+      : await api.post(`/settings/auto-tasks/${rule.id}/child-notifications`, payload)
+    const savedChild = normalizeChildNotification(res.data)
+    if (index > -1) childNotifications.value[index] = savedChild
+    else childNotifications.value.push(savedChild)
+    syncChildNotificationsToRule()
+    childNotificationEditorVisible.value = false
+    ElMessage.success('子通知保存成功')
+  } catch (error) {
+    ElMessage.error(requestErrorText(error, '子通知保存失败'))
+  } finally {
+    childNotificationSavingId.value = ''
+  }
+}
+
+async function testChildNotification(child) {
+  const rule = childNotificationRule.value
+  if (!rule?.id || !child?.id) {
+    ElMessage.warning('请先保存子通知，再执行测试发送')
+    return
+  }
+  childNotificationTestingId.value = child.id
+  try {
+    const res = await api.post(`/settings/auto-tasks/${rule.id}/child-notifications/${child.id}/test-notify`)
+    ElMessage.success(res.message || '子通知测试发送成功')
+  } catch (error) {
+    ElMessage.error(requestErrorText(error, '子通知测试发送失败'))
+  } finally {
+    childNotificationTestingId.value = ''
+  }
+}
+
+async function toggleChildNotificationStatus(child, index, enabled) {
+  if (!child?.id || !childNotificationRule.value?.id) return
+  childNotificationStatusSavingId.value = child.id
+  try {
+    const res = await api.patch(
+      `/settings/auto-tasks/${childNotificationRule.value.id}/child-notifications/${child.id}/status`,
+      { enabled }
+    )
+    childNotifications.value[index] = normalizeChildNotification(res.data)
+    syncChildNotificationsToRule()
+    ElMessage.success(enabled ? '子通知已启用' : '子通知已停用')
+  } catch (error) {
+    ElMessage.error(requestErrorText(error, '子通知状态更新失败'))
+  } finally {
+    childNotificationStatusSavingId.value = ''
+  }
+}
+
+async function deleteChildNotification(child, index) {
+  if (!child.id) {
+    childNotifications.value.splice(index, 1)
+    syncChildNotificationsToRule()
+    return
+  }
+  try {
+    await ElMessageBox.confirm('确认删除这条子通知？', '删除子通知', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消'
+    })
+  } catch {
+    return
+  }
+  childNotificationDeletingId.value = child.id
+  try {
+    await api.delete(`/settings/auto-tasks/${childNotificationRule.value.id}/child-notifications/${child.id}`)
+    childNotifications.value.splice(index, 1)
+    syncChildNotificationsToRule()
+    ElMessage.success('子通知已删除')
+  } catch (error) {
+    ElMessage.error(requestErrorText(error, '子通知删除失败'))
+  } finally {
+    childNotificationDeletingId.value = ''
+  }
+}
+
+function childNotificationStatusText(child) {
+  if (!child.enabled) return '已停用'
+  if (
+    !childNotificationRule.value?.enabled ||
+    !childNotificationRule.value?.notify_enabled ||
+    isRunOnly(childNotificationRule.value)
+  ) return '待主任务启用'
+  if (child.status === CHILD_STATUS_PENDING) return '待发送'
+  if (child.status === CHILD_STATUS_SENT) return '已发送'
+  if (child.status === CHILD_STATUS_FAILED) return '发送失败'
+  return '待主任务触发'
+}
+
+function childNotificationStatusClass(child) {
+  if (
+    !child?.enabled ||
+    !childNotificationRule.value?.enabled ||
+    !childNotificationRule.value?.notify_enabled ||
+    isRunOnly(childNotificationRule.value)
+  ) return 'is-inactive'
+  if (child.status === CHILD_STATUS_PENDING) return 'is-pending'
+  if (child.status === CHILD_STATUS_SENT) return 'is-sent'
+  if (child.status === CHILD_STATUS_FAILED) return 'is-failed'
+  return 'is-inactive'
+}
+
+function childNotificationCountdown(child) {
+  if (child.status !== CHILD_STATUS_PENDING || !child.next_run_at) {
+    if (child.status === CHILD_STATUS_SENT) return '等待主通知下一次执行后重新激活'
+    if (child.status === CHILD_STATUS_FAILED) return child.last_error || '本轮发送失败，等待主通知下一次执行'
+    return '主通知成功执行后开始倒计时'
+  }
+  return formatCountdownTarget(child.next_run_at, '等待发送')
+}
+
+function childScheduleText(child) {
+  const time = normalizeTime(child?.execute_time, '09:00:00')
+  if (child?.schedule_type === 'monthly') {
+    const days = (child.month_days || []).map(day => `${day}日`).join('、') || '未选择日期'
+    return `每月 ${days} · ${time}`
+  }
+  const labels = (child?.week_days || [])
+    .map(day => weekDayOptions.find(item => item.value === Number(day))?.label)
+    .filter(Boolean)
+    .join('、') || '未选择星期'
+  return `每周 ${labels} · ${time}`
+}
+
+function childWebhookTargetText(child) {
+  const webhooks = childRuleWebhooks()
+  if (child?.webhook_target_mode !== 'selected') return `全部（${webhooks.length} 个）`
+  const selected = new Set((child.webhook_ids || []).map(String))
+  const names = webhooks.filter(item => selected.has(String(item.id))).map(item => item.name)
+  return names.length ? names.join('、') : '所选连接已失效'
+}
+
+function latestChildParentRun(rule) {
+  if (!rule?.id) return null
+  return logs.value
+    .filter(log => log.rule_id === rule.id && (!log.event_type || log.event_type === 'auto_task'))
+    .sort((a, b) => {
+      const at = new Date(a.scheduled_at || a.created_at || 0).getTime()
+      const bt = new Date(b.scheduled_at || b.created_at || 0).getTime()
+      return bt - at
+    })[0] || null
+}
+
+function childPrerequisiteItems(rule) {
+  const latestRun = latestChildParentRun(rule)
+  const runTime = latestRun ? formatDateTime(latestRun.scheduled_at || latestRun.created_at) : '暂无真实调度记录'
+  let task = {
+    key: 'task',
+    label: '主任务执行',
+    value: '等待首次执行',
+    detail: runTime,
+    tone: 'pending'
+  }
+  if (!rule?.enabled) {
+    task = { ...task, value: '主任务已停用', detail: '停用期间不会执行或激活子通知', tone: 'inactive' }
+  } else if (latestRun) {
+    const states = {
+      running: ['正在执行', 'pending'],
+      success: ['最近执行成功', 'success'],
+      skipped: ['最近执行已跳过', 'warning'],
+      failed: ['最近执行失败', 'failed'],
+      notify_failed: [latestRun.created_task_id ? '主任务已执行' : '主任务已触发', 'warning']
+    }
+    const [value, tone] = states[latestRun.status] || ['最近已执行', 'pending']
+    task = { ...task, value, detail: runTime, tone }
+  }
+
+  let notification = {
+    key: 'notification',
+    label: '主通知执行',
+    value: '等待首次通知',
+    detail: runTime,
+    tone: 'pending'
+  }
+  if (!rule?.enabled) {
+    notification = { ...notification, value: '等待主任务启用', detail: '主任务停用，主通知不会执行', tone: 'inactive' }
+  } else if (!rule.notify_enabled || isRunOnly(rule)) {
+    notification = { ...notification, value: '主通知未开启', detail: '开启通知后才具备子通知激活条件', tone: 'inactive' }
+  } else if (latestRun) {
+    const notifyStates = {
+      success: ['最近发送成功', 'success'],
+      failed: ['最近发送失败', 'failed'],
+      skipped: ['最近未发送', 'warning'],
+      not_required: ['本轮无需通知', 'inactive']
+    }
+    const [value, tone] = notifyStates[latestRun.notify_status] || ['等待通知结果', 'pending']
+    notification = { ...notification, value, detail: runTime, tone }
+  }
+
+  const next = rule?.enabled && rule?.next_run_at
+    ? {
+        key: 'next',
+        label: '下次主通知',
+        value: nextCountdown(rule),
+        detail: formatDateTime(rule.next_run_at),
+        tone: 'pending'
+      }
+    : {
+        key: 'next',
+        label: '下次主通知',
+        value: '暂无计划',
+        detail: rule?.enabled ? '当前没有可执行的下一次计划' : '主任务启用后重新计算',
+        tone: 'inactive'
+      }
+  return [task, notification, next]
+}
+
+const childPrerequisiteState = computed(() => {
+  const items = childPrerequisiteItems(childNotificationRule.value)
+  return Object.fromEntries(items.map(item => [item.key, item]))
+})
+
+function childEditorStatusSource() {
+  const id = childNotificationEditorForm.value?.id
+  if (!id) return childNotificationEditorForm.value
+  return childNotifications.value.find(child => child.id === id) || childNotificationEditorForm.value
+}
+
+function childNotificationEditorTitle() {
+  return childNotificationEditorForm.value?.id ? '编辑子通知' : '新增子通知'
 }
 
 async function testNotification(rule) {
@@ -942,8 +1447,8 @@ const rotationRangeOptions = weekDayOptions.map(day => ({
   label: `周一到${day.label}`
 }))
 
-function dutyWeeklyMode(rule) {
-  return normalizeDutyConfig(rule?.duty_config).weekly_mode
+function dutyWeeklyMode(rule, date = new Date(nowTs.value)) {
+  return resolveWeeklyDutyProfile(rule?.duty_config, date).weekly_mode
 }
 
 function isWeeklyRotationRule(rule) {
@@ -951,7 +1456,7 @@ function isWeeklyRotationRule(rule) {
 }
 
 function weeklyRotationConfig(rule) {
-  return normalizeDutyConfig(rule?.duty_config).weekly_rotation
+  return resolveWeeklyDutyProfile(rule?.duty_config, new Date(nowTs.value)).weekly_rotation
 }
 
 function rotationRangeKeys(rotation) {
@@ -970,31 +1475,40 @@ function rotationSequenceIndex(rotation, date) {
   const staffCount = normalized.staff_ids.length
   if (!staffCount) return -1
   const current = localDateOnly(date)
-  const anchor = localMonday(parseLocalYmd(normalized.start_date))
+  const anchor = parseLocalYmd(normalized.start_date)
   const days = Math.floor((current.getTime() - anchor.getTime()) / 86400000)
-  const weekOffset = Math.floor(days / 7)
-  const weekdayOffset = localWeekdayNumber(current) - 1
-  return positiveModulo((weekOffset * normalized.end_weekday) + weekdayOffset, staffCount)
+  if (days < 0) return -1
+  const fullWeeks = Math.floor(days / 7)
+  let slotCount = fullWeeks * normalized.end_weekday
+  for (let offset = fullWeeks * 7; offset <= days; offset += 1) {
+    if (localWeekdayNumber(addLocalDays(anchor, offset)) <= normalized.end_weekday) slotCount += 1
+  }
+  return slotCount > 0 ? positiveModulo(slotCount - 1, staffCount) : -1
 }
 
 function rotationStaffIdForDate(rotation, date) {
   const normalized = normalizeWeeklyRotationConfig(rotation)
   if (!normalized.staff_ids.length || localWeekdayNumber(date) > normalized.end_weekday) return ''
-  return normalized.staff_ids[rotationSequenceIndex(normalized, date)] || ''
+  const index = rotationSequenceIndex(normalized, date)
+  return index >= 0 ? (normalized.staff_ids[index] || '') : ''
 }
 
-function getDutyItem(rule, key) {
+function getDutyItem(rule, key, date = null) {
   const config = normalizeDutyConfig(rule.duty_config)
-  const map = rule.schedule_type === 'monthly' ? config.monthly : config.weekly
+  const map = rule.schedule_type === 'monthly'
+    ? config.monthly
+    : resolveWeeklyDutyProfile(config, date || dutyDateFromKey(rule, key)).weekly
   return normalizeDutyItem(map[String(key)] || createDefaultDutyItem())
 }
 
 function getResolvedDutyItem(rule, key, date = null) {
-  if (!isWeeklyRotationRule(rule)) return getDutyItem(rule, key)
+  if (rule.schedule_type !== 'weekly') return getDutyItem(rule, key, date)
   const config = normalizeDutyConfig(rule.duty_config)
   const currentDate = date || dutyDateFromKey(rule, key)
-  const baseItem = normalizeDutyItem(config.weekly[String(key)] || createDefaultDutyItem())
-  const staffId = rotationStaffIdForDate(config.weekly_rotation, currentDate)
+  const profile = resolveWeeklyDutyProfile(config, currentDate)
+  const baseItem = normalizeDutyItem(profile.weekly[String(key)] || createDefaultDutyItem())
+  if (profile.weekly_mode !== WEEKLY_DUTY_MODE_ROTATION) return baseItem
+  const staffId = rotationStaffIdForDate(profile.weekly_rotation, currentDate)
   return normalizeDutyItem({
     ...baseItem,
     staff_ids: staffId ? [staffId] : [],
@@ -1002,11 +1516,74 @@ function getResolvedDutyItem(rule, key, date = null) {
   })
 }
 
-function setDutyItem(rule, key, item) {
+function updateWeeklyProfileAtDate(configValue, date, mutate) {
+  const config = normalizeDutyConfig(configValue)
+  const ymd = localDateToYmd(date)
+  const versions = [...config.weekly_versions]
+  let versionIndex = -1
+  versions.forEach((version, index) => {
+    if (version.effective_date <= ymd) versionIndex = index
+  })
+  if (versionIndex < 0) {
+    const profile = {
+      weekly: normalizeDutyDayMap(config.weekly, 1, 7),
+      weekly_mode: normalizeWeeklyDutyMode(config.weekly_mode),
+      weekly_rotation: normalizeWeeklyRotationConfig(config.weekly_rotation)
+    }
+    mutate(profile)
+    config.weekly = profile.weekly
+    config.weekly_mode = profile.weekly_mode
+    config.weekly_rotation = profile.weekly_rotation
+    return config
+  }
+  const profile = {
+    ...versions[versionIndex],
+    weekly: normalizeDutyDayMap(versions[versionIndex].weekly, 1, 7),
+    weekly_rotation: normalizeWeeklyRotationConfig(versions[versionIndex].weekly_rotation)
+  }
+  mutate(profile)
+  versions[versionIndex] = normalizeWeeklyDutyVersion(profile)
+  config.weekly_versions = versions
+  const latest = versions[versions.length - 1]
+  config.weekly = latest.weekly
+  config.weekly_mode = latest.weekly_mode
+  config.weekly_rotation = latest.weekly_rotation
+  return config
+}
+
+function setDutyItem(rule, key, item, date = new Date(nowTs.value)) {
   const config = normalizeDutyConfig(rule.duty_config)
-  const target = rule.schedule_type === 'monthly' ? config.monthly : config.weekly
-  target[String(key)] = normalizeDutyItem(item)
-  rule.duty_config = config
+  if (rule.schedule_type === 'monthly') {
+    config.monthly[String(key)] = normalizeDutyItem(item)
+    rule.duty_config = config
+    return
+  }
+  rule.duty_config = updateWeeklyProfileAtDate(config, date, profile => {
+    profile.weekly[String(key)] = normalizeDutyItem(item)
+  })
+}
+
+function dutyEffectiveDate() {
+  const monday = localMonday(new Date(nowTs.value))
+  const weekOffset = dutyEffectiveWeek.value === 'next' ? 7 : 0
+  return addLocalDays(monday, weekOffset + Number(dutyEffectiveWeekday.value) - 1)
+}
+
+function isDutyModeSwitching() {
+  return dutyDetailMode.value === 'weekly' && dutyDetailTab.value !== dutyDetailOriginalMode.value
+}
+
+function nextPendingDutyTransition(rule) {
+  const today = localDateToYmd(localDateOnly(new Date(nowTs.value)))
+  return normalizeDutyConfig(rule?.duty_config).weekly_versions.find(version => version.effective_date > today) || null
+}
+
+function pendingDutyTransitionText(rule) {
+  const pending = nextPendingDutyTransition(rule)
+  if (!pending) return ''
+  const mode = pending.weekly_mode === WEEKLY_DUTY_MODE_ROTATION ? '轮换模式' : '固定模式'
+  const weekday = weekDayOptions.find(item => item.value === localWeekdayNumber(parseLocalYmd(pending.effective_date)))?.label || ''
+  return `待生效：${pending.effective_date}（${weekday}）起使用${mode}`
 }
 
 function syncDutyRuleScheduleKeys(rule) {
@@ -1323,18 +1900,123 @@ function dutyPreviewText(rule) {
   return formatDutyPreview(rule, key, item)
 }
 
-async function openDutyDetail(rule, index, key) {
+function dutyDetailDraftFromMap(rule, map) {
+  const draft = {}
+  dutyKeys(rule).forEach(key => {
+    draft[String(key)] = normalizeDutyItem(map?.[String(key)] || createDefaultDutyItem())
+  })
+  return draft
+}
+
+function dutyTabbedDefaultKey(rule) {
+  const now = new Date(nowTs.value)
+  return rule.schedule_type === 'monthly'
+    ? String(now.getDate())
+    : String(localWeekdayNumber(now))
+}
+
+function setDutyEffectiveSelectionFromDate(date) {
+  const target = localDateOnly(date)
+  const currentMonday = localMonday(new Date(nowTs.value))
+  dutyEffectiveWeek.value = localMonday(target).getTime() > currentMonday.getTime() ? 'next' : 'this'
+  dutyEffectiveWeekday.value = localWeekdayNumber(target)
+}
+
+function loadDutyDetailKey(key) {
+  const rule = dutyDetailRule.value
+  if (!rule) return
+  dutyDetailKey.value = String(key)
+  dutyDetailForm.value = normalizeDutyItem(
+    dutyDetailDraftMap.value[dutyDetailKey.value] || createDefaultDutyItem()
+  )
+  dutyReferenceKey.value = dutyDetailReferenceOptions()
+    .find(option => option.label.includes('已配置'))?.value || ''
+}
+
+function commitDutyDetailDraft() {
+  if (!dutyDetailKey.value) return
+  dutyDetailDraftMap.value[dutyDetailKey.value] = normalizeDutyItem(dutyDetailForm.value)
+}
+
+function switchDutyDetailKey(key) {
+  const nextKey = String(key || '')
+  if (!nextKey || nextKey === dutyDetailKey.value) return
+  commitDutyDetailDraft()
+  loadDutyDetailKey(nextKey)
+}
+
+function dutyDetailTabLabel(key) {
+  if (dutyDetailMode.value === 'monthly') return String(key)
+  const label = dutyKeyLabel({ schedule_type: 'weekly' }, key)
+  return label.replace(/^周/, '星期')
+}
+
+function dutyDetailReferenceOptions() {
+  const rule = dutyDetailRule.value
+  if (!rule) return []
+  return dutyKeys(rule)
+    .filter(key => String(key) !== String(dutyDetailKey.value))
+    .map(key => {
+      const item = normalizeDutyItem(dutyDetailDraftMap.value[String(key)] || createDefaultDutyItem())
+      return {
+        value: String(key),
+        label: `${dutyKeyLabel(rule, key)}${dutyItemDisplayConfigured(item) ? '（已配置）' : '（未配置）'}`
+      }
+    })
+}
+
+async function setupDutyDetail(rule, index, key, options = {}) {
   await ensureStaffList()
   const config = normalizeDutyConfig(rule.duty_config)
+  const pendingVersion = options.pendingVersion ? normalizeWeeklyDutyVersion(options.pendingVersion) : null
+  const multiKey = options.multiKey === true
+  const detailDate = pendingVersion
+    ? parseLocalYmd(pendingVersion.effective_date)
+    : (rule.schedule_type === 'weekly'
+        ? (multiKey ? localDateOnly(new Date(nowTs.value)) : dutyDateFromKey(rule, key))
+        : localDateOnly(new Date(nowTs.value)))
+  const profile = rule.schedule_type === 'weekly'
+    ? (pendingVersion || resolveWeeklyDutyProfile(config, detailDate))
+    : null
   dutyDetailRule.value = rule
   dutyDetailRuleIndex.value = index
-  dutyDetailKey.value = String(key)
   dutyDetailMode.value = rule.schedule_type
-  dutyDetailTab.value = rule.schedule_type === 'weekly' ? config.weekly_mode : WEEKLY_DUTY_MODE_FIXED
-  dutyDetailForm.value = getDutyItem(rule, key)
-  dutyRotationForm.value = normalizeWeeklyRotationConfig(config.weekly_rotation)
-  dutyReferenceKey.value = dutyReferenceOptions(rule, key).find(option => option.label.includes('已配置'))?.value || ''
+  dutyDetailDate.value = detailDate
+  dutyDetailMultiKey.value = multiKey
+  dutyDetailEditContext.value = pendingVersion ? 'pending' : 'current'
+  dutyPendingOriginalEffectiveDate.value = pendingVersion?.effective_date || ''
+  dutyDetailTab.value = profile ? profile.weekly_mode : WEEKLY_DUTY_MODE_FIXED
+  dutyDetailOriginalMode.value = dutyDetailTab.value
+  dutyDetailDraftMap.value = dutyDetailDraftFromMap(
+    rule,
+    rule.schedule_type === 'monthly' ? config.monthly : profile?.weekly
+  )
+  dutyRotationForm.value = normalizeWeeklyRotationConfig(profile?.weekly_rotation || config.weekly_rotation)
+  if (pendingVersion) setDutyEffectiveSelectionFromDate(detailDate)
+  else {
+    dutyEffectiveWeek.value = 'this'
+    dutyEffectiveWeekday.value = 1
+  }
+  loadDutyDetailKey(String(key || dutyTabbedDefaultKey(rule)))
   dutyDetailDialogVisible.value = true
+}
+
+async function openDutyDetail(rule, index, key) {
+  await setupDutyDetail(rule, index, key, { multiKey: false })
+}
+
+async function openDutyTabbedEditor(rule, index) {
+  await setupDutyDetail(rule, index, dutyTabbedDefaultKey(rule), { multiKey: true })
+}
+
+async function editPendingDutyTransition(rule = dutyDetailRule.value, index = dutyDetailRuleIndex.value) {
+  const pending = nextPendingDutyTransition(rule)
+  if (!pending) {
+    ElMessage.warning('当前没有待生效排班')
+    return
+  }
+  const currentKey = dutyDetailKey.value || dutyTabbedDefaultKey(rule)
+  await setupDutyDetail(rule, index, currentKey, { multiKey: true, pendingVersion: pending })
 }
 
 function closeDutyDetail() {
@@ -1342,8 +2024,21 @@ function closeDutyDetail() {
   dutyDetailRule.value = null
   dutyDetailRuleIndex.value = -1
   dutyDetailKey.value = ''
+  dutyDetailDraftMap.value = {}
+  dutyDetailMultiKey.value = false
+  dutyDetailEditContext.value = 'current'
+  dutyPendingOriginalEffectiveDate.value = ''
   dutyDetailTab.value = WEEKLY_DUTY_MODE_FIXED
+  dutyDetailOriginalMode.value = WEEKLY_DUTY_MODE_FIXED
   dutyReferenceKey.value = ''
+}
+
+function isDutyPendingTransitionEditing() {
+  return dutyDetailMode.value === 'weekly' && dutyDetailEditContext.value === 'pending'
+}
+
+function showDutyEffectiveConfig() {
+  return isDutyModeSwitching() || isDutyPendingTransitionEditing()
 }
 
 function dutyDetailIsRotation() {
@@ -1386,32 +2081,103 @@ function applyDutyReference() {
     ElMessage.warning('请选择要引用的配置')
     return
   }
-  dutyDetailForm.value = getDutyItem(rule, dutyReferenceKey.value)
+  dutyDetailForm.value = normalizeDutyItem(
+    dutyDetailDraftMap.value[String(dutyReferenceKey.value)] || createDefaultDutyItem()
+  )
   ElMessage.success(`已引用${dutyKeyLabel(rule, dutyReferenceKey.value)}配置`)
+}
+
+function normalizeDutyDetailSaveItem(value) {
+  const source = normalizeDutyItem(value)
+  const staffIds = normalizeDutyStaffIds(source.staff_ids)
+    .filter(id => canSelectDutyStaff(staffById(id)))
+  return normalizeDutyItem({
+    ...source,
+    staff_ids: staffIds,
+    enabled: staffIds.length > 0 && Boolean(source.start_message?.trim())
+  })
+}
+
+function dutyDetailSaveMap(rule) {
+  commitDutyDetailDraft()
+  const result = {}
+  dutyKeys(rule).forEach(key => {
+    result[String(key)] = normalizeDutyDetailSaveItem(
+      dutyDetailDraftMap.value[String(key)] || createDefaultDutyItem()
+    )
+  })
+  return result
+}
+
+function mergeDutyDetailWeeklyMap(baseMap, draftMap) {
+  const weekly = normalizeDutyDayMap(baseMap, 1, 7)
+  const keys = dutyDetailMultiKey.value ? weekDayOptions.map(day => String(day.value)) : [String(dutyDetailKey.value)]
+  keys.forEach(key => {
+    weekly[key] = normalizeDutyItem(draftMap[key] || createDefaultDutyItem())
+  })
+  return weekly
 }
 
 async function saveDutyDetail() {
   const rule = dutyDetailRule.value
   if (!rule || !dutyDetailKey.value) return
-  const staffIds = normalizeDutyStaffIds(dutyDetailForm.value.staff_ids)
-    .filter(id => canSelectDutyStaff(staffById(id)))
-  const item = normalizeDutyItem({
-    ...dutyDetailForm.value,
-    staff_ids: staffIds,
-    enabled: staffIds.length > 0 && Boolean(dutyDetailForm.value.start_message?.trim())
-  })
-  setDutyItem(rule, dutyDetailKey.value, item)
-  if (rule.schedule_type === 'weekly') {
+  const originalDutyConfig = normalizeDutyConfig(rule.duty_config)
+  const originalWeekDays = [...(rule.week_days || [])]
+  const originalMonthDays = [...(rule.month_days || [])]
+  const savedItems = dutyDetailSaveMap(rule)
+  if (rule.schedule_type !== 'weekly') {
     const config = normalizeDutyConfig(rule.duty_config)
-    config.weekly_mode = dutyDetailTab.value
-    const rotationStaffIds = normalizeDutyStaffIds(dutyRotationForm.value.staff_ids)
-      .filter(id => canSelectDutyStaff(staffById(id)))
-    config.weekly_rotation = normalizeWeeklyRotationConfig({
-      ...dutyRotationForm.value,
-      staff_ids: rotationStaffIds,
-      start_date: dutyRotationForm.value.start_date || localDateToYmd(localMonday(new Date(nowTs.value)))
+    const keys = dutyDetailMultiKey.value ? dutyKeys(rule) : [String(dutyDetailKey.value)]
+    keys.forEach(key => {
+      config.monthly[String(key)] = savedItems[String(key)]
     })
     rule.duty_config = config
+  } else {
+    const rotationStaffIds = normalizeDutyStaffIds(dutyRotationForm.value.staff_ids)
+      .filter(id => canSelectDutyStaff(staffById(id)))
+    if (dutyDetailTab.value === WEEKLY_DUTY_MODE_ROTATION && rotationStaffIds.length === 0) {
+      ElMessage.warning('轮换模式至少选择一名轮换人员')
+      return
+    }
+    if (isDutyModeSwitching() || isDutyPendingTransitionEditing()) {
+      let config = normalizeDutyConfig(rule.duty_config)
+      if (config.weekly_versions.length === 0) {
+        config = replaceWeeklyDutyVersion(config, {
+          effective_date: WEEKLY_DUTY_BASELINE_DATE,
+          weekly: config.weekly,
+          weekly_mode: config.weekly_mode,
+          weekly_rotation: config.weekly_rotation
+        })
+      }
+      if (isDutyPendingTransitionEditing()) {
+        config = removeWeeklyDutyVersion(config, dutyPendingOriginalEffectiveDate.value)
+      }
+      const effectiveDate = dutyEffectiveDate()
+      const previousDate = addLocalDays(effectiveDate, -1)
+      const previousProfile = resolveWeeklyDutyProfile(config, previousDate)
+      const nextProfile = {
+        effective_date: localDateToYmd(effectiveDate),
+        weekly: mergeDutyDetailWeeklyMap(previousProfile.weekly, savedItems),
+        weekly_mode: dutyDetailTab.value,
+        weekly_rotation: normalizeWeeklyRotationConfig({
+          ...dutyRotationForm.value,
+          staff_ids: rotationStaffIds,
+          start_date: localDateToYmd(effectiveDate)
+        })
+      }
+      rule.duty_config = replaceWeeklyDutyVersion(config, nextProfile)
+    } else {
+      rule.duty_config = updateWeeklyProfileAtDate(rule.duty_config, dutyDetailDate.value, profile => {
+        profile.weekly = mergeDutyDetailWeeklyMap(profile.weekly, savedItems)
+        profile.weekly_mode = dutyDetailTab.value
+        if (dutyDetailTab.value === WEEKLY_DUTY_MODE_ROTATION) {
+          profile.weekly_rotation = normalizeWeeklyRotationConfig({
+            ...dutyRotationForm.value,
+            staff_ids: rotationStaffIds
+          })
+        }
+      })
+    }
   }
   syncDutyRuleScheduleKeys(rule)
   if (rule.id && dutyDetailRuleIndex.value > -1) {
@@ -1419,9 +2185,14 @@ async function saveDutyDetail() {
       rule,
       dutyDetailRuleIndex.value,
       { requireNotification: true },
-      '值班配置已保存并生效'
+      isDutyPendingTransitionEditing() ? '待生效值班配置已重新保存' : '值班配置已保存并生效'
     )
-    if (!saved) return
+    if (!saved) {
+      rule.duty_config = originalDutyConfig
+      rule.week_days = originalWeekDays
+      rule.month_days = originalMonthDays
+      return
+    }
   }
   closeDutyDetail()
   if (!rule.id) {
@@ -1552,16 +2323,29 @@ async function saveDutyBulkContent() {
   }
 }
 
+function dutyDetailRotationPreviewDate(effectiveDate = null) {
+  if (!effectiveDate) {
+    return dutyDetailMultiKey.value
+      ? dutyDateFromKey({ schedule_type: 'weekly' }, dutyDetailKey.value)
+      : dutyDetailDate.value
+  }
+  const selectedWeekday = Number(dutyDetailKey.value) || 1
+  const effectiveWeekday = localWeekdayNumber(effectiveDate)
+  const offset = positiveModulo(selectedWeekday - effectiveWeekday, 7)
+  return addLocalDays(effectiveDate, offset)
+}
+
 function dutyDetailPreviewItem() {
   if (!dutyDetailIsRotation()) return dutyDetailForm.value
-  const rule = dutyDetailRule.value || { schedule_type: 'weekly', duty_config: createDefaultDutyConfig() }
-  const config = normalizeDutyConfig(rule.duty_config)
-  config.weekly_rotation = normalizeWeeklyRotationConfig(dutyRotationForm.value)
-  config.weekly_mode = WEEKLY_DUTY_MODE_ROTATION
-  const previewRule = { ...rule, schedule_type: 'weekly', duty_config: config }
-  const date = dutyDateFromKey(previewRule, dutyDetailKey.value || '1')
+  const isEffectiveEditing = isDutyModeSwitching() || isDutyPendingTransitionEditing()
+  const effectiveDate = isEffectiveEditing ? dutyEffectiveDate() : null
+  const date = dutyDetailRotationPreviewDate(effectiveDate)
+  const rotation = normalizeWeeklyRotationConfig({
+    ...dutyRotationForm.value,
+    start_date: effectiveDate ? localDateToYmd(effectiveDate) : dutyRotationForm.value.start_date
+  })
   const baseItem = normalizeDutyItem(dutyDetailForm.value)
-  const staffId = rotationStaffIdForDate(config.weekly_rotation, date)
+  const staffId = rotationStaffIdForDate(rotation, date)
   return normalizeDutyItem({
     ...baseItem,
     staff_ids: staffId ? [staffId] : [],
@@ -1612,6 +2396,9 @@ function formatMonthDay(date) {
 function dutyFutureDay(rule, date) {
   const key = String(localWeekdayNumber(date))
   const item = getResolvedDutyItem(rule, key, date)
+  const boundary = dutyFutureMode.value === 'pending'
+    ? localDateOnly(dutyFutureStartDate.value)
+    : localDateOnly(dutyFutureOpenedAt.value)
   return {
     key,
     date: localDateToYmd(date),
@@ -1622,15 +2409,19 @@ function dutyFutureDay(rule, date) {
     status: dutyStatusText(item),
     configured: dutyItemDisplayConfigured(item),
     isToday: localDateToYmd(date) === localDateToYmd(localDateOnly(new Date(nowTs.value))),
-    isBeforeOpened: date.getTime() < localDateOnly(dutyFutureOpenedAt.value).getTime()
+    isBeforeOpened: date.getTime() < boundary.getTime()
   }
 }
 
 function dutyFutureWeeks() {
   const rule = dutyFutureRule.value
   if (!rule) return []
-  const opened = localDateOnly(dutyFutureOpenedAt.value)
-  const firstMonday = addLocalDays(localMonday(opened), 7)
+  const opened = dutyFutureMode.value === 'pending'
+    ? localDateOnly(dutyFutureStartDate.value)
+    : localDateOnly(dutyFutureOpenedAt.value)
+  const firstMonday = dutyFutureMode.value === 'pending'
+    ? localMonday(opened)
+    : addLocalDays(localMonday(opened), 7)
   return Array.from({ length: 3 }, (_, weekIndex) => {
     const monday = addLocalDays(firstMonday, weekIndex * 7)
     const sunday = addLocalDays(monday, 6)
@@ -1644,9 +2435,37 @@ function dutyFutureWeeks() {
   })
 }
 
+function dutyFutureDialogTitle() {
+  return dutyFutureMode.value === 'pending' ? '待生效排班 · 三个自然周' : '后续三周值班排期'
+}
+
+function dutyFutureBoundaryText() {
+  if (dutyFutureMode.value !== 'pending') return ''
+  return pendingDutyTransitionText(dutyFutureRule.value)
+}
+
+function dutyFutureBeforeText() {
+  return dutyFutureMode.value === 'pending' ? '生效前' : '已过'
+}
+
 function openDutyFuture(rule) {
   dutyFutureRule.value = rule
+  dutyFutureMode.value = 'upcoming'
   dutyFutureOpenedAt.value = localDateOnly(new Date(nowTs.value))
+  dutyFutureStartDate.value = addLocalDays(localMonday(dutyFutureOpenedAt.value), 7)
+  dutyFutureDialogVisible.value = true
+}
+
+function openPendingDutyFuture(rule) {
+  const pending = nextPendingDutyTransition(rule)
+  if (!pending) {
+    ElMessage.warning('当前没有待生效排班')
+    return
+  }
+  dutyFutureRule.value = rule
+  dutyFutureMode.value = 'pending'
+  dutyFutureOpenedAt.value = localDateOnly(new Date(nowTs.value))
+  dutyFutureStartDate.value = parseLocalYmd(pending.effective_date)
   dutyFutureDialogVisible.value = true
 }
 
@@ -1829,10 +2648,10 @@ function notificationPreview(rule) {
   return text.length > 20 ? `${text.slice(0, 20)}...` : text
 }
 
-function nextCountdown(rule) {
-  if (!rule.next_run_at) return '暂无下一次触发'
-  const target = new Date(rule.next_run_at).getTime()
-  if (Number.isNaN(target)) return '暂无下一次触发'
+function formatCountdownTarget(value, emptyText = '暂无下一次触发') {
+  if (!value) return emptyText
+  const target = new Date(value).getTime()
+  if (Number.isNaN(target)) return emptyText
   const diff = target - nowTs.value
   if (diff <= 0) return '等待触发'
   const totalSeconds = Math.floor(diff / 1000)
@@ -1845,12 +2664,22 @@ function nextCountdown(rule) {
   return `${minutes}分${seconds}秒`
 }
 
+function nextCountdown(rule) {
+  return formatCountdownTarget(rule.next_run_at)
+}
+
 function hasExpiredNextRun() {
-  return rules.value.some(rule => {
+  const parentExpired = rules.value.some(rule => {
     if (!rule.enabled || !rule.next_run_at) return false
     const target = new Date(rule.next_run_at).getTime()
     return !Number.isNaN(target) && target <= nowTs.value
   })
+  if (parentExpired) return true
+  return rules.value.some(rule => (rule.child_notifications || []).some(child => {
+    if (child.status !== CHILD_STATUS_PENDING || !child.next_run_at) return false
+    const target = new Date(child.next_run_at).getTime()
+    return !Number.isNaN(target) && target <= nowTs.value
+  }))
 }
 
 async function refreshExpiredRuns() {
@@ -2392,45 +3221,58 @@ onUnmounted(() => {
                   placeholder="发送给所有钉钉 webhook 机器人的固定文本内容"
                   :disabled="!canEditAutoTasks"
                 />
-                <div class="dt-notify-actions">
-                  <template v-if="rule.notify_enabled">
-                    <el-button
-                      size="small"
-                      type="primary"
-                      :loading="savingId === (rule.id || rule.localKey)"
-                      :disabled="!canEditAutoTasks"
-                      @click="saveRule(rule, index, { requireNotification: true })"
-                    >
-                      保存通知
-                    </el-button>
+                <div class="dt-notify-action-stack">
+                  <div class="dt-notify-actions">
+                    <template v-if="rule.notify_enabled">
+                      <el-button
+                        size="small"
+                        type="primary"
+                        :loading="savingId === (rule.id || rule.localKey)"
+                        :disabled="!canEditAutoTasks"
+                        @click="saveRule(rule, index, { requireNotification: true })"
+                      >
+                        保存通知
+                      </el-button>
+                      <el-button
+                        size="small"
+                        plain
+                        :disabled="!canEditAutoTasks || !rule.id"
+                        @click="openRecipients(rule, index)"
+                      >
+                        配置接收人
+                      </el-button>
+                      <el-button
+                        size="small"
+                        :icon="Promotion"
+                        :loading="testingId === (rule.id || rule.localKey)"
+                        :disabled="!canEditAutoTasks"
+                        @click="testNotification(rule)"
+                      >
+                        测试发送webhook
+                      </el-button>
+                    </template>
+                    <el-tooltip :content="notifySwitchTooltip(rule)" placement="top" :disabled="!notifySwitchTooltip(rule)">
+                      <span class="dt-switch-tooltip-wrap" :class="{ 'is-disabled': isNotifySwitchDisabled(rule) }">
+                        <el-switch
+                          v-model="rule.notify_enabled"
+                          class="dt-switch-large"
+                          size="large"
+                          :disabled="isNotifySwitchDisabled(rule)"
+                        />
+                      </span>
+                    </el-tooltip>
+                  </div>
+                  <div class="dt-child-notify-trigger-row">
                     <el-button
                       size="small"
                       plain
                       :disabled="!canEditAutoTasks || !rule.id"
-                      @click="openRecipients(rule, index)"
+                      @click="openChildNotifications(rule, index)"
                     >
-                      配置接收人
+                      子通知
+                      <span v-if="rule.child_notifications?.length" class="dt-child-notify-count">{{ rule.child_notifications.length }}</span>
                     </el-button>
-                    <el-button
-                      size="small"
-                      :icon="Promotion"
-                      :loading="testingId === (rule.id || rule.localKey)"
-                      :disabled="!canEditAutoTasks"
-                      @click="testNotification(rule)"
-                    >
-                      测试发送webhook
-                    </el-button>
-                  </template>
-                  <el-tooltip :content="notifySwitchTooltip(rule)" placement="top" :disabled="!notifySwitchTooltip(rule)">
-                    <span class="dt-switch-tooltip-wrap" :class="{ 'is-disabled': isNotifySwitchDisabled(rule) }">
-                      <el-switch
-                        v-model="rule.notify_enabled"
-                        class="dt-switch-large"
-                        size="large"
-                        :disabled="isNotifySwitchDisabled(rule)"
-                      />
-                    </span>
-                  </el-tooltip>
+                  </div>
                 </div>
               </div>
             </div>
@@ -2502,6 +3344,24 @@ onUnmounted(() => {
                       <span>{{ rule.schedule_type === 'monthly' ? '1-31 日完整展示，点击日期配置提醒。' : '周一至周日完整展示，点击星期配置提醒。' }}</span>
                     </div>
                     <div class="dt-duty-card-actions">
+                      <el-button
+                        v-if="nextPendingDutyTransition(rule)"
+                        size="small"
+                        type="warning"
+                        plain
+                        @click="openPendingDutyFuture(rule)"
+                      >
+                        待生效排班
+                      </el-button>
+                      <el-button
+                        size="small"
+                        plain
+                        :icon="Edit"
+                        :disabled="!canEditAutoTasks"
+                        @click="openDutyTabbedEditor(rule, index)"
+                      >
+                        编辑
+                      </el-button>
                       <el-button
                         size="small"
                         plain
@@ -2630,6 +3490,291 @@ onUnmounted(() => {
       </el-dialog>
 
       <el-dialog
+        v-model="childNotificationDialogVisible"
+        width="min(1180px, calc(100vw - 24px))"
+        :close-on-click-modal="false"
+        class="dt-child-notify-dialog"
+        @closed="closeChildNotifications"
+      >
+        <template #header>
+          <div class="dt-child-dialog-head">
+            <strong>子通知</strong>
+            <span title="主规则启用并由计划真实触发、且主 webhook 通知发送成功后，已启用的子通知才进入正式倒计时；每条子通知每次激活只发送一次；测试执行和测试发送均不会激活子通知。">
+              <b>注意：</b>主规则按计划真实执行且主 webhook 通知成功后，已启用子通知才开始倒计时；测试发送不激活子通知。
+            </span>
+          </div>
+        </template>
+
+        <div class="dt-child-notify-toolbar">
+          <div class="dt-child-notify-summary">
+            <span class="dt-child-main-rule" :title="childNotificationRule?.name || '未命名规则'">
+              当前主规则：{{ childNotificationRule?.name || '未命名规则' }} · 已保存 {{ childNotifications.length }} 条
+            </span>
+            <span class="dt-child-main-next" :title="childPrerequisiteState.next.detail">
+              <strong>主任务下次执行：</strong>{{ childPrerequisiteState.next.value }}
+              <small>（{{ childPrerequisiteState.next.detail }}）</small>
+            </span>
+          </div>
+          <el-button type="primary" size="small" :icon="Plus" @click="openChildNotificationEditor()">新增子通知</el-button>
+        </div>
+
+        <div v-if="childNotifications.length" class="dt-child-notify-table-wrap">
+          <table class="dt-child-notify-table">
+            <colgroup>
+              <col class="is-index" />
+              <col class="is-schedule" />
+              <col class="is-message" />
+              <col class="is-target" />
+              <col class="is-prerequisite" />
+              <col class="is-state" />
+              <col class="is-enable" />
+              <col class="is-actions" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>计划与时间</th>
+                <th>通知内容</th>
+                <th>webhook 目标</th>
+                <th>前置条件</th>
+                <th>子通知状态/倒计时</th>
+                <th>启用</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(child, childIndex) in childNotifications" :key="childNotificationKey(child)">
+                <td class="dt-child-list-index">{{ childIndex + 1 }}</td>
+                <td><span class="dt-child-list-primary">{{ childScheduleText(child) }}</span></td>
+                <td>
+                  <el-tooltip :content="child.message" placement="top">
+                    <span class="dt-child-list-message">{{ child.message }}</span>
+                  </el-tooltip>
+                </td>
+                <td><span class="dt-child-list-target" :title="childWebhookTargetText(child)">{{ childWebhookTargetText(child) }}</span></td>
+                <td>
+                  <div class="dt-child-prerequisite-cell">
+                    <span :class="`is-${childPrerequisiteState.task.tone}`" :title="childPrerequisiteState.task.detail">
+                      <b>主任务：</b>{{ childPrerequisiteState.task.value }}
+                    </span>
+                    <span :class="`is-${childPrerequisiteState.notification.tone}`" :title="childPrerequisiteState.notification.detail">
+                      <b>主通知：</b>{{ childPrerequisiteState.notification.value }}
+                    </span>
+                  </div>
+                </td>
+                <td>
+                  <div class="dt-child-list-state">
+                    <span class="dt-child-notify-status" :class="childNotificationStatusClass(child)">
+                      {{ childNotificationStatusText(child) }}
+                    </span>
+                    <span class="dt-child-notify-countdown" :title="childNotificationCountdown(child)">
+                      <b>倒计时：</b>{{ childNotificationCountdown(child) }}
+                    </span>
+                  </div>
+                </td>
+                <td class="dt-child-list-switch">
+                  <el-switch
+                    :model-value="child.enabled"
+                    :loading="childNotificationStatusSavingId === child.id"
+                    :disabled="!canEditAutoTasks || childNotificationStatusSavingId === child.id"
+                    @change="enabled => toggleChildNotificationStatus(child, childIndex, enabled)"
+                  />
+                </td>
+                <td>
+                  <div class="dt-child-list-actions">
+                    <el-button
+                      type="primary"
+                      link
+                      size="small"
+                      :icon="Promotion"
+                      :loading="childNotificationTestingId === child.id"
+                      :disabled="!canEditAutoTasks || childNotificationTestingId === child.id"
+                      @click="testChildNotification(child)"
+                    >
+                      测试发送
+                    </el-button>
+                    <el-button
+                      type="primary"
+                      link
+                      size="small"
+                      :icon="Edit"
+                      :disabled="!canEditAutoTasks"
+                      @click="openChildNotificationEditor(child, childIndex)"
+                    >
+                      编辑
+                    </el-button>
+                    <el-button
+                      type="danger"
+                      link
+                      size="small"
+                      :icon="Delete"
+                      :loading="childNotificationDeletingId === child.id"
+                      :disabled="!canEditAutoTasks"
+                      @click="deleteChildNotification(child, childIndex)"
+                    >
+                      删除
+                    </el-button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div v-else class="dt-child-notify-empty">暂无子通知，点击“新增子通知”开始配置。</div>
+
+        <template #footer>
+          <el-button @click="closeChildNotifications">关闭</el-button>
+        </template>
+      </el-dialog>
+
+      <el-dialog
+        v-model="childNotificationEditorVisible"
+        :title="childNotificationEditorTitle()"
+        width="min(980px, calc(100vw - 24px))"
+        append-to-body
+        :close-on-click-modal="false"
+        class="dt-child-notify-editor-dialog"
+        @closed="closeChildNotificationEditor"
+      >
+        <div class="dt-child-editor-state">
+          <div class="dt-child-editor-statuses">
+            <span class="dt-child-editor-condition" :class="`is-${childPrerequisiteState.task.tone}`" :title="childPrerequisiteState.task.detail">
+              <b>主任务：</b>{{ childPrerequisiteState.task.value }}
+            </span>
+            <span class="dt-child-editor-condition" :class="`is-${childPrerequisiteState.notification.tone}`" :title="childPrerequisiteState.notification.detail">
+              <b>主通知：</b>{{ childPrerequisiteState.notification.value }}
+            </span>
+            <span class="dt-child-notify-status" :class="childNotificationStatusClass(childEditorStatusSource())">
+              {{ childNotificationEditorForm.id ? childNotificationStatusText(childEditorStatusSource()) : '尚未保存' }}
+            </span>
+            <span class="dt-child-notify-countdown" :title="childNotificationEditorForm.id ? childNotificationCountdown(childEditorStatusSource()) : '保存后等待主通知真实执行并激活'">
+              <b>倒计时：</b>{{ childNotificationEditorForm.id ? childNotificationCountdown(childEditorStatusSource()) : '保存后等待主通知真实执行并激活' }}
+            </span>
+          </div>
+          <label class="dt-child-editor-enable">
+            <span>启用</span>
+            <el-switch v-model="childNotificationEditorForm.enabled" :disabled="!canEditAutoTasks" />
+          </label>
+        </div>
+
+        <div class="dt-child-notify-form-grid">
+          <div class="dt-child-notify-field">
+            <label>计划类型</label>
+            <el-radio-group v-model="childNotificationEditorForm.schedule_type" size="small">
+              <el-radio-button value="weekly">每周星期</el-radio-button>
+              <el-radio-button value="monthly">年内每月日期</el-radio-button>
+            </el-radio-group>
+          </div>
+
+          <div v-if="childNotificationEditorForm.schedule_type === 'weekly'" class="dt-child-notify-field is-wide">
+            <label>执行星期（可单选或多选）</label>
+            <el-checkbox-group v-model="childNotificationEditorForm.week_days" class="dt-child-weekday-group">
+              <el-checkbox-button
+                v-for="day in weekDayOptions"
+                :key="day.value"
+                :value="day.value"
+              >
+                {{ day.label }}
+              </el-checkbox-button>
+            </el-checkbox-group>
+          </div>
+
+          <div v-else class="dt-child-notify-field is-wide">
+            <label>每月日期（不存在的日期自动跳过）</label>
+            <el-select
+              v-model="childNotificationEditorForm.month_days"
+              size="small"
+              multiple
+              collapse-tags
+              collapse-tags-tooltip
+              placeholder="选择 1-31 日"
+            >
+              <el-option v-for="day in monthDayOptions" :key="day" :label="`${day}日`" :value="day" />
+            </el-select>
+          </div>
+
+          <div class="dt-child-notify-field">
+            <label>执行时间</label>
+            <el-time-picker
+              v-model="childNotificationEditorForm.execute_time"
+              value-format="HH:mm:ss"
+              format="HH:mm:ss"
+              size="small"
+              popper-class="dt-time-now-popper"
+              placeholder="HH:mm:ss"
+              @visible-change="visible => handleTimePickerVisible(visible, value => { childNotificationEditorForm.execute_time = value })"
+            />
+          </div>
+
+          <div class="dt-child-notify-field is-target">
+            <label>webhook 目标</label>
+            <div class="dt-child-target-controls">
+              <el-radio-group v-model="childNotificationEditorForm.webhook_target_mode" size="small">
+                <el-radio-button value="all">全部</el-radio-button>
+                <el-radio-button value="selected">指定</el-radio-button>
+              </el-radio-group>
+              <el-select
+                v-if="childNotificationEditorForm.webhook_target_mode === 'selected'"
+                v-model="childNotificationEditorForm.webhook_ids"
+                size="small"
+                multiple
+                collapse-tags
+                collapse-tags-tooltip
+                placeholder="选择一个或多个 webhook"
+              >
+                <el-option
+                  v-for="webhook in childRuleWebhooks()"
+                  :key="webhook.id"
+                  :label="webhook.name"
+                  :value="webhook.id"
+                />
+              </el-select>
+            </div>
+          </div>
+
+          <div class="dt-child-notify-field is-message">
+            <label>通知内容</label>
+            <el-input
+              v-model="childNotificationEditorForm.message"
+              type="textarea"
+              :rows="4"
+              maxlength="10000"
+              show-word-limit
+              placeholder="填写本条子通知实际发送的内容"
+            />
+            <small>接收人/@ 配置沿用当前主通知；选择多个日期时，本轮在第一个匹配时间发送一次。</small>
+          </div>
+        </div>
+
+        <template #footer>
+          <div class="dt-child-editor-footer">
+            <el-button
+              type="primary"
+              plain
+              :icon="Promotion"
+              :loading="childNotificationTestingId === childNotificationEditorForm.id"
+              :disabled="!canEditAutoTasks || !childNotificationEditorForm.id || childNotificationTestingId === childNotificationEditorForm.id"
+              title="按当前已保存的子通知配置执行一次测试发送"
+              @click="testChildNotification(childNotificationEditorForm)"
+            >
+              测试发送
+            </el-button>
+            <div>
+              <el-button @click="closeChildNotificationEditor">取消</el-button>
+              <el-button
+                type="primary"
+                :loading="childNotificationSavingId === childNotificationKey(childNotificationEditorForm)"
+                :disabled="!canEditAutoTasks"
+                @click="saveChildNotification"
+              >
+                保存
+              </el-button>
+            </div>
+          </div>
+        </template>
+      </el-dialog>
+
+      <el-dialog
         v-model="dutyDetailDialogVisible"
         width="1220px"
         :close-on-click-modal="false"
@@ -2640,6 +3785,21 @@ onUnmounted(() => {
             {{ dutyDetailMode === 'monthly' ? '每月日期值班配置' : '每周星期值班配置' }} - {{ dutyDetailLabel() }}
           </div>
         </template>
+
+        <el-tabs
+          v-if="dutyDetailMultiKey"
+          :model-value="dutyDetailKey"
+          class="dt-duty-key-tabs"
+          :class="dutyDetailMode === 'monthly' ? 'is-monthly' : 'is-weekly'"
+          @tab-change="switchDutyDetailKey"
+        >
+          <el-tab-pane
+            v-for="key in dutyKeys(dutyDetailRule)"
+            :key="key"
+            :name="String(key)"
+            :label="dutyDetailTabLabel(key)"
+          />
+        </el-tabs>
 
         <div class="dt-duty-dialog-grid">
           <div class="dt-duty-dialog-card">
@@ -2654,6 +3814,42 @@ onUnmounted(() => {
                 <el-radio :value="WEEKLY_DUTY_MODE_FIXED">固定模式</el-radio>
                 <el-radio :value="WEEKLY_DUTY_MODE_ROTATION">轮换模式</el-radio>
               </el-radio-group>
+            </div>
+            <div
+              v-if="dutyDetailMode === 'weekly' && pendingDutyTransitionText(dutyDetailRule)"
+              class="dt-duty-pending-transition"
+            >
+              <span>{{ pendingDutyTransitionText(dutyDetailRule) }}</span>
+              <el-button
+                v-if="!isDutyPendingTransitionEditing()"
+                type="warning"
+                link
+                size="small"
+                :icon="Edit"
+                @click="editPendingDutyTransition()"
+              >
+                重新编辑
+              </el-button>
+              <strong v-else>重新编辑中</strong>
+            </div>
+            <div v-if="showDutyEffectiveConfig()" class="dt-duty-effective-config">
+              <label class="dt-duty-field-label">新模式生效时间</label>
+              <div class="dt-duty-effective-controls">
+                <el-radio-group v-model="dutyEffectiveWeek" size="small">
+                  <el-radio-button value="this">本周起</el-radio-button>
+                  <el-radio-button value="next">下周起</el-radio-button>
+                </el-radio-group>
+                <el-select v-model="dutyEffectiveWeekday" size="small" class="dt-duty-effective-weekday">
+                  <el-option
+                    v-for="day in weekDayOptions"
+                    :key="day.value"
+                    :label="day.label"
+                    :value="day.value"
+                  />
+                </el-select>
+                <strong>{{ localDateToYmd(dutyEffectiveDate()) }} 起生效</strong>
+              </div>
+              <p class="dt-duty-dialog-tip">生效日前继续使用旧规则，生效日及以后使用新规则；轮换顺序从新规则的首个实际排班日开始。</p>
             </div>
             <template v-if="dutyDetailMode === 'weekly'">
               <div v-if="dutyDetailTab === WEEKLY_DUTY_MODE_FIXED">
@@ -2838,7 +4034,7 @@ onUnmounted(() => {
               <div class="dt-duty-reference-controls">
                 <el-select v-model="dutyReferenceKey" size="small" clearable placeholder="选择来源">
                   <el-option
-                    v-for="option in dutyReferenceOptions(dutyDetailRule, dutyDetailKey)"
+                    v-for="option in dutyDetailReferenceOptions()"
                     :key="option.value"
                     :label="option.label"
                     :value="option.value"
@@ -2851,8 +4047,8 @@ onUnmounted(() => {
             </div>
             <label class="dt-duty-field-label">发送策略</label>
             <el-radio-group v-model="dutyDetailForm.send_mode" size="small" class="dt-duty-send-mode">
-              <el-radio-button :label="DUTY_SEND_MODE_START">只发送开始提醒</el-radio-button>
-              <el-radio-button :label="DUTY_SEND_MODE_BOTH">开始和结束都发送</el-radio-button>
+              <el-radio-button :value="DUTY_SEND_MODE_START">只发送开始提醒</el-radio-button>
+              <el-radio-button :value="DUTY_SEND_MODE_BOTH">开始和结束都发送</el-radio-button>
             </el-radio-group>
 
             <div class="dt-duty-time-row" :class="{ 'is-single': dutyDetailForm.send_mode !== DUTY_SEND_MODE_BOTH }">
@@ -2914,10 +4110,18 @@ onUnmounted(() => {
 
       <el-dialog
         v-model="dutyFutureDialogVisible"
-        title="后续三周值班排期"
+        :title="dutyFutureDialogTitle()"
         width="980px"
         :close-on-click-modal="false"
       >
+        <el-alert
+          v-if="dutyFutureBoundaryText()"
+          type="warning"
+          :closable="false"
+          show-icon
+          class="dt-duty-future-boundary"
+          :title="dutyFutureBoundaryText()"
+        />
         <div class="dt-duty-future-weeks">
           <section
             v-for="week in dutyFutureWeeks()"
@@ -2941,8 +4145,8 @@ onUnmounted(() => {
               >
                 <strong>{{ day.weekday }}</strong>
                 <span>{{ day.monthDay }}</span>
-                <em>{{ day.isBeforeOpened ? '已过' : day.people }}</em>
-                <small>{{ day.isBeforeOpened ? '--' : day.status }}</small>
+                <em>{{ day.isBeforeOpened ? dutyFutureBeforeText() : day.people }}</em>
+                <small>{{ day.isBeforeOpened ? '--' : `${day.time} · ${day.status}` }}</small>
               </div>
             </div>
           </section>
@@ -2962,13 +4166,13 @@ onUnmounted(() => {
           <div class="dt-duty-dialog-card">
             <h4>应用范围</h4>
             <el-radio-group v-model="dutyBulkForm.scope" class="dt-duty-bulk-scope">
-              <el-radio label="all">{{ dutyBulkScopeLabel('all') }}</el-radio>
-              <el-radio label="configured">{{ dutyBulkScopeLabel('configured') }}</el-radio>
+              <el-radio value="all">{{ dutyBulkScopeLabel('all') }}</el-radio>
+              <el-radio value="configured">{{ dutyBulkScopeLabel('configured') }}</el-radio>
             </el-radio-group>
             <label class="dt-duty-field-label">批量方式</label>
             <el-radio-group v-model="dutyBulkForm.apply_mode" class="dt-duty-bulk-scope">
-              <el-radio label="content">批量填写内容</el-radio>
-              <el-radio label="reference">引用某一天配置</el-radio>
+              <el-radio value="content">批量填写内容</el-radio>
+              <el-radio value="reference">引用某一天配置</el-radio>
             </el-radio-group>
             <template v-if="dutyBulkForm.apply_mode === 'reference'">
               <label class="dt-duty-field-label">引用来源</label>
@@ -2985,8 +4189,8 @@ onUnmounted(() => {
             <template v-else>
               <label class="dt-duty-field-label">发送策略</label>
               <el-radio-group v-model="dutyBulkForm.send_mode" class="dt-duty-bulk-scope">
-                <el-radio :label="DUTY_SEND_MODE_BOTH">开始和结束都发送</el-radio>
-                <el-radio :label="DUTY_SEND_MODE_START">只发送开始提醒</el-radio>
+                <el-radio :value="DUTY_SEND_MODE_BOTH">开始和结束都发送</el-radio>
+                <el-radio :value="DUTY_SEND_MODE_START">只发送开始提醒</el-radio>
               </el-radio-group>
             </template>
           </div>
@@ -3089,8 +4293,8 @@ onUnmounted(() => {
                 size="small"
                 class="dt-recipient-mode"
               >
-                <el-radio-button label="people">仅@人</el-radio-button>
-                <el-radio-button label="all">@所有人</el-radio-button>
+                <el-radio-button value="people">仅@人</el-radio-button>
+                <el-radio-button value="all">@所有人</el-radio-button>
               </el-radio-group>
             </div>
           </div>
@@ -3243,8 +4447,8 @@ onUnmounted(() => {
           </div>
           <div class="dt-settings-backup-actions">
             <el-radio-group v-model="backupFormat">
-              <el-radio-button label="xlsx">Excel</el-radio-button>
-              <el-radio-button label="md">Markdown</el-radio-button>
+              <el-radio-button value="xlsx">Excel</el-radio-button>
+              <el-radio-button value="md">Markdown</el-radio-button>
             </el-radio-group>
             <el-button
               type="primary"
@@ -3521,6 +4725,14 @@ onUnmounted(() => {
   justify-content: flex-end;
 }
 
+.dt-notify-action-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  min-width: max-content;
+}
+
 .dt-notify-actions :deep(.el-button) {
   height: 24px;
   min-height: 24px;
@@ -3537,7 +4749,7 @@ onUnmounted(() => {
   height: 24px;
 }
 
-.dt-settings-notify-fields.is-notify-off .dt-notify-actions {
+.dt-settings-notify-fields.is-notify-off .dt-notify-action-stack {
   grid-column: 3;
 }
 
@@ -3551,6 +4763,404 @@ onUnmounted(() => {
   color: var(--color-text-3);
   font-size: 12px;
   background: var(--color-bg-white);
+}
+
+.dt-child-notify-trigger-row {
+  display: flex;
+  justify-content: flex-end;
+  min-height: 24px;
+  margin-top: 0;
+}
+
+.dt-child-notify-trigger-row :deep(.el-button) {
+  height: 24px;
+  min-height: 24px;
+  padding: 0 9px;
+  font-size: 12px;
+}
+
+.dt-child-notify-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 6px;
+  border-radius: 9px;
+  padding: 0 5px;
+  color: #fff;
+  background: var(--color-primary);
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.dt-child-dialog-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+  padding-right: 28px;
+}
+
+.dt-child-dialog-head > strong {
+  flex: 0 0 auto;
+  color: var(--color-text-1);
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.dt-child-dialog-head > span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-3);
+  font-size: 11px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dt-child-dialog-head > span b {
+  color: #d97706;
+  font-weight: 600;
+}
+
+.dt-child-notify-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  color: var(--color-text-2);
+  font-size: 13px;
+}
+
+.dt-child-notify-summary {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.dt-child-main-rule,
+.dt-child-main-next {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dt-child-main-rule {
+  max-width: 390px;
+}
+
+.dt-child-main-next {
+  color: var(--color-text-1);
+}
+
+.dt-child-main-next strong {
+  font-weight: 600;
+}
+
+.dt-child-main-next small {
+  color: var(--color-text-3);
+  font-size: 11px;
+}
+
+.dt-child-notify-table-wrap {
+  max-height: 56vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+
+.dt-child-notify-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  background: var(--color-bg-white);
+}
+
+.dt-child-notify-table col.is-index { width: 3.5%; }
+.dt-child-notify-table col.is-schedule { width: 13.5%; }
+.dt-child-notify-table col.is-message { width: 14%; }
+.dt-child-notify-table col.is-target { width: 10%; }
+.dt-child-notify-table col.is-prerequisite { width: 17.5%; }
+.dt-child-notify-table col.is-state { width: 17%; }
+.dt-child-notify-table col.is-enable { width: 5.5%; }
+.dt-child-notify-table col.is-actions { width: 19%; }
+
+.dt-child-notify-table th,
+.dt-child-notify-table td {
+  border-bottom: 1px solid var(--color-border-light);
+  padding: 9px 7px;
+  color: var(--color-text-2);
+  font-size: 12px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.dt-child-notify-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-bg-3);
+  color: var(--color-text-1);
+  font-weight: 600;
+}
+
+.dt-child-notify-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.dt-child-notify-table tbody tr:hover td {
+  background: #f8fafc;
+}
+
+.dt-child-list-index,
+.dt-child-list-switch {
+  text-align: center !important;
+}
+
+.dt-child-list-primary,
+.dt-child-list-message,
+.dt-child-list-target {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dt-child-list-primary {
+  color: var(--color-text-1);
+  font-weight: 500;
+}
+
+.dt-child-list-message {
+  cursor: default;
+}
+
+.dt-child-list-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  min-width: 0;
+}
+
+.dt-child-list-state .dt-child-notify-countdown {
+  overflow: visible;
+  line-height: 18px;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.dt-child-prerequisite-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.dt-child-prerequisite-cell > span,
+.dt-child-editor-condition {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-3);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dt-child-prerequisite-cell > span b,
+.dt-child-editor-condition b,
+.dt-child-notify-countdown b {
+  font-weight: 600;
+}
+
+.dt-child-prerequisite-cell > span.is-success,
+.dt-child-editor-condition.is-success {
+  color: #15803d;
+}
+
+.dt-child-prerequisite-cell > span.is-pending,
+.dt-child-editor-condition.is-pending {
+  color: var(--color-primary);
+}
+
+.dt-child-prerequisite-cell > span.is-warning,
+.dt-child-editor-condition.is-warning {
+  color: #b45309;
+}
+
+.dt-child-prerequisite-cell > span.is-failed,
+.dt-child-editor-condition.is-failed {
+  color: #dc2626;
+}
+
+.dt-child-list-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.dt-child-list-actions :deep(.el-button) {
+  padding-left: 3px;
+  padding-right: 3px;
+  font-size: 11px;
+}
+
+.dt-child-list-actions :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+
+.dt-child-notify-status {
+  flex: 0 0 auto;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 12px;
+  color: var(--color-text-3);
+  background: var(--color-bg-3);
+}
+
+.dt-child-notify-status.is-pending {
+  color: var(--color-primary);
+  background: var(--color-primary-light);
+}
+
+.dt-child-notify-status.is-sent {
+  color: #15803d;
+  background: #ecfdf3;
+}
+
+.dt-child-notify-status.is-failed {
+  color: #dc2626;
+  background: #fef2f2;
+}
+
+.dt-child-notify-countdown {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--color-text-3);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dt-child-editor-state {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--color-border-light);
+  padding-bottom: 10px;
+}
+
+.dt-child-editor-statuses,
+.dt-child-editor-enable {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dt-child-editor-statuses {
+  overflow: hidden;
+}
+
+.dt-child-editor-statuses .dt-child-notify-countdown {
+  min-width: 0;
+}
+
+.dt-child-editor-enable {
+  flex: 0 0 auto;
+  color: var(--color-text-2);
+  font-size: 12px;
+}
+
+.dt-child-editor-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dt-child-editor-footer > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dt-child-editor-footer > div :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+
+.dt-child-notify-form-grid {
+  display: grid;
+  grid-template-columns: 180px minmax(320px, 1fr) 180px;
+  gap: 12px;
+  align-items: end;
+}
+
+.dt-child-notify-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dt-child-notify-field > label {
+  color: var(--color-text-2);
+  font-size: 12px;
+}
+
+.dt-child-notify-field :deep(.el-date-editor.el-input),
+.dt-child-notify-field :deep(.el-select) {
+  width: 100%;
+  min-width: 0;
+}
+
+.dt-child-notify-field.is-wide {
+  min-width: 0;
+}
+
+.dt-child-notify-field.is-target,
+.dt-child-notify-field.is-message {
+  grid-column: 1 / -1;
+}
+
+.dt-child-target-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dt-child-target-controls :deep(.el-select) {
+  width: min(520px, 100%);
+}
+
+.dt-child-notify-field.is-message small {
+  color: var(--color-text-3);
+  font-size: 12px;
+}
+
+.dt-child-weekday-group {
+  white-space: nowrap;
+}
+
+.dt-child-notify-empty {
+  border: 1px dashed var(--color-border);
+  border-radius: 6px;
+  padding: 28px;
+  color: var(--color-text-3);
+  text-align: center;
 }
 
 .dt-settings-history {
@@ -4054,6 +5664,10 @@ onUnmounted(() => {
   gap: 12px;
 }
 
+.dt-duty-future-boundary {
+  margin-bottom: 12px;
+}
+
 .dt-duty-future-week {
   border: 1px solid var(--color-border-light);
   border-radius: 8px;
@@ -4182,6 +5796,46 @@ onUnmounted(() => {
   color: var(--color-text-1);
 }
 
+.dt-duty-key-tabs {
+  margin: -4px 0 12px;
+}
+
+.dt-duty-key-tabs :deep(.el-tabs__header) {
+  margin: 0;
+}
+
+.dt-duty-key-tabs :deep(.el-tabs__nav-wrap) {
+  padding: 0 2px;
+}
+
+.dt-duty-key-tabs :deep(.el-tabs__nav) {
+  width: 100%;
+  display: flex;
+}
+
+.dt-duty-key-tabs :deep(.el-tabs__item) {
+  min-width: 0;
+  flex: 1 1 0;
+  padding: 0;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.dt-duty-key-tabs.is-weekly :deep(.el-tabs__item) {
+  height: 42px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.dt-duty-key-tabs.is-monthly :deep(.el-tabs__item) {
+  height: 34px;
+  font-size: 11px;
+}
+
+.dt-duty-key-tabs :deep(.el-tabs__content) {
+  display: none;
+}
+
 .dt-duty-dialog-grid {
   display: grid;
   grid-template-columns: minmax(260px, .75fr) minmax(420px, 1.25fr);
@@ -4248,6 +5902,62 @@ onUnmounted(() => {
 
 .dt-duty-mode-selector :deep(.el-radio:last-child) {
   margin-right: 0;
+}
+
+.dt-duty-pending-transition {
+  margin-bottom: 8px;
+  border: 1px solid #f6d99b;
+  border-radius: 6px;
+  background: #fffbeb;
+  padding: 7px 9px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #92400e;
+  font-size: 12px;
+}
+
+.dt-duty-pending-transition span {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.dt-duty-pending-transition strong {
+  flex: 0 0 auto;
+  color: #b45309;
+  font-size: 12px;
+}
+
+.dt-duty-effective-config {
+  margin-bottom: 10px;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  background: #eff6ff;
+  padding: 8px;
+}
+
+.dt-duty-effective-config .dt-duty-field-label {
+  margin-top: 0;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.dt-duty-effective-controls {
+  display: grid;
+  grid-template-columns: auto 110px minmax(130px, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.dt-duty-effective-controls strong {
+  color: #1e3a8a;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.dt-duty-effective-weekday {
+  width: 110px;
 }
 
 .dt-duty-rotation-select {
@@ -4554,6 +6264,18 @@ onUnmounted(() => {
   margin-bottom: 8px;
 }
 
+@media (max-width: 1500px) {
+  .dt-settings-notify-fields {
+    grid-template-columns: minmax(420px, 1.2fr) minmax(260px, 1fr);
+  }
+
+  .dt-notify-action-stack,
+  .dt-settings-notify-fields.is-notify-off .dt-notify-action-stack {
+    grid-column: 1 / -1;
+    justify-self: end;
+  }
+}
+
 @media (max-width: 1200px) {
   .dt-rule-line {
     flex-wrap: wrap;
@@ -4570,8 +6292,14 @@ onUnmounted(() => {
 
   .dt-duty-layout,
   .dt-duty-dialog-grid,
-  .dt-duty-dialog-grid.is-bulk {
+  .dt-duty-dialog-grid.is-bulk,
+  .dt-child-notify-form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .dt-child-notify-field.is-target,
+  .dt-child-notify-field.is-message {
+    grid-column: 1;
   }
 
   .dt-duty-week-grid {
@@ -4615,10 +6343,46 @@ onUnmounted(() => {
     justify-content: flex-start;
   }
 
+  .dt-notify-action-stack {
+    align-items: flex-start;
+    min-width: 0;
+  }
+
+  .dt-settings-notify-fields.is-notify-off .dt-notify-action-stack {
+    grid-column: 1;
+  }
+
   .dt-task-type-options,
   .dt-duty-staff-grid,
-  .dt-duty-time-row {
+  .dt-duty-time-row,
+  .dt-duty-effective-controls {
     grid-template-columns: 1fr;
+  }
+
+  .dt-child-editor-state {
+    grid-template-columns: 1fr;
+  }
+
+  .dt-child-editor-statuses,
+  .dt-child-target-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dt-child-dialog-head,
+  .dt-child-notify-summary {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .dt-child-dialog-head > span,
+  .dt-child-main-rule {
+    max-width: 100%;
+  }
+
+  .dt-child-weekday-group {
+    white-space: normal;
   }
 }
 </style>
