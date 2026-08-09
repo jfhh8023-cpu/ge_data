@@ -10,6 +10,7 @@ const {
 } = require('../src/models');
 const {
   activateChildNotifications,
+  childNotificationFallbackMatch,
   deactivateChildNotifications,
   ensureAutoTaskTables,
   getDutyItemForParts,
@@ -17,6 +18,7 @@ const {
   normalizeChildNotificationPayload,
   normalizeDutyConfig,
   processDueChildNotifications,
+  recoverChildNotificationsFromParentEvidence,
   schedulerTick,
   testChildNotification
 } = require('../src/services/AutoTaskService');
@@ -83,6 +85,80 @@ async function main() {
     });
     const port = receiver.address().port;
     const now = new Date();
+    const fallbackNow = new Date('2026-08-09T12:00:00+08:00');
+    const fallbackRule = {
+      enabled: true,
+      task_type: 'task_create_notify',
+      action_mode: 'run_and_notify',
+      schedule_type: 'weekly',
+      week_days: [5],
+      month_days: [],
+      execute_time: '10:00:00',
+      notify_enabled: true
+    };
+    const fallbackWithoutLog = childNotificationFallbackMatch(fallbackRule, null, fallbackNow);
+    assert.strictEqual(fallbackWithoutLog.matched, true, 'enabled parent with a valid countdown under six days must match fallback');
+    assert.strictEqual(fallbackWithoutLog.source, 'countdown');
+    const fallbackWithSuccessLog = childNotificationFallbackMatch(fallbackRule, {
+      scheduled_at: new Date('2026-08-07T10:00:00+08:00'),
+      status: 'success',
+      notify_status: 'success'
+    }, fallbackNow);
+    assert.strictEqual(fallbackWithSuccessLog.matched, true, 'a current-cycle success record must corroborate fallback');
+    assert.strictEqual(fallbackWithSuccessLog.source, 'run_log');
+    const fallbackWithFailedLog = childNotificationFallbackMatch(fallbackRule, {
+      scheduled_at: new Date('2026-08-07T10:00:00+08:00'),
+      status: 'notify_failed',
+      notify_status: 'failed'
+    }, fallbackNow);
+    assert.strictEqual(fallbackWithFailedLog.matched, false, 'an explicit current-cycle failure must block countdown fallback');
+    assert.strictEqual(fallbackWithFailedLog.reason, 'explicit_non_success_record');
+    for (const blockingRecord of [
+      { status: 'running', notify_status: 'not_required' },
+      { status: 'skipped', notify_status: 'skipped' },
+      { status: 'failed', notify_status: 'not_required' },
+      { status: 'success', notify_status: 'failed' }
+    ]) {
+      const blocked = childNotificationFallbackMatch(fallbackRule, {
+        scheduled_at: new Date('2026-08-07T10:00:00+08:00'),
+        ...blockingRecord
+      }, fallbackNow);
+      assert.strictEqual(blocked.matched, false, `${blockingRecord.status}/${blockingRecord.notify_status} must block countdown fallback`);
+      assert.strictEqual(blocked.reason, 'explicit_non_success_record');
+    }
+    const exactSixDayBoundary = childNotificationFallbackMatch({
+      ...fallbackRule,
+      week_days: [6],
+      execute_time: '12:00:00'
+    }, null, fallbackNow);
+    assert.strictEqual(exactSixDayBoundary.remaining_ms, 6 * 24 * 60 * 60 * 1000);
+    assert.strictEqual(exactSixDayBoundary.matched, false, 'exactly six full days must not match the strict fallback window');
+    const successRecordOutsideFallbackWindow = childNotificationFallbackMatch({
+      ...fallbackRule,
+      week_days: [6],
+      execute_time: '12:00:00'
+    }, {
+      scheduled_at: new Date('2026-08-08T12:00:00+08:00'),
+      status: 'success',
+      notify_status: 'success'
+    }, fallbackNow);
+    assert.strictEqual(successRecordOutsideFallbackWindow.matched, true, 'a real current-cycle success record must take priority over the fallback window');
+    assert.strictEqual(successRecordOutsideFallbackWindow.source, 'run_log');
+    assert.strictEqual(
+      childNotificationFallbackMatch({ ...fallbackRule, notify_enabled: false }, null, fallbackNow).matched,
+      false,
+      'disabled parent notification must not match fallback'
+    );
+    assert.strictEqual(
+      childNotificationFallbackMatch({ ...fallbackRule, enabled: false }, null, fallbackNow).matched,
+      false,
+      'disabled parent rule must not match fallback'
+    );
+    assert.strictEqual(
+      childNotificationFallbackMatch({ ...fallbackRule, action_mode: 'run_only' }, null, fallbackNow).matched,
+      false,
+      'run-only parent rule must not match fallback'
+    );
     const target = new Date(now.getTime() + 4000);
     const targetParts = getBeijingParts(target);
     const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
@@ -189,8 +265,13 @@ async function main() {
     });
     await sleep(Math.max(0, schedulerTarget.getTime() - Date.now()) + 350);
     await schedulerTick();
+    let scheduledRunLog = null;
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      scheduledRunLog = await AutoTaskRunLog.findOne({ where: { rule_id: scheduledRule.id } });
+      if (scheduledRunLog && scheduledRunLog.status !== 'running') break;
+      await sleep(100);
+    }
     await scheduledChild.reload();
-    const scheduledRunLog = await AutoTaskRunLog.findOne({ where: { rule_id: scheduledRule.id } });
     assert.strictEqual(received.length, 1, 'one scheduled parent notification must be sent');
     assert.ok(received[0]?.markdown?.text?.includes('isolated scheduled parent message'));
     assert.strictEqual(scheduledRunLog?.status, 'success');
@@ -300,9 +381,12 @@ async function main() {
     assert.strictEqual(monthlyChild.activation_token, null);
     await rule.update({ enabled: false });
     await rule.update({ enabled: true });
-    await processDueChildNotifications(new Date());
+    const fallbackRecovered = await recoverChildNotificationsFromParentEvidence(new Date());
+    const fallbackRecoveredAgain = await recoverChildNotificationsFromParentEvidence(new Date());
     await monthlyChild.reload();
-    assert.strictEqual(monthlyChild.status, 'inactive', 're-enabling a parent must not revive a previous activation');
+    assert.strictEqual(fallbackRecovered, 1, 'countdown fallback must activate one eligible inactive child');
+    assert.strictEqual(fallbackRecoveredAgain, 0, 'repeated fallback checks must not reactivate the same child');
+    assert.strictEqual(monthlyChild.status, 'pending', 'eligible fallback must move the child into the normal pending lifecycle');
     const reenabledStatus = monthlyChild.status;
 
     const staleNow = new Date();
@@ -408,7 +492,14 @@ async function main() {
         reenabled_status: reenabledStatus,
         month_31_next_date: getBeijingParts(nextMonthly).date,
         disabled_pending_status: 'inactive',
-        stale_sending_status: monthlyChild.status
+        stale_sending_status: monthlyChild.status,
+        fallback_without_log: fallbackWithoutLog.source,
+        fallback_with_success_log: fallbackWithSuccessLog.source,
+        fallback_failed_log_blocked: !fallbackWithFailedLog.matched,
+        fallback_exact_six_days_blocked: !exactSixDayBoundary.matched,
+        success_log_prioritized_outside_window: successRecordOutsideFallbackWindow.matched,
+        fallback_recovered: fallbackRecovered,
+        fallback_duplicate_recovered: fallbackRecoveredAgain
       },
       duty_switch: {
         before_effective: 'OLD',

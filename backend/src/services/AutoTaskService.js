@@ -36,6 +36,7 @@ const DUTY_SEND_MODES = new Set(['start_only', 'start_and_end']);
 const WEEKLY_DUTY_MODE_FIXED = 'fixed';
 const WEEKLY_DUTY_MODE_ROTATION = 'rotation';
 const DAY_MS = 24 * 60 * 60 * 1000;
+const CHILD_FALLBACK_WINDOW_MS = 6 * DAY_MS;
 const STALE_RUNNING_LOG_MS = 60 * 1000;
 const SCHEDULE_TRIGGER_GRACE_MS = 60 * 1000;
 const CHILD_STATUS_INACTIVE = 'inactive';
@@ -916,6 +917,8 @@ async function executeChildNotification(child, parentRule, scheduledAt) {
 }
 
 async function processDueChildNotifications(now = new Date()) {
+  await recoverChildNotificationsFromParentEvidence(now);
+
   const staleBefore = new Date(now.getTime() - STALE_RUNNING_LOG_MS);
   await AutoTaskChildNotification.update({
     status: CHILD_STATUS_FAILED,
@@ -1051,6 +1054,138 @@ function getNextRunAt(rule, now = new Date()) {
     if (runAt > now) return runAt;
   }
   return null;
+}
+
+function getPreviousRunAt(rule, now = new Date()) {
+  const today = getBeijingDate(now);
+  const nowTime = now.getTime();
+  for (let offset = 0; offset <= 400; offset++) {
+    const candidate = addDays(today, -offset);
+    const ymd = dateToYmd(candidate);
+    const parts = partsFromYmd(ymd);
+    if (!isRuleDateMatched(rule, parts)) continue;
+    const runAt = getBeijingScheduledAt(parts, normalizeTime(rule.execute_time));
+    if (runAt.getTime() < nowTime) return runAt;
+  }
+  return null;
+}
+
+function childNotificationFallbackMatch(rule, latestRun = null, now = new Date()) {
+  const result = {
+    matched: false,
+    source: null,
+    reason: 'parent_inactive',
+    next_run_at: null,
+    activation_scheduled_at: null,
+    remaining_ms: null
+  };
+  if (!isChildNotificationParentActive(rule)) return result;
+
+  const nextRunAt = getNextRunAt(rule, now);
+  if (!nextRunAt) return { ...result, reason: 'missing_next_run' };
+  const remainingMs = nextRunAt.getTime() - now.getTime();
+  const withCountdown = {
+    ...result,
+    next_run_at: nextRunAt,
+    remaining_ms: remainingMs
+  };
+  const previousRunAt = getPreviousRunAt(rule, now);
+  const latestScheduledAt = latestRun?.scheduled_at ? new Date(latestRun.scheduled_at) : null;
+  const latestScheduledTime = latestScheduledAt?.getTime();
+  const previousRunTime = previousRunAt?.getTime();
+  const isCurrentCycleRecord = Boolean(
+    latestRun &&
+    previousRunAt &&
+    !Number.isNaN(latestScheduledTime) &&
+    Math.abs(latestScheduledTime - previousRunTime) <= SCHEDULE_TRIGGER_GRACE_MS
+  );
+
+  if (isCurrentCycleRecord) {
+    if (latestRun.status === 'success' && latestRun.notify_status === 'success') {
+      return {
+        ...withCountdown,
+        matched: true,
+        source: 'run_log',
+        reason: 'scheduled_success_record',
+        activation_scheduled_at: latestScheduledAt
+      };
+    }
+    return {
+      ...withCountdown,
+      reason: 'explicit_non_success_record',
+      activation_scheduled_at: previousRunAt
+    };
+  }
+
+  if (remainingMs <= 0 || remainingMs >= CHILD_FALLBACK_WINDOW_MS) {
+    return { ...withCountdown, reason: 'outside_six_day_window' };
+  }
+
+  return {
+    ...withCountdown,
+    matched: true,
+    source: 'countdown',
+    reason: 'enabled_countdown_under_six_days',
+    activation_scheduled_at: previousRunAt || now
+  };
+}
+
+async function recoverChildNotificationsFromParentEvidence(now = new Date()) {
+  const inactiveChildren = await AutoTaskChildNotification.findAll({
+    where: {
+      enabled: true,
+      status: CHILD_STATUS_INACTIVE,
+      activation_token: null
+    },
+    attributes: ['rule_id']
+  });
+  const ruleIds = [...new Set(inactiveChildren.map(child => child.rule_id))];
+  if (ruleIds.length === 0) return 0;
+
+  const rules = await AutoTaskRule.findAll({ where: { id: { [Op.in]: ruleIds } } });
+  let recovered = 0;
+  for (const rule of rules) {
+    try {
+      const latestRun = await AutoTaskRunLog.findOne({
+        where: {
+          rule_id: rule.id,
+          event_type: 'auto_task',
+          scheduled_at: { [Op.lte]: now }
+        },
+        order: [['scheduled_at', 'DESC']]
+      });
+      const match = childNotificationFallbackMatch(rule, latestRun, now);
+      if (!match.matched) continue;
+
+      const token = uuidv4();
+      const [count] = await AutoTaskChildNotification.update({
+        activation_token: token,
+        activation_scheduled_at: match.activation_scheduled_at,
+        activated_at: now,
+        status: CHILD_STATUS_PENDING,
+        last_scheduled_at: null,
+        last_error: null,
+        updated_at: now
+      }, {
+        where: {
+          rule_id: rule.id,
+          enabled: true,
+          status: CHILD_STATUS_INACTIVE,
+          activation_token: null
+        }
+      });
+      if (count > 0) {
+        recovered += count;
+        const evidence = match.source === 'run_log'
+          ? '主任务历史成功记录佐证'
+          : '主通知已开启且下次执行倒计时小于6天';
+        await recordAutoTaskMessage(rule.id, 'success', 'child_notify_recovery', `${evidence}，补激活 ${count} 条子通知`);
+      }
+    } catch (err) {
+      console.error('[auto-task] 子通知兜底激活失败:', rule.id, err.message);
+    }
+  }
+  return recovered;
 }
 
 async function createNextWeeklyTask() {
@@ -1543,6 +1678,7 @@ module.exports = {
   normalizeWebhookList,
   processDueChildNotifications,
   recordAutoTaskMessage,
+  recoverChildNotificationsFromParentEvidence,
   resolveWeeklyDutyProfile,
   runRuleOnce,
   serializeChildNotification,
@@ -1550,5 +1686,6 @@ module.exports = {
   schedulerTick,
   startAutoTaskScheduler,
   testChildNotification,
+  childNotificationFallbackMatch,
   SKIP_MESSAGE
 };

@@ -268,3 +268,81 @@
 - `git diff --check` 通过；未提交、未推送、未发包、未发布，未访问或修改生产数据。
 - 自动化用例与逐条结果：`docs/@test/auto_task_child_duty_20260809/`。
 - 脱敏视觉证据：`evidence/child-notification-list.png`、`evidence/duty-pending-three-weeks.png`。
+
+## 主通知触发缺失兜底激活实施计划（2026-08-09）
+
+状态：本地开发进行中。
+
+### 需求归档
+
+- 需求详见 `docs/@demand/auto_task_child_notifications_and_duty_effective_switch_20260809.md` 第 12 节。
+- 变更仅补充主通知历史成功/检测缺失场景，不改变真实计划执行成功后的原有激活顺序。
+
+### 最小改动范围
+
+| 文件 | 计划改动 |
+| --- | --- |
+| `backend/src/services/AutoTaskService.js` | 增加 6 天兜底判定、当前周期日志佐证和幂等补激活，并接入调度循环 |
+| `frontend/src/views/SettingsPage.vue` | 在子通知状态/倒计时区域增加匹配规则 Tooltip |
+| `backend/scripts/verify_child_notifications_and_duty_switch.js` | 增加成功日志、无日志、明确失败、6 天边界及重复调度回归 |
+
+### 风险控制
+
+- 只查询 `event_type = auto_task` 的真实运行日志，测试操作不写该日志，因此不能冒充前置条件。
+- 当前周期存在明确非成功结果时禁止兜底，避免主通知失败后误发子通知。
+- 条件更新仅命中未激活记录，防止已发送或失败记录被重复开启。
+- 本轮不改数据库结构，不访问生产，不提交、不推送、不发布。
+
+## 主通知触发缺失兜底激活开发结果（2026-08-09）
+
+状态：`READY_LOCAL`，本地开发与验证完成。
+
+### 实现结果
+
+- `AutoTaskService` 增加纯函数 `childNotificationFallbackMatch`：
+  - 本周期真实 `success + notify_status=success` 记录优先作为佐证，不受 6 天兜底窗口限制。
+  - 本周期存在 `running`、`skipped`、`failed`、`notify_failed` 或通知非成功结果时明确阻断兜底。
+  - 只有本周期没有真实运行记录时，才要求主规则/主通知开启、下次时间有效且剩余时间严格小于 `6 × 24` 小时。
+- 增加 `recoverChildNotificationsFromParentEvidence`，调度器处理子通知前执行补激活：
+  - 只更新已启用、`inactive` 且 `activation_token IS NULL` 的记录。
+  - 通过数据库条件更新生成一个新激活令牌，重复调度检查更新数为 0。
+  - 使用最近应执行时间或真实成功日志时间作为激活时间，并记录不含 webhook 的审计消息。
+- 正常 `executeRule -> 主 webhook 成功 -> activateChildNotifications` 路径未修改，继续保持最高优先级。
+- 设置页状态/倒计时单元格增加帮助光标和 Element Plus Tooltip；弹窗标题注意文案同步更新，避免与兜底规则冲突。
+- 列表与编辑弹窗倒计时增加语义色：待发送蓝色、已发送绿色、失败红色、未激活/等待琥珀色，并提高字重，不改变列宽和换行规则。
+- 无真实日志但已完成兜底补激活时，前置条件可通过 `child_notify_recovery` 审计消息显示“兜底判定已触发/已达成”。
+
+### 自动化验证
+
+- `node --check src/services/AutoTaskService.js`：PASS。
+- `node --check scripts/verify_child_notifications_and_duty_switch.js`：PASS。
+- `node scripts/verify_child_notifications_and_duty_switch.js`：PASS，关键结果：
+  - 无日志兜底来源 `countdown`。
+  - 成功日志佐证来源 `run_log`。
+  - 执行中、跳过、执行失败、通知失败全部阻断。
+  - 恰好 6 天不匹配；成功日志在 6 天窗口外仍按真实记录优先。
+  - 首次补激活 `1` 条，重复补激活 `0` 条。
+  - 原有主通知真实调度、子通知单次发送、失败隔离、月末 31 日和值班切换回归继续通过。
+- `npm run build`：PASS，Vite 8.0.8 完成 1684 个模块；仅保留既有大分块提示。
+- `git diff --check`：PASS，仅有 Windows 工作区既有 LF/CRLF 提示。
+
+### 本地真实运行验证
+
+- 最终本地后端 PID `67004`，健康接口业务码 `0`；前端继续运行于 `127.0.0.1:5176`。
+- 本地正式基线：主规则 `2`、子通知 `1`、临时规则 `0`。
+- 现有子通知满足历史成功记录与倒计时条件后进入 `pending`，`activation_token` 已生成，下一次子通知时间正常计算。
+- `child_notify_recovery` 审计消息为 `1` 条；等待多个调度周期后仍为 `1`，证明没有重复补激活。
+- 浏览器状态区显示“待发送”和秒级倒计时；悬停 Tooltip 可见并完整包含真实成功优先、无记录兜底、严格小于 6 天、明确失败阻断及测试排除规则。
+- 页面无横向溢出，浏览器控制台错误 `0`、警告 `0`；验收结束后弹窗已关闭。
+
+### 测试偏差与修正
+
+- 首次从仓库根目录运行隔离脚本时未加载 `backend/.env`，本地 MySQL 以空账号拒绝连接；改为从 `backend` 目录按脚本约定运行后通过，未访问生产。
+- 本地开发服务器与隔离脚本同时运行调度器时，固定等待 350ms 偶发读到临时日志 `running`；测试改为最多 3 秒轮询终态后稳定通过，唯一运行日志约束确保只发送一次。
+
+### 审查结论
+
+- 代码审查：未发现阻塞项；真实成功、明确失败和无记录兜底的优先级清晰，正常激活路径未被替换。
+- 安全审查：只读取真实 `auto_task` 日志；测试操作不产生该佐证；条件更新限制父规则和未激活状态；新增日志不包含 webhook 地址或令牌。
+- 敏感信息扫描：本次 5 个变更文件匹配数 `0`。
+- 交付边界：未提交、未推送、未发包、未发布，未访问或修改生产数据。

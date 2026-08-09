@@ -133,6 +133,7 @@ const CHILD_STATUS_INACTIVE = 'inactive'
 const CHILD_STATUS_PENDING = 'pending'
 const CHILD_STATUS_SENT = 'sent'
 const CHILD_STATUS_FAILED = 'failed'
+const CHILD_ACTIVATION_MATCH_TIP = '判定规则：优先使用本周期主任务按计划真实执行且主通知发送成功的记录；若本周期存在执行中、跳过、失败或通知失败记录，则不使用兜底。仅在本周期没有检测到真实执行记录时，主规则和主通知均开启、下次执行倒计时有效且严格小于6天，才默认本轮主任务已触发并启动子通知倒计时；测试执行和测试发送不参与判定。'
 const PHONE_PATTERN = /^\d{5,20}$/
 
 const canEditAutoTasks = computed(() =>
@@ -1134,9 +1135,20 @@ function latestChildParentRun(rule) {
     })[0] || null
 }
 
+function latestChildRecoveryEvidence(rule) {
+  if (!rule?.id) return null
+  return messages.value
+    .filter(item => item.rule_id === rule.id && item.action === 'child_notify_recovery' && item.level === 'success')
+    .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0] || null
+}
+
 function childPrerequisiteItems(rule) {
   const latestRun = latestChildParentRun(rule)
+  const fallbackEvidence = latestRun ? null : latestChildRecoveryEvidence(rule)
   const runTime = latestRun ? formatDateTime(latestRun.scheduled_at || latestRun.created_at) : '暂无真实调度记录'
+  const fallbackDetail = fallbackEvidence
+    ? `${formatDateTime(fallbackEvidence.created_at)} · ${fallbackEvidence.message}`
+    : ''
   let task = {
     key: 'task',
     label: '主任务执行',
@@ -1156,6 +1168,8 @@ function childPrerequisiteItems(rule) {
     }
     const [value, tone] = states[latestRun.status] || ['最近已执行', 'pending']
     task = { ...task, value, detail: runTime, tone }
+  } else if (fallbackEvidence) {
+    task = { ...task, value: '兜底判定已触发', detail: fallbackDetail, tone: 'success' }
   }
 
   let notification = {
@@ -1178,6 +1192,8 @@ function childPrerequisiteItems(rule) {
     }
     const [value, tone] = notifyStates[latestRun.notify_status] || ['等待通知结果', 'pending']
     notification = { ...notification, value, detail: runTime, tone }
+  } else if (fallbackEvidence) {
+    notification = { ...notification, value: '兜底判定已达成', detail: fallbackDetail, tone: 'success' }
   }
 
   const next = rule?.enabled && rule?.next_run_at
@@ -3499,8 +3515,8 @@ onUnmounted(() => {
         <template #header>
           <div class="dt-child-dialog-head">
             <strong>子通知</strong>
-            <span title="主规则启用并由计划真实触发、且主 webhook 通知发送成功后，已启用的子通知才进入正式倒计时；每条子通知每次激活只发送一次；测试执行和测试发送均不会激活子通知。">
-              <b>注意：</b>主规则按计划真实执行且主 webhook 通知成功后，已启用子通知才开始倒计时；测试发送不激活子通知。
+            <span :title="CHILD_ACTIVATION_MATCH_TIP">
+              <b>注意：</b>真实主通知成功时正常激活；缺少检测记录时按状态区悬停规则兜底；测试操作不激活子通知。
             </span>
           </div>
         </template>
@@ -3563,14 +3579,25 @@ onUnmounted(() => {
                   </div>
                 </td>
                 <td>
-                  <div class="dt-child-list-state">
-                    <span class="dt-child-notify-status" :class="childNotificationStatusClass(child)">
-                      {{ childNotificationStatusText(child) }}
-                    </span>
-                    <span class="dt-child-notify-countdown" :title="childNotificationCountdown(child)">
-                      <b>倒计时：</b>{{ childNotificationCountdown(child) }}
-                    </span>
-                  </div>
+                  <el-tooltip
+                    :content="CHILD_ACTIVATION_MATCH_TIP"
+                    placement="top"
+                    :show-after="250"
+                    popper-class="dt-child-activation-rule-tip"
+                  >
+                    <div class="dt-child-list-state is-rule-tip">
+                      <span class="dt-child-notify-status" :class="childNotificationStatusClass(child)">
+                        {{ childNotificationStatusText(child) }}
+                      </span>
+                      <span
+                        class="dt-child-notify-countdown"
+                        :class="childNotificationStatusClass(child)"
+                        :title="childNotificationCountdown(child)"
+                      >
+                        <b>倒计时：</b>{{ childNotificationCountdown(child) }}
+                      </span>
+                    </div>
+                  </el-tooltip>
                 </td>
                 <td class="dt-child-list-switch">
                   <el-switch
@@ -3647,7 +3674,11 @@ onUnmounted(() => {
             <span class="dt-child-notify-status" :class="childNotificationStatusClass(childEditorStatusSource())">
               {{ childNotificationEditorForm.id ? childNotificationStatusText(childEditorStatusSource()) : '尚未保存' }}
             </span>
-            <span class="dt-child-notify-countdown" :title="childNotificationEditorForm.id ? childNotificationCountdown(childEditorStatusSource()) : '保存后等待主通知真实执行并激活'">
+            <span
+              class="dt-child-notify-countdown"
+              :class="childNotificationStatusClass(childEditorStatusSource())"
+              :title="childNotificationEditorForm.id ? childNotificationCountdown(childEditorStatusSource()) : '保存后等待主通知真实执行并激活'"
+            >
               <b>倒计时：</b>{{ childNotificationEditorForm.id ? childNotificationCountdown(childEditorStatusSource()) : '保存后等待主通知真实执行并激活' }}
             </span>
           </div>
@@ -4951,6 +4982,16 @@ onUnmounted(() => {
   min-width: 0;
 }
 
+.dt-child-list-state.is-rule-tip {
+  cursor: help;
+}
+
+:global(.dt-child-activation-rule-tip) {
+  max-width: min(460px, calc(100vw - 32px));
+  line-height: 1.55;
+  white-space: normal;
+}
+
 .dt-child-list-state .dt-child-notify-countdown {
   overflow: visible;
   line-height: 18px;
@@ -5047,10 +5088,27 @@ onUnmounted(() => {
   display: inline-block;
   max-width: 100%;
   overflow: hidden;
-  color: var(--color-text-3);
+  color: #1d4ed8;
   font-size: 12px;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.dt-child-notify-countdown b {
+  font-weight: 700;
+}
+
+.dt-child-notify-countdown.is-inactive {
+  color: #b45309;
+}
+
+.dt-child-notify-countdown.is-sent {
+  color: #15803d;
+}
+
+.dt-child-notify-countdown.is-failed {
+  color: #dc2626;
 }
 
 .dt-child-editor-state {
