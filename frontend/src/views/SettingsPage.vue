@@ -1860,10 +1860,12 @@ function isDutyCurrentKey(rule, key) {
 
 function dutyPreviewLines(rule) {
   const next = findNextDutyPreviewEntry(rule)
-  const key = next?.key || dutyKeys(rule).find(itemKey => dutyItemConfigured(getResolvedDutyItem(rule, itemKey)))
+  const today = findTodayClosestDutyPreviewEntry(rule)
+  const selected = today?.item?.send_mode === DUTY_SEND_MODE_START ? today : next
+  const key = selected?.key || dutyKeys(rule).find(itemKey => dutyItemConfigured(getResolvedDutyItem(rule, itemKey)))
   if (!key) return []
-  const date = next?.date || dutyDateFromKey(rule, key)
-  const item = next?.item || getResolvedDutyItem(rule, key, date)
+  const date = selected?.date || dutyDateFromKey(rule, key)
+  const item = selected?.item || getResolvedDutyItem(rule, key, date)
   // v3.3.0 名句搭配：开启时为每条预览拼接候选队列中的下一句（start->queue[0], end->queue[1]）
   const quoteCfg = rule ? getQuoteConfig(rule) : null
   const quoteQueue = (quoteCfg && quoteCfg.enabled) ? (quoteCfg.candidate_queue || []) : []

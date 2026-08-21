@@ -1668,6 +1668,7 @@ module.exports = {
   deactivateChildNotifications,
   ensureAutoTaskTables,
   getDutyItemForParts,
+  getDueDutyEvents,
   getNextChildRunAt,
   getNextRunAt,
   normalizeChildNotificationPayload,

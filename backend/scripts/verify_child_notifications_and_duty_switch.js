@@ -14,6 +14,7 @@ const {
   deactivateChildNotifications,
   ensureAutoTaskTables,
   getDutyItemForParts,
+  getDueDutyEvents,
   getNextChildRunAt,
   normalizeChildNotificationPayload,
   normalizeDutyConfig,
@@ -476,6 +477,52 @@ async function main() {
     assert.deepStrictEqual(getDutyItemForParts(weekendRule, parts('2026-08-17')).staff_ids, ['A']);
     assert.deepStrictEqual(getDutyItemForParts(weekendRule, parts('2026-08-18')).staff_ids, ['B']);
 
+    const startOnlyDutyConfig = normalizeDutyConfig({
+      weekly: {
+        5: {
+          ...dutyItem('START_ONLY'),
+          end_message: 'local duty end test'
+        }
+      }
+    });
+    const startOnlyDutyRule = {
+      id: 'start-only-duty-test',
+      enabled: true,
+      task_type: 'duty_notify',
+      schedule_type: 'weekly',
+      duty_config: startOnlyDutyConfig,
+      updated_at: new Date('2026-08-20T00:00:00+08:00')
+    };
+    const startOnlyStartEvents = getDueDutyEvents(
+      startOnlyDutyRule,
+      new Date('2026-08-21T09:15:30+08:00')
+    );
+    const startOnlyEndEvents = getDueDutyEvents(
+      startOnlyDutyRule,
+      new Date('2026-08-21T20:00:30+08:00')
+    );
+    assert.deepStrictEqual(startOnlyStartEvents.map(event => event.kind), ['start']);
+    assert.deepStrictEqual(startOnlyEndEvents, [], 'start_only must never generate a due end event');
+
+    const startAndEndDutyRule = {
+      ...startOnlyDutyRule,
+      id: 'start-and-end-duty-test',
+      duty_config: normalizeDutyConfig({
+        weekly: {
+          5: {
+            ...dutyItem('START_AND_END'),
+            send_mode: 'start_and_end',
+            end_message: 'local duty end test'
+          }
+        }
+      })
+    };
+    const startAndEndEvents = getDueDutyEvents(
+      startAndEndDutyRule,
+      new Date('2026-08-21T20:00:30+08:00')
+    );
+    assert.deepStrictEqual(startAndEndEvents.map(event => event.kind), ['end']);
+
     process.stdout.write(JSON.stringify({
       ok: true,
       child_notifications: {
@@ -508,6 +555,11 @@ async function main() {
         second_switch: 'NEW_FIXED',
         weekend_effective_day: 'unassigned',
         next_workday_after_weekend: 'A'
+      },
+      duty_send_mode: {
+        start_only_start_events: startOnlyStartEvents.map(event => event.kind),
+        start_only_end_events: startOnlyEndEvents.map(event => event.kind),
+        start_and_end_end_events: startAndEndEvents.map(event => event.kind)
       }
     }, null, 2));
   } finally {
