@@ -5,9 +5,10 @@
  */
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete, Download, Edit, Plus, Promotion } from '@element-plus/icons-vue'
+import { Calendar, Delete, Download, Edit, Plus, Promotion } from '@element-plus/icons-vue'
 import api from '../api'
 import BackButton from '../components/BackButton.vue'
+import DutyCalendarDialog from '../components/DutyCalendarDialog.vue'
 import { useAuthStore } from '../stores/auth'
 import { roleLabel } from '../utils/roles'
 
@@ -17,6 +18,7 @@ const savingId = ref('')
 const testingId = ref('')
 const testingRunId = ref('')
 const dutyLineSendingId = ref('')
+const dutyCalendarDialogVisible = ref(false)
 const downloading = ref(false)
 const rules = ref([])
 const logs = ref([])
@@ -81,6 +83,8 @@ const dutyDetailDate = ref(localDateOnly(new Date()))
 const dutyDetailOriginalMode = ref('fixed')
 const dutyEffectiveWeek = ref('this')
 const dutyEffectiveWeekday = ref(1)
+const dutyPreviewFocusByRule = ref({})
+const dutyRuntimePreviewByRule = ref({})
 const backupFormat = ref('xlsx')
 const nowTs = ref(Date.now())
 let countdownTimer = null
@@ -665,9 +669,38 @@ async function loadSettings(options = {}) {
     }
     logs.value = data.logs || []
     messages.value = data.messages || []
+    await refreshDutyRuntimePreviews()
   } finally {
     if (!silent) loading.value = false
   }
+}
+
+async function refreshDutyRuntimePreviews() {
+  const dutyRules = rules.value.filter(rule => isDutyRule(rule) && rule.id)
+  if (!dutyRules.length) {
+    dutyRuntimePreviewByRule.value = {}
+    return
+  }
+  const today = localDateOnly(new Date())
+  const fromDate = addLocalDays(today, -14)
+  const toDate = addLocalDays(today, 385)
+  const from = localDateToYmd(fromDate)
+  const to = localDateToYmd(toDate)
+  const next = { ...dutyRuntimePreviewByRule.value }
+  await Promise.all(dutyRules.map(async rule => {
+    try {
+      const response = await api.post('/settings/duty-calendar/preview', {
+        rule_id: rule.id,
+        from,
+        to
+      })
+      next[rule.id] = Object.fromEntries((response.data?.days || []).map(day => [day.date, day]))
+    } catch (error) {
+      console.warn('[settings] 值班排班预览加载失败，暂用规则配置回退', rule.id, error?.message || error)
+      delete next[rule.id]
+    }
+  }))
+  dutyRuntimePreviewByRule.value = next
 }
 
 async function ensureStaffList() {
@@ -681,6 +714,14 @@ async function ensureStaffList() {
   } finally {
     staffLoading.value = false
   }
+}
+
+function openDutyCalendar() {
+  dutyCalendarDialogVisible.value = true
+}
+
+async function handleDutyCalendarSaved() {
+  await loadSettings({ silent: true })
 }
 
 function addRule() {
@@ -711,6 +752,19 @@ function warnRule(rule, message) {
   recordRuleMessage(rule, 'warning', 'validate', message)
 }
 
+function isAllowedDingTalkWebhook(value) {
+  try {
+    const url = new URL(String(value || ''))
+    return url.protocol === 'https:' &&
+      url.hostname.toLowerCase() === 'oapi.dingtalk.com' &&
+      (!url.port || url.port === '443') &&
+      !url.username &&
+      !url.password
+  } catch {
+    return false
+  }
+}
+
 function validateWebhooks(rule, requireComplete = false) {
   const webhooks = compactWebhooks(rule)
   const message = isDutyRule(rule) ? dutyFirstMessage(rule) : String(rule.dingtalk_message || '').trim()
@@ -722,9 +776,9 @@ function validateWebhooks(rule, requireComplete = false) {
     warnRule(rule, '请填写通知内容')
     return false
   }
-  const invalid = webhooks.find(item => !/^https?:\/\//i.test(item.url))
+  const invalid = webhooks.find(item => !isAllowedDingTalkWebhook(item.url))
   if (invalid) {
-    warnRule(rule, 'webhook 地址必须以 http 或 https 开头')
+    warnRule(rule, 'webhook 仅允许使用钉钉官方 https://oapi.dingtalk.com 地址')
     return false
   }
   return true
@@ -1751,6 +1805,25 @@ function canUseDutyDate(rule, date) {
     Number(rule.schedule_year) === date.getFullYear()
 }
 
+function runtimeDutyDay(rule, date) {
+  const ruleId = rule?.id
+  if (!ruleId) return null
+  return dutyRuntimePreviewByRule.value[ruleId]?.[localDateToYmd(date)] || null
+}
+
+function previewDutyItemForDate(rule, date) {
+  const runtimeDay = runtimeDutyDay(rule, date)
+  if (!runtimeDay) return getResolvedDutyItem(rule, dutyKeyForDate(rule, date), date)
+  if (!runtimeDay.configured || runtimeDay.whole_day_skipped || !runtimeDay.item) {
+    return normalizeDutyItem({ enabled: false, staff_ids: [] })
+  }
+  return normalizeDutyItem({
+    ...runtimeDay.item,
+    enabled: Array.isArray(runtimeDay.final_staff_ids) && runtimeDay.final_staff_ids.length > 0,
+    staff_ids: runtimeDay.final_staff_ids || []
+  })
+}
+
 function dutyPreviewEvents(item, date) {
   const events = []
   if (dutyItemHasStartPreview(item)) {
@@ -1792,7 +1865,7 @@ function findNextDutyPreview(rule) {
     const date = addLocalDays(today, offset)
     if (!canUseDutyDate(rule, date)) continue
     const key = dutyKeyForDate(rule, date)
-    const item = getResolvedDutyItem(rule, key, date)
+    const item = previewDutyItemForDate(rule, date)
     if (!item.enabled) continue
     const nextEvent = dutyPreviewEvents(item, date)
       .filter(runAt => runAt.getTime() > now.getTime())
@@ -1809,7 +1882,7 @@ function findNextDutyPreviewEntry(rule) {
     const date = addLocalDays(today, offset)
     if (!canUseDutyDate(rule, date)) continue
     const key = dutyKeyForDate(rule, date)
-    const item = getResolvedDutyItem(rule, key, date)
+    const item = previewDutyItemForDate(rule, date)
     if (!item.enabled) continue
     const event = dutyPreviewEntries(item, date)
       .filter(entry => entry.scheduledAt.getTime() > now.getTime())
@@ -1824,7 +1897,7 @@ function findTodayClosestDutyPreviewEntry(rule) {
   const today = localDateOnly(now)
   if (!canUseDutyDate(rule, today)) return null
   const key = dutyKeyForDate(rule, today)
-  const item = getResolvedDutyItem(rule, key, today)
+  const item = previewDutyItemForDate(rule, today)
   if (!item.enabled) return null
   const event = dutyPreviewEntries(item, today)
     .sort((a, b) => {
@@ -1837,6 +1910,33 @@ function findTodayClosestDutyPreviewEntry(rule) {
       return a.scheduledAt.getTime() - b.scheduledAt.getTime()
     })[0]
   return event ? { key, item, date: today, event } : null
+}
+
+function findPreviousDutyPreviewEntry(rule) {
+  const today = localDateOnly(new Date(nowTs.value))
+  for (let offset = 1; offset <= 14; offset += 1) {
+    const date = addLocalDays(today, -offset)
+    if (!canUseDutyDate(rule, date)) continue
+    const key = dutyKeyForDate(rule, date)
+    const item = previewDutyItemForDate(rule, date)
+    if (!item.enabled) continue
+    const entries = dutyPreviewEntries(item, date)
+      .sort((a, b) => b.scheduledAt.getTime() - a.scheduledAt.getTime())
+    if (entries[0]) return { key, item, date, event: entries[0] }
+  }
+  return null
+}
+
+function selectDutyPreviewTarget(rule, next = findNextDutyPreviewEntry(rule)) {
+  const focused = focusedDutyPreview(rule)
+  if (focused) return focused
+  const today = findTodayClosestDutyPreviewEntry(rule)
+  if (today?.item?.send_mode === DUTY_SEND_MODE_START) return today
+  if (!today) {
+    const previous = findPreviousDutyPreviewEntry(rule)
+    if (previous?.item?.send_mode === DUTY_SEND_MODE_START) return previous
+  }
+  return next
 }
 
 function dutyDateFromKey(rule, key) {
@@ -1858,14 +1958,32 @@ function isDutyCurrentKey(rule, key) {
   return String(key) === String(localWeekdayNumber(now))
 }
 
+function focusedDutyPreview(rule) {
+  const key = dutyPreviewFocusByRule.value[rule.id || rule.localKey]
+  if (!key) return null
+  const now = localDateOnly(new Date(nowTs.value))
+  let date
+  if (rule.schedule_type === 'monthly') {
+    const year = Number(rule.schedule_year) || now.getFullYear()
+    date = new Date(year, now.getMonth(), Number(key))
+    if (date < now && !rule.schedule_year) date = new Date(year, now.getMonth() + 1, Number(key))
+  } else {
+    const offset = positiveModulo(Number(key) - localWeekdayNumber(now), 7)
+    date = addLocalDays(now, offset)
+  }
+  if (!canUseDutyDate(rule, date)) return null
+  const item = previewDutyItemForDate(rule, date)
+  const event = dutyPreviewEntries(item, date)[0]
+  return event ? { key: String(key), item, date, event } : null
+}
+
 function dutyPreviewLines(rule) {
   const next = findNextDutyPreviewEntry(rule)
-  const today = findTodayClosestDutyPreviewEntry(rule)
-  const selected = today?.item?.send_mode === DUTY_SEND_MODE_START ? today : next
+  const selected = selectDutyPreviewTarget(rule, next)
   const key = selected?.key || dutyKeys(rule).find(itemKey => dutyItemConfigured(getResolvedDutyItem(rule, itemKey)))
   if (!key) return []
   const date = selected?.date || dutyDateFromKey(rule, key)
-  const item = selected?.item || getResolvedDutyItem(rule, key, date)
+  const item = selected?.item || previewDutyItemForDate(rule, date)
   // v3.3.0 名句搭配：开启时为每条预览拼接候选队列中的下一句（start->queue[0], end->queue[1]）
   const quoteCfg = rule ? getQuoteConfig(rule) : null
   const quoteQueue = (quoteCfg && quoteCfg.enabled) ? (quoteCfg.candidate_queue || []) : []
@@ -1911,10 +2029,13 @@ function formatDutyPreview(rule, key, item) {
 
 function dutyPreviewText(rule) {
   const next = findNextDutyPreview(rule)
+  const selected = selectDutyPreviewTarget(rule)
+  if (selected) return formatDutyPreview(rule, selected.key, selected.item)
   if (next) return formatDutyPreview(rule, next.key, next.item)
   const key = dutyKeys(rule).find(itemKey => dutyItemConfigured(getResolvedDutyItem(rule, itemKey)))
   if (!key) return '尚未配置值班通知内容'
-  const item = getResolvedDutyItem(rule, key)
+  const date = dutyDateFromKey(rule, key)
+  const item = previewDutyItemForDate(rule, date)
   return formatDutyPreview(rule, key, item)
 }
 
@@ -1944,6 +2065,7 @@ function loadDutyDetailKey(key) {
   const rule = dutyDetailRule.value
   if (!rule) return
   dutyDetailKey.value = String(key)
+  dutyPreviewFocusByRule.value[rule.id || rule.localKey] = dutyDetailKey.value
   dutyDetailForm.value = normalizeDutyItem(
     dutyDetailDraftMap.value[dutyDetailKey.value] || createDefaultDutyItem()
   )
@@ -2116,6 +2238,14 @@ function normalizeDutyDetailSaveItem(value) {
   })
 }
 
+function dutyDetailDraftWillSchedule(rule, key, item) {
+  if (rule.schedule_type === 'weekly' && dutyDetailTab.value === WEEKLY_DUTY_MODE_ROTATION) {
+    return Number(key) <= Number(dutyRotationForm.value.end_weekday || 7) &&
+      normalizeDutyStaffIds(dutyRotationForm.value.staff_ids).some(id => canSelectDutyStaff(staffById(id)))
+  }
+  return normalizeDutyStaffIds(item.staff_ids).some(id => canSelectDutyStaff(staffById(id)))
+}
+
 function dutyDetailSaveMap(rule) {
   commitDutyDetailDraft()
   const result = {}
@@ -2142,6 +2272,24 @@ async function saveDutyDetail() {
   const originalDutyConfig = normalizeDutyConfig(rule.duty_config)
   const originalWeekDays = [...(rule.week_days || [])]
   const originalMonthDays = [...(rule.month_days || [])]
+  commitDutyDetailDraft()
+  const scheduledDrafts = dutyKeys(rule)
+    .map(key => ({ key, item: normalizeDutyItem(dutyDetailDraftMap.value[String(key)] || createDefaultDutyItem()) }))
+    .filter(({ key, item }) => dutyDetailDraftWillSchedule(rule, key, item))
+  const invalidStartKeys = scheduledDrafts
+    .filter(({ item }) => !String(item.start_message || '').trim())
+    .map(({ key }) => key)
+  if (invalidStartKeys.length) {
+    ElMessage.warning(`${invalidStartKeys.map(key => dutyKeyLabel(rule, key)).join('、')}请填写值班开始提醒内容`)
+    return
+  }
+  const invalidEndKeys = scheduledDrafts
+    .filter(({ item }) => item.send_mode === DUTY_SEND_MODE_BOTH && !String(item.end_message || '').trim())
+    .map(({ key }) => key)
+  if (invalidEndKeys.length) {
+    ElMessage.warning(`${invalidEndKeys.map(key => dutyKeyLabel(rule, key)).join('、')}已选择开始和结束都发送，请填写结束提醒内容`)
+    return
+  }
   const savedItems = dutyDetailSaveMap(rule)
   if (rule.schedule_type !== 'weekly') {
     const config = normalizeDutyConfig(rule.duty_config)
@@ -2299,6 +2447,13 @@ async function saveDutyBulkContent() {
       ElMessage.warning('请填写今日值班开始提醒')
       return
     }
+    if (
+      dutyBulkForm.value.send_mode === DUTY_SEND_MODE_BOTH &&
+      !String(dutyBulkForm.value.end_message || '').trim()
+    ) {
+      ElMessage.warning('已选择开始和结束都发送，请填写今日值班结束提醒')
+      return
+    }
   }
   const targetKeys = dutyKeys(rule).filter(key => {
     if (dutyBulkForm.value.scope === 'configured') return dutyItemConfigured(getDutyItem(rule, key))
@@ -2380,7 +2535,7 @@ function dutyRotationCurrentText() {
   return dutyPeopleText(item)
 }
 
-function dutyDetailPreview() {
+function dutyDetailPreviewEntries() {
   const previewItem = dutyDetailPreviewItem()
   const names = staffNames(previewItem.staff_ids)
   const atText = previewItem.staff_ids.length ? `@${names.replaceAll('、', ' @')}` : '未选择接收人'
@@ -2394,9 +2549,56 @@ function dutyDetailPreview() {
   const startPrefix = startQuote ? `${startQuote}\n` : ''
   const endPrefix   = endQuote ? `${endQuote}\n` : ''
 
-  const start = `开始 ${previewItem.start_time.slice(0, 5)}\n${startPrefix}${atText} ${previewItem.start_message}`
-  if (previewItem.send_mode !== DUTY_SEND_MODE_BOTH) return start
-  return `${start}\n\n结束 ${previewItem.end_time.slice(0, 5)}\n${endPrefix}${atText} ${previewItem.end_message}`
+  const entries = [{
+    kind: 'start',
+    label: '开始提醒',
+    time: previewItem.start_time,
+    body: `${startPrefix}${atText} ${previewItem.start_message || '请填写开始提醒内容'}`
+  }]
+  if (previewItem.send_mode === DUTY_SEND_MODE_BOTH) {
+    entries.push({
+      kind: 'end',
+      label: '结束提醒',
+      time: previewItem.end_time,
+      body: `${endPrefix}${atText} ${previewItem.end_message || '请填写结束提醒内容'}`
+    })
+  }
+  return entries
+}
+
+function dutyDetailPreviewStatus() {
+  const previewItem = dutyDetailPreviewItem()
+  const count = dutyDetailPreviewEntries().length
+  if (!previewItem.staff_ids.length) {
+    return {
+      ready: false,
+      text: `当前日期未排班，发送策略可预览 ${count} 条，但实际不会触发；请先将该日期纳入排班并配置值班人员。`
+    }
+  }
+  if (!String(previewItem.start_message || '').trim()) {
+    return {
+      ready: false,
+      text: '请填写开始提醒内容后保存；否则不会允许提交。'
+    }
+  }
+  if (!previewItem.enabled) {
+    return {
+      ready: false,
+      text: '当前日期通知未启用，实际不会触发。'
+    }
+  }
+  if (previewItem.send_mode === DUTY_SEND_MODE_BOTH && !String(previewItem.end_message || '').trim()) {
+    return {
+      ready: false,
+      text: '已选择开始和结束都发送，请填写结束提醒内容后保存；否则不会允许提交。'
+    }
+  }
+  return {
+    ready: true,
+    text: previewItem.send_mode === DUTY_SEND_MODE_BOTH
+      ? '保存后实际发送 2 条通知：开始提醒、结束提醒。'
+      : '保存后实际发送 1 条通知：仅开始提醒。'
+  }
 }
 
 function dutyDetailLabel() {
@@ -2683,7 +2885,8 @@ function formatCountdownTarget(value, emptyText = '暂无下一次触发') {
 }
 
 function nextCountdown(rule) {
-  return formatCountdownTarget(rule.next_run_at)
+  const focused = isDutyRule(rule) ? focusedDutyPreview(rule) : null
+  return formatCountdownTarget(focused?.event?.scheduledAt || rule.next_run_at)
 }
 
 function hasExpiredNextRun() {
@@ -3036,10 +3239,27 @@ onUnmounted(() => {
   <div>
     <BackButton />
 
-    <div class="dt-page-header">
-      <h2 class="dt-page-title">设置</h2>
-      <p class="dt-page-description">自动任务、钉钉 webhook 通知与需求工时统计备份。</p>
+    <div class="dt-page-header flex-between">
+      <div>
+        <h2 class="dt-page-title">设置</h2>
+        <p class="dt-page-description">自动任务、钉钉 webhook 通知与需求工时统计备份。</p>
+      </div>
+      <el-button
+        v-if="canEditAutoTasks"
+        type="primary"
+        plain
+        :icon="Calendar"
+        @click="openDutyCalendar"
+      >
+        节假日跳过设置
+      </el-button>
     </div>
+
+    <DutyCalendarDialog
+      v-model="dutyCalendarDialogVisible"
+      :rules="rules"
+      @saved="handleDutyCalendarSaved"
+    />
 
     <div v-if="loading" class="dt-page-loading">
       <div class="dt-page-spinner"></div>
@@ -4129,8 +4349,29 @@ onUnmounted(() => {
             </template>
 
             <div class="dt-duty-dialog-preview">
-              <strong>发送预览</strong>
-              <pre>{{ dutyDetailPreview() }}</pre>
+              <div class="dt-duty-dialog-preview-head">
+                <strong>发送预览</strong>
+                <span>共 {{ dutyDetailPreviewEntries().length }} 条</span>
+              </div>
+              <div
+                class="dt-duty-dialog-preview-status"
+                :class="{ 'is-ready': dutyDetailPreviewStatus().ready }"
+              >
+                {{ dutyDetailPreviewStatus().text }}
+              </div>
+              <div class="dt-duty-dialog-preview-list">
+                <div
+                  v-for="entry in dutyDetailPreviewEntries()"
+                  :key="entry.kind"
+                  class="dt-duty-dialog-preview-item"
+                >
+                  <span class="dt-duty-dialog-preview-kind" :class="`is-${entry.kind}`">{{ entry.label }}</span>
+                  <div>
+                    <b>{{ entry.time.slice(0, 5) }}</b>
+                    <pre>{{ entry.body }}</pre>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -6158,14 +6399,76 @@ onUnmounted(() => {
   padding: 10px;
 }
 
-.dt-duty-dialog-preview strong {
-  display: block;
-  margin-bottom: 5px;
+.dt-duty-dialog-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.dt-duty-dialog-preview-head strong {
   color: #9a5b00;
   font-size: 13px;
 }
 
-.dt-duty-dialog-preview pre {
+.dt-duty-dialog-preview-head span {
+  color: #b26a00;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.dt-duty-dialog-preview-status {
+  margin-bottom: 8px;
+  color: #c2410c;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.dt-duty-dialog-preview-status.is-ready {
+  color: #15803d;
+}
+
+.dt-duty-dialog-preview-list {
+  display: grid;
+  gap: 6px;
+}
+
+.dt-duty-dialog-preview-item {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding-top: 6px;
+  border-top: 1px solid #fde7c4;
+}
+
+.dt-duty-dialog-preview-kind {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  border-radius: 4px;
+  background: #e8f1ff;
+  color: #1769e0;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.dt-duty-dialog-preview-kind.is-end {
+  background: #fff0e5;
+  color: #c55300;
+}
+
+.dt-duty-dialog-preview-item b {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--color-text-1);
+  font-size: 13px;
+}
+
+.dt-duty-dialog-preview-item pre {
   margin: 0;
   color: var(--color-text-2);
   font-family: inherit;

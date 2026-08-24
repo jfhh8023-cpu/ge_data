@@ -1,6 +1,9 @@
 const assert = require('assert');
 const http = require('http');
 const { v4: uuidv4 } = require('uuid');
+
+process.env.ALLOW_LOCAL_WEBHOOK_TEST = '1';
+
 const {
   sequelize,
   AutoTaskRule,
@@ -18,6 +21,7 @@ const {
   getNextChildRunAt,
   normalizeChildNotificationPayload,
   normalizeDutyConfig,
+  normalizeRulePayload,
   processDueChildNotifications,
   recoverChildNotificationsFromParentEvidence,
   schedulerTick,
@@ -521,7 +525,45 @@ async function main() {
       startAndEndDutyRule,
       new Date('2026-08-21T20:00:30+08:00')
     );
+    const startAndEndStartEvents = getDueDutyEvents(
+      startAndEndDutyRule,
+      new Date('2026-08-21T09:15:30+08:00')
+    );
+    assert.deepStrictEqual(startAndEndStartEvents.map(event => event.kind), ['start']);
     assert.deepStrictEqual(startAndEndEvents.map(event => event.kind), ['end']);
+    assert.throws(() => normalizeRulePayload({
+      task_type: 'duty_notify',
+      schedule_type: 'weekly',
+      duty_config: {
+        weekly: {
+          5: {
+            ...dutyItem('INVALID_BOTH'),
+            send_mode: 'start_and_end',
+            end_message: ''
+          }
+        }
+      }
+    }), /请填写值班结束提醒/);
+    assert.throws(() => normalizeRulePayload({
+      task_type: 'duty_notify',
+      schedule_type: 'weekly',
+      duty_config: {
+        weekly_mode: 'rotation',
+        weekly_rotation: {
+          end_weekday: 5,
+          staff_ids: ['ROTATION_STAFF'],
+          start_date: '2026-08-17'
+        },
+        weekly: {
+          5: {
+            ...dutyItem('ROTATION_TEMPLATE'),
+            enabled: false,
+            send_mode: 'start_and_end',
+            end_message: ''
+          }
+        }
+      }
+    }), /请填写值班结束提醒/);
 
     process.stdout.write(JSON.stringify({
       ok: true,
@@ -559,6 +601,7 @@ async function main() {
       duty_send_mode: {
         start_only_start_events: startOnlyStartEvents.map(event => event.kind),
         start_only_end_events: startOnlyEndEvents.map(event => event.kind),
+        start_and_end_start_events: startAndEndStartEvents.map(event => event.kind),
         start_and_end_end_events: startAndEndEvents.map(event => event.kind)
       }
     }, null, 2));

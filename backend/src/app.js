@@ -11,6 +11,8 @@ const errorHandler = require('./middleware/errorHandler');
 const { ensureAutoTaskTables, startAutoTaskScheduler } = require('./services/AutoTaskService');
 const { ensurePersonStatusTables } = require('./services/PersonStatusService');
 const { ensureStaffRoleSchema, ensureMatchGroupRoleSchema } = require('./services/RoleService');
+const { ensureDutyCalendarTables } = require('./services/DutyCalendarService');
+const { startOfficialHolidaySyncScheduler } = require('./services/OfficialHolidaySyncService');
 
 const app = express();
 const PORT = parseInt(process.env.PORT, 10) || 3001;
@@ -30,6 +32,7 @@ app.use('/api/fill',        require('./routes/fill'));
 app.use('/api/stats',       require('./routes/stats'));
 app.use('/api/permissions', require('./routes/permissions'));
 app.use('/api/excel',       require('./routes/excel'));
+app.use('/api/settings/duty-calendar', require('./routes/dutyCalendar'));
 app.use('/api/settings',    require('./routes/settings'));
 app.use('/api/pm',          require('./routes/pm'));
 app.use('/api/quotes',      require('./routes/quotes'));
@@ -60,10 +63,12 @@ async function start() {
     await ensureMatchGroupRoleSchema();
     await ensurePersonStatusTables();
     await ensureAutoTaskTables();
+    await ensureDutyCalendarTables();
     app.listen(PORT, () => {
       console.log(`[API] DevTracker v3.0.0 运行在 http://localhost:${PORT}`);
       console.log('[API] 路由: /api/staff | /api/roles | /api/tasks | /api/records | /api/report | /api/fill | /api/stats | /api/permissions | /api/excel | /api/settings');
       startAutoTaskScheduler();
+      startOfficialHolidaySyncScheduler();
     });
   } catch (err) {
     console.error('[DB] 连接失败:', err.message);

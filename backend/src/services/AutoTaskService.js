@@ -1,5 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
+const dns = require('dns');
+const net = require('net');
 const { DataTypes, Op } = require('sequelize');
 const {
   sequelize,
@@ -8,10 +10,17 @@ const {
   AutoTaskMessage,
   AutoTaskChildNotification,
   CollectionTask,
-  Staff
+  Staff,
+  DutyScheduleException,
+  DutySpecialNotificationLog
 } = require('../models');
 const { createPreferredTask } = require('./TaskService');
 const { isNonResigned } = require('./PersonStatusService');
+const {
+  getGlobalScheduleSourceDates,
+  getNextDutyRunAt,
+  resolveDutyDate
+} = require('./DutyCalendarService');
 const {
   addDays,
   dateFromYmd,
@@ -28,6 +37,7 @@ const {
 const SKIP_MESSAGE = '该任务已存在或无法新增超过下一周的新收集任务，若仍需新增，请手动处理';
 const DINGTALK_CARD_TITLE = '语音产研进度维护通知：';
 const DINGTALK_DUTY_CARD_TITLE = '今日语音业务线值班通知：';
+const DINGTALK_SPECIAL_DATE_CARD_TITLE = '节假日与特殊日期通知：';
 const TASK_TYPE_CREATE_NOTIFY = 'task_create_notify';
 const TASK_TYPE_DUTY_NOTIFY = 'duty_notify';
 const ACTION_MODES = new Set(['run_and_notify', 'run_only', 'notify_only']);
@@ -39,6 +49,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const CHILD_FALLBACK_WINDOW_MS = 6 * DAY_MS;
 const STALE_RUNNING_LOG_MS = 60 * 1000;
 const SCHEDULE_TRIGGER_GRACE_MS = 60 * 1000;
+const MAX_SCHEDULE_SCAN_DAYS = 400;
 const CHILD_STATUS_INACTIVE = 'inactive';
 const CHILD_STATUS_PENDING = 'pending';
 const CHILD_STATUS_SENDING = 'sending';
@@ -354,6 +365,43 @@ function normalizeDutyConfig(value) {
   };
 }
 
+function validateDutyNotificationConfig(dutyConfig) {
+  const validateMap = (dayMap, scope, rotation = null) => {
+    Object.entries(dayMap || {}).forEach(([key, rawItem]) => {
+      const item = normalizeDutyItem(rawItem);
+      const rotationScheduled = Boolean(
+        rotation?.staff_ids?.length &&
+        Number(key) <= Number(rotation.end_weekday) &&
+        item.start_message
+      );
+      if (!item.enabled && !rotationScheduled) return;
+      if (!item.start_message) {
+        const err = new Error(`${scope}${key}的值班开始提醒不能为空`);
+        err.status = 400;
+        throw err;
+      }
+      if (item.send_mode === 'start_and_end' && !item.end_message) {
+        const err = new Error(`${scope}${key}已选择开始和结束都发送，请填写值班结束提醒`);
+        err.status = 400;
+        throw err;
+      }
+    });
+  };
+  validateMap(
+    dutyConfig.weekly,
+    '周',
+    dutyConfig.weekly_mode === WEEKLY_DUTY_MODE_ROTATION ? dutyConfig.weekly_rotation : null
+  );
+  validateMap(dutyConfig.monthly, '每月');
+  dutyConfig.weekly_versions.forEach(version => {
+    validateMap(
+      version.weekly,
+      `${version.effective_date}版本周`,
+      version.weekly_mode === WEEKLY_DUTY_MODE_ROTATION ? version.weekly_rotation : null
+    );
+  });
+}
+
 function resolveWeeklyDutyProfile(dutyConfig, ymd) {
   const config = dutyConfig && typeof dutyConfig === 'object'
     ? dutyConfig
@@ -572,6 +620,7 @@ function normalizeRulePayload(payload, existing = null) {
   const scheduleType = payload.schedule_type || existing?.schedule_type || 'weekly';
   const executeTime = payload.execute_time || existing?.execute_time || '09:00:00';
   const dutyConfig = normalizeDutyConfig(payload.duty_config ?? existing?.duty_config);
+  if (taskType === TASK_TYPE_DUTY_NOTIFY) validateDutyNotificationConfig(dutyConfig);
   const actionMode = taskType === TASK_TYPE_DUTY_NOTIFY
     ? 'notify_only'
     : normalizeActionMode(payload.action_mode ?? existing?.action_mode);
@@ -769,11 +818,49 @@ function getNextChildRunAt(child, parentRule, now = new Date()) {
   return null;
 }
 
+async function getNextChildRunAtAsync(child, parentRule, now = new Date()) {
+  if (!isChildNotificationPending(child, parentRule)) return null;
+  const activationTime = childActivationTime(child);
+  if (activationTime === null) return null;
+  const today = getBeijingDate(now);
+  const nowTime = now.getTime();
+  for (let offset = 0; offset <= MAX_SCHEDULE_SCAN_DAYS; offset += 1) {
+    const targetDate = dateToYmd(addDays(today, offset));
+    const scheduledAt = await getCalendarAwareScheduledAt(
+      targetDate,
+      child.execute_time,
+      parts => isChildNotificationDateMatched(child, parts)
+    );
+    if (!scheduledAt) continue;
+    const runTime = scheduledAt.getTime();
+    if (runTime < activationTime || runTime < childTouchedTime(child)) continue;
+    if (runTime > nowTime || nowTime - runTime <= SCHEDULE_TRIGGER_GRACE_MS) return scheduledAt;
+  }
+  return null;
+}
+
 function getDueChildScheduledAt(child, parentRule, now = new Date()) {
   if (!isChildNotificationPending(child, parentRule)) return null;
   const parts = getBeijingParts(now);
   if (!isChildNotificationDateMatched(child, parts)) return null;
   const scheduledAt = getBeijingScheduledAt(parts, normalizeTime(child.execute_time));
+  const scheduledTime = scheduledAt.getTime();
+  const activationTime = childActivationTime(child);
+  if (activationTime === null || scheduledTime < activationTime || scheduledTime < childTouchedTime(child)) return null;
+  return isScheduleEventTriggerable({ updated_at: new Date(0), created_at: new Date(0) }, scheduledAt, now)
+    ? scheduledAt
+    : null;
+}
+
+async function getDueChildScheduledAtAsync(child, parentRule, now = new Date()) {
+  if (!isChildNotificationPending(child, parentRule)) return null;
+  const targetDate = getBeijingParts(now).date;
+  const scheduledAt = await getCalendarAwareScheduledAt(
+    targetDate,
+    child.execute_time,
+    parts => isChildNotificationDateMatched(child, parts)
+  );
+  if (!scheduledAt) return null;
   const scheduledTime = scheduledAt.getTime();
   const activationTime = childActivationTime(child);
   if (activationTime === null || scheduledTime < activationTime || scheduledTime < childTouchedTime(child)) return null;
@@ -788,6 +875,22 @@ function serializeChildNotification(child, parentRule, now = new Date()) {
   let displayStatus = plain.enabled ? plain.status : CHILD_STATUS_INACTIVE;
   if (!parentActive || !plain.activation_token) displayStatus = CHILD_STATUS_INACTIVE;
   const nextRunAt = getNextChildRunAt({ ...plain, status: displayStatus }, parentRule, now);
+  return {
+    ...plain,
+    month_days: toIntList(plain.month_days, 1, 31),
+    week_days: toIntList(plain.week_days, 1, 7),
+    webhook_ids: toStringList(plain.webhook_ids),
+    status: displayStatus,
+    next_run_at: nextRunAt ? nextRunAt.toISOString() : null
+  };
+}
+
+async function serializeChildNotificationAsync(child, parentRule, now = new Date()) {
+  const plain = child?.toJSON ? child.toJSON() : child;
+  const parentActive = isChildNotificationParentActive(parentRule);
+  let displayStatus = plain.enabled ? plain.status : CHILD_STATUS_INACTIVE;
+  if (!parentActive || !plain.activation_token) displayStatus = CHILD_STATUS_INACTIVE;
+  const nextRunAt = await getNextChildRunAtAsync({ ...plain, status: displayStatus }, parentRule, now);
   return {
     ...plain,
     month_days: toIntList(plain.month_days, 1, 31),
@@ -941,7 +1044,7 @@ async function processDueChildNotifications(now = new Date()) {
   let executed = 0;
   for (const child of children) {
     const parentRule = ruleMap.get(child.rule_id);
-    const scheduledAt = getDueChildScheduledAt(child, parentRule, now);
+    const scheduledAt = await getDueChildScheduledAtAsync(child, parentRule, now);
     if (!scheduledAt) continue;
     await executeChildNotification(child, parentRule, scheduledAt);
     executed += 1;
@@ -960,6 +1063,48 @@ function isRuleDateMatched(rule, parts) {
   }
   const weekDays = toIntList(rule.week_days, 1, 7);
   return weekDays.includes(getWeekdayNumber(parts.date));
+}
+
+async function getCalendarAwareScheduledAt(targetDate, executeTime, matchesSourceDate) {
+  const sourceDates = await getGlobalScheduleSourceDates(targetDate, MAX_SCHEDULE_SCAN_DAYS);
+  if (!sourceDates.some(date => matchesSourceDate(partsFromYmd(date)))) return null;
+  return getBeijingScheduledAt(partsFromYmd(targetDate), normalizeTime(executeTime));
+}
+
+async function getRuleScheduledAtForTarget(rule, targetDate) {
+  return getCalendarAwareScheduledAt(
+    targetDate,
+    rule.execute_time,
+    parts => isRuleDateMatched(rule, parts)
+  );
+}
+
+async function getDueRuleScheduledAtAsync(rule, now = new Date()) {
+  if (!rule.enabled || normalizeTaskType(rule.task_type) === TASK_TYPE_DUTY_NOTIFY) return null;
+  const targetDate = getBeijingParts(now).date;
+  const scheduledAt = await getRuleScheduledAtForTarget(rule, targetDate);
+  return scheduledAt && isScheduleEventTriggerable(rule, scheduledAt, now) ? scheduledAt : null;
+}
+
+async function getNextAutomaticRunAt(rule, now = new Date()) {
+  if (!rule.enabled) return null;
+  const today = getBeijingDate(now);
+  for (let offset = 0; offset <= MAX_SCHEDULE_SCAN_DAYS; offset += 1) {
+    const targetDate = dateToYmd(addDays(today, offset));
+    const scheduledAt = await getRuleScheduledAtForTarget(rule, targetDate);
+    if (scheduledAt && scheduledAt > now && getRuleTouchedAt(rule) <= scheduledAt.getTime()) return scheduledAt;
+  }
+  return null;
+}
+
+async function getPreviousAutomaticRunAt(rule, now = new Date()) {
+  const today = getBeijingDate(now);
+  for (let offset = 0; offset <= MAX_SCHEDULE_SCAN_DAYS; offset += 1) {
+    const targetDate = dateToYmd(addDays(today, -offset));
+    const scheduledAt = await getRuleScheduledAtForTarget(rule, targetDate);
+    if (scheduledAt && scheduledAt < now) return scheduledAt;
+  }
+  return null;
 }
 
 function getRuleTouchedAt(rule) {
@@ -1028,6 +1173,20 @@ function getDueDutyEvents(rule, now = new Date()) {
     .filter(event => isScheduleEventTriggerable(rule, event.scheduledAt, now));
 }
 
+async function getDueDutyEventsAsync(rule, now = new Date()) {
+  if (!rule.enabled) return [];
+  const parts = getBeijingParts(now);
+  const resolved = await resolveDutyDate(rule, parts.date);
+  return (resolved?.events || [])
+    .map(event => ({
+      kind: event.kind,
+      scheduledAt: new Date(event.scheduled_at),
+      message: event.message,
+      staff_ids: event.staff_ids
+    }))
+    .filter(event => isScheduleEventTriggerable(rule, event.scheduledAt, now));
+}
+
 function getNextRunAt(rule, now = new Date()) {
   if (!rule.enabled) return null;
   if (normalizeTaskType(rule.task_type) === TASK_TYPE_DUTY_NOTIFY) {
@@ -1056,6 +1215,13 @@ function getNextRunAt(rule, now = new Date()) {
   return null;
 }
 
+async function getNextRunAtAsync(rule, now = new Date()) {
+  if (normalizeTaskType(rule.task_type) === TASK_TYPE_DUTY_NOTIFY) {
+    return getNextDutyRunAt(rule, now);
+  }
+  return getNextAutomaticRunAt(rule, now);
+}
+
 function getPreviousRunAt(rule, now = new Date()) {
   const today = getBeijingDate(now);
   const nowTime = now.getTime();
@@ -1068,6 +1234,11 @@ function getPreviousRunAt(rule, now = new Date()) {
     if (runAt.getTime() < nowTime) return runAt;
   }
   return null;
+}
+
+async function getPreviousRunAtAsync(rule, now = new Date()) {
+  if (normalizeTaskType(rule.task_type) === TASK_TYPE_DUTY_NOTIFY) return getPreviousRunAt(rule, now);
+  return getPreviousAutomaticRunAt(rule, now);
 }
 
 function childNotificationFallbackMatch(rule, latestRun = null, now = new Date()) {
@@ -1090,6 +1261,66 @@ function childNotificationFallbackMatch(rule, latestRun = null, now = new Date()
     remaining_ms: remainingMs
   };
   const previousRunAt = getPreviousRunAt(rule, now);
+  const latestScheduledAt = latestRun?.scheduled_at ? new Date(latestRun.scheduled_at) : null;
+  const latestScheduledTime = latestScheduledAt?.getTime();
+  const previousRunTime = previousRunAt?.getTime();
+  const isCurrentCycleRecord = Boolean(
+    latestRun &&
+    previousRunAt &&
+    !Number.isNaN(latestScheduledTime) &&
+    Math.abs(latestScheduledTime - previousRunTime) <= SCHEDULE_TRIGGER_GRACE_MS
+  );
+
+  if (isCurrentCycleRecord) {
+    if (latestRun.status === 'success' && latestRun.notify_status === 'success') {
+      return {
+        ...withCountdown,
+        matched: true,
+        source: 'run_log',
+        reason: 'scheduled_success_record',
+        activation_scheduled_at: latestScheduledAt
+      };
+    }
+    return {
+      ...withCountdown,
+      reason: 'explicit_non_success_record',
+      activation_scheduled_at: previousRunAt
+    };
+  }
+
+  if (remainingMs <= 0 || remainingMs >= CHILD_FALLBACK_WINDOW_MS) {
+    return { ...withCountdown, reason: 'outside_six_day_window' };
+  }
+
+  return {
+    ...withCountdown,
+    matched: true,
+    source: 'countdown',
+    reason: 'enabled_countdown_under_six_days',
+    activation_scheduled_at: previousRunAt || now
+  };
+}
+
+async function childNotificationFallbackMatchAsync(rule, latestRun = null, now = new Date()) {
+  const result = {
+    matched: false,
+    source: null,
+    reason: 'parent_inactive',
+    next_run_at: null,
+    activation_scheduled_at: null,
+    remaining_ms: null
+  };
+  if (!isChildNotificationParentActive(rule)) return result;
+
+  const nextRunAt = await getNextRunAtAsync(rule, now);
+  if (!nextRunAt) return { ...result, reason: 'missing_next_run' };
+  const remainingMs = nextRunAt.getTime() - now.getTime();
+  const withCountdown = {
+    ...result,
+    next_run_at: nextRunAt,
+    remaining_ms: remainingMs
+  };
+  const previousRunAt = await getPreviousRunAtAsync(rule, now);
   const latestScheduledAt = latestRun?.scheduled_at ? new Date(latestRun.scheduled_at) : null;
   const latestScheduledTime = latestScheduledAt?.getTime();
   const previousRunTime = previousRunAt?.getTime();
@@ -1154,7 +1385,7 @@ async function recoverChildNotificationsFromParentEvidence(now = new Date()) {
         },
         order: [['scheduled_at', 'DESC']]
       });
-      const match = childNotificationFallbackMatch(rule, latestRun, now);
+      const match = await childNotificationFallbackMatchAsync(rule, latestRun, now);
       if (!match.matched) continue;
 
       const token = uuidv4();
@@ -1256,13 +1487,63 @@ async function createNextWeeklyTask() {
   return { created: false, message: SKIP_MESSAGE };
 }
 
+function isPrivateNetworkAddress(address) {
+  const value = String(address || '').toLowerCase();
+  if (net.isIPv4(value)) {
+    const parts = value.split('.').map(Number);
+    return parts[0] === 0 ||
+      parts[0] === 10 ||
+      parts[0] === 127 ||
+      (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) ||
+      (parts[0] === 169 && parts[1] === 254) ||
+      (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
+      (parts[0] === 192 && parts[1] === 168) ||
+      (parts[0] === 198 && [18, 19].includes(parts[1])) ||
+      parts[0] >= 224;
+  }
+  if (net.isIPv6(value)) {
+    return value === '::1' || value === '::' || value.startsWith('fc') || value.startsWith('fd') ||
+      value.startsWith('fe8') || value.startsWith('fe9') || value.startsWith('fea') || value.startsWith('feb') ||
+      value.startsWith('::ffff:127.') || value.startsWith('::ffff:10.') || value.startsWith('::ffff:192.168.');
+  }
+  return true;
+}
+
+function assertAllowedWebhookUrl(parsed) {
+  const host = parsed.hostname.toLowerCase();
+  const localTestAllowed = process.env.ALLOW_LOCAL_WEBHOOK_TEST === '1' &&
+    ['127.0.0.1', 'localhost', '::1'].includes(host);
+  if (localTestAllowed && ['http:', 'https:'].includes(parsed.protocol)) return { localTestAllowed: true };
+  if (
+    parsed.protocol !== 'https:' ||
+    host !== 'oapi.dingtalk.com' ||
+    (parsed.port && parsed.port !== '443') ||
+    parsed.username ||
+    parsed.password
+  ) {
+    throw new Error('webhook 仅允许使用钉钉官方 https://oapi.dingtalk.com 地址');
+  }
+  return { localTestAllowed: false };
+}
+
+function publicDnsLookup(hostname, options, callback) {
+  dns.lookup(hostname, { all: true, verbatim: true }, (error, addresses) => {
+    if (error) return callback(error);
+    const candidate = addresses.find(item => !isPrivateNetworkAddress(item.address));
+    if (!candidate) return callback(new Error('webhook 域名未解析到公网地址'));
+    return callback(null, candidate.address, candidate.family);
+  });
+}
+
 function postJson(url, body, timeoutMs = 8000) {
   return new Promise((resolve, reject) => {
     let parsed;
+    let webhookPolicy;
     try {
       parsed = new URL(url);
-    } catch {
-      reject(new Error('webhook 地址格式不正确'));
+      webhookPolicy = assertAllowedWebhookUrl(parsed);
+    } catch (error) {
+      reject(error instanceof Error ? error : new Error('webhook 地址格式不正确'));
       return;
     }
 
@@ -1282,6 +1563,7 @@ function postJson(url, body, timeoutMs = 8000) {
         'Content-Type': 'application/json',
         'Content-Length': data.length
       },
+      lookup: webhookPolicy.localTestAllowed ? undefined : publicDnsLookup,
       timeout: timeoutMs
     }, (res) => {
       const chunks = [];
@@ -1514,7 +1796,68 @@ async function executeDutyEvent(rule, event) {
   return log;
 }
 
-async function executeRule(rule, scheduledAt) {
+async function processDueSpecialDutyNotifications(now = new Date(), options = {}) {
+  const parts = getBeijingParts(now);
+  const where = {
+    calendar_date: parts.date,
+    notice_enabled: true,
+    status: 'active'
+  };
+  const filterRuleIds = Array.isArray(options.ruleIds) ? options.ruleIds.map(String).filter(Boolean) : [];
+  if (filterRuleIds.length > 0) where.rule_id = { [Op.in]: filterRuleIds };
+  const exceptions = await DutyScheduleException.findAll({
+    where
+  });
+  if (exceptions.length === 0) return 0;
+  const ruleIds = [...new Set(exceptions.map(item => item.rule_id))];
+  const rules = await AutoTaskRule.findAll({ where: { id: { [Op.in]: ruleIds } } });
+  const ruleMap = new Map(rules.map(rule => [rule.id, rule]));
+  let executed = 0;
+  for (const exception of exceptions) {
+    const rule = ruleMap.get(exception.rule_id);
+    if (!rule?.enabled || !rule.notify_enabled || normalizeTaskType(rule.task_type) !== TASK_TYPE_DUTY_NOTIFY) continue;
+    const scheduledAt = getBeijingScheduledAt(parts, normalizeTime(exception.notice_time));
+    if (!isScheduleEventTriggerable(rule, scheduledAt, now)) continue;
+    const [log, created] = await DutySpecialNotificationLog.findOrCreate({
+      where: { exception_id: exception.id, scheduled_at: scheduledAt },
+      defaults: {
+        id: uuidv4(),
+        exception_id: exception.id,
+        rule_id: rule.id,
+        scheduled_at: scheduledAt,
+        status: 'running',
+        created_at: now,
+        updated_at: now
+      }
+    });
+    if (!created) continue;
+    try {
+      const atMode = String(exception.notice_at_mode || 'none');
+      let atConfig = { enabled: false, atAll: false, mobiles: [], missing: [] };
+      if (atMode === 'all') {
+        atConfig = { enabled: true, atAll: true, mobiles: [], missing: [] };
+      } else if (atMode === 'people') {
+        atConfig = await resolveStaffAtConfig(toStringList(exception.notice_staff_ids));
+      }
+      const webhooks = normalizeWebhookConfigs(rule.dingtalk_webhook);
+      await sendDingTalkCard(
+        webhooks,
+        String(exception.notice_message || '').trim(),
+        atConfig,
+        DINGTALK_SPECIAL_DATE_CARD_TITLE
+      );
+      await log.update({ status: 'success', notify_error: null, updated_at: new Date() });
+      await recordAutoTaskMessage(rule.id, 'success', 'duty_special_notice', `${parts.date} 特殊日期通知发送成功`);
+    } catch (error) {
+      await log.update({ status: 'failed', notify_error: error.message, updated_at: new Date() });
+      await recordAutoTaskMessage(rule.id, 'error', 'duty_special_notice', `${parts.date} 特殊日期通知发送失败：${error.message}`);
+    }
+    executed += 1;
+  }
+  return executed;
+}
+
+async function executeRule(rule, scheduledAt, dependencies = {}) {
   const actionMode = normalizeActionMode(rule.action_mode);
   const log = await prepareRunLog(
     { rule_id: rule.id, scheduled_at: scheduledAt, event_type: 'auto_task' },
@@ -1553,7 +1896,8 @@ async function executeRule(rule, scheduledAt) {
       return log;
     }
 
-    const result = await createNextWeeklyTask();
+    const createTask = dependencies.createTask || createNextWeeklyTask;
+    const result = await createTask(scheduledAt);
     if (!result.created) {
       await log.update({
         status: 'skipped',
@@ -1621,7 +1965,7 @@ async function schedulerTick() {
     for (const rule of rules) {
       try {
         if (normalizeTaskType(rule.task_type) === TASK_TYPE_DUTY_NOTIFY) {
-          const events = getDueDutyEvents(rule, now);
+          const events = await getDueDutyEventsAsync(rule, now);
           for (const event of events) {
             try {
               await executeDutyEvent(rule, event);
@@ -1632,7 +1976,7 @@ async function schedulerTick() {
           }
           continue;
         }
-        const scheduledAt = isRuleDue(rule, now);
+        const scheduledAt = await getDueRuleScheduledAtAsync(rule, now);
         if (scheduledAt) {
           await executeRule(rule, scheduledAt);
         }
@@ -1641,6 +1985,7 @@ async function schedulerTick() {
         await recordAutoTaskMessage(rule.id, 'error', 'auto_run', `自动任务规则执行失败：${ruleErr.message}`);
       }
     }
+    await processDueSpecialDutyNotifications(new Date());
     await processDueChildNotifications(new Date());
   } catch (err) {
     console.error('[auto-task] 调度检查失败:', err.message);
@@ -1664,13 +2009,22 @@ function startAutoTaskScheduler() {
 
 module.exports = {
   activateChildNotifications,
+  childNotificationFallbackMatchAsync,
   createNextWeeklyTask,
   deactivateChildNotifications,
   ensureAutoTaskTables,
+  executeChildNotification,
+  executeRule,
   getDutyItemForParts,
+  getDueChildScheduledAtAsync,
   getDueDutyEvents,
+  getDueDutyEventsAsync,
+  getDueRuleScheduledAtAsync,
   getNextChildRunAt,
+  getNextChildRunAtAsync,
   getNextRunAt,
+  getNextRunAtAsync,
+  getPreviousRunAtAsync,
   normalizeChildNotificationPayload,
   normalizeDutyConfig,
   normalizeRulePayload,
@@ -1678,11 +2032,13 @@ module.exports = {
   normalizeWebhookConfigs,
   normalizeWebhookList,
   processDueChildNotifications,
+  processDueSpecialDutyNotifications,
   recordAutoTaskMessage,
   recoverChildNotificationsFromParentEvidence,
   resolveWeeklyDutyProfile,
   runRuleOnce,
   serializeChildNotification,
+  serializeChildNotificationAsync,
   sendDingTalkWebhook,
   schedulerTick,
   startAutoTaskScheduler,

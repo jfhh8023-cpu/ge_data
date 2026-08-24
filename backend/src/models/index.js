@@ -22,6 +22,11 @@ const QuoteConfig = require('./QuoteConfig');
 const StaffStatusHistory = require('./StaffStatusHistory');
 const ProductManagerStatusHistory = require('./ProductManagerStatusHistory');
 const StaffRole = require('./StaffRole');
+const DutyCalendarRevision = require('./DutyCalendarRevision');
+const DutyScheduleException = require('./DutyScheduleException');
+const DutyScheduleSwap = require('./DutyScheduleSwap');
+const DutySpecialNotificationLog = require('./DutySpecialNotificationLog');
+const DutyHolidaySnapshot = require('./DutyHolidaySnapshot');
 
 /* ========== 关联定义 ========== */
 
@@ -72,6 +77,11 @@ AutoTaskMessage.belongsTo(AutoTaskRule, { foreignKey: 'rule_id', as: 'rule' });
 AutoTaskRule.hasMany(AutoTaskChildNotification, { foreignKey: 'rule_id', as: 'childNotifications' });
 AutoTaskChildNotification.belongsTo(AutoTaskRule, { foreignKey: 'rule_id', as: 'rule' });
 
+AutoTaskRule.hasMany(DutyScheduleException, { foreignKey: 'rule_id', as: 'dutyScheduleExceptions' });
+DutyScheduleException.belongsTo(AutoTaskRule, { foreignKey: 'rule_id', as: 'rule' });
+AutoTaskRule.hasMany(DutyScheduleSwap, { foreignKey: 'rule_id', as: 'dutyScheduleSwaps' });
+DutyScheduleSwap.belongsTo(AutoTaskRule, { foreignKey: 'rule_id', as: 'rule' });
+
 // AutoTaskRule 1:1 QuoteConfig（v3.3.0 名句搭配）
 AutoTaskRule.hasOne(QuoteConfig, { foreignKey: 'rule_id', as: 'quoteConfig' });
 QuoteConfig.belongsTo(AutoTaskRule, { foreignKey: 'rule_id', as: 'rule' });
@@ -96,5 +106,10 @@ module.exports = {
   QuoteConfig,
   StaffStatusHistory,
   ProductManagerStatusHistory,
-  StaffRole
+  StaffRole,
+  DutyCalendarRevision,
+  DutyScheduleException,
+  DutyScheduleSwap,
+  DutySpecialNotificationLog,
+  DutyHolidaySnapshot
 };

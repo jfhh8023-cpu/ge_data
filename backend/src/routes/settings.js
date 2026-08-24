@@ -5,10 +5,18 @@
 const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
-const { AutoTaskRule, AutoTaskRunLog, AutoTaskMessage, AutoTaskChildNotification } = require('../models');
+const {
+  AutoTaskRule,
+  AutoTaskRunLog,
+  AutoTaskMessage,
+  AutoTaskChildNotification,
+  DutyScheduleException,
+  DutyScheduleSwap,
+  DutySpecialNotificationLog
+} = require('../models');
 const {
   deactivateChildNotifications,
-  getNextRunAt,
+  getNextRunAtAsync,
   normalizeChildNotificationPayload,
   normalizeDutyConfig,
   normalizeRulePayload,
@@ -16,18 +24,18 @@ const {
   normalizeWebhookConfigs,
   normalizeWebhookList,
   runRuleOnce,
-  serializeChildNotification,
+  serializeChildNotificationAsync,
   sendDingTalkWebhook,
   testChildNotification
 } = require('../services/AutoTaskService');
 const { buildReportBackup } = require('../services/ReportBackupService');
 const { safeParseJsonArray } = require('../utils/parseJson');
 
-function serializeRule(rule, childNotifications = []) {
+async function serializeRule(rule, childNotifications = []) {
   const plain = rule.toJSON ? rule.toJSON() : rule;
   const dingtalkWebhooks = normalizeWebhookConfigs(plain.dingtalk_webhook);
   const dingtalkRecipients = normalizeRecipientConfig(plain.dingtalk_recipients);
-  const nextRunAt = getNextRunAt({
+  const nextRunAt = await getNextRunAtAsync({
     ...plain,
     month_days: safeParseJsonArray(plain.month_days),
     week_days: safeParseJsonArray(plain.week_days)
@@ -39,7 +47,9 @@ function serializeRule(rule, childNotifications = []) {
     dingtalk_webhooks: dingtalkWebhooks,
     dingtalk_recipients: dingtalkRecipients,
     duty_config: normalizeDutyConfig(plain.duty_config),
-    child_notifications: childNotifications.map(child => serializeChildNotification(child, plain)),
+    child_notifications: await Promise.all(
+      childNotifications.map(child => serializeChildNotificationAsync(child, plain))
+    ),
     next_run_at: nextRunAt ? nextRunAt.toISOString() : null
   };
 }
@@ -89,7 +99,7 @@ router.get('/auto-tasks', async (req, res, next) => {
     res.json({
       code: 0,
       data: {
-        rules: rules.map(rule => serializeRule(rule, childrenByRule.get(rule.id) || [])),
+        rules: await Promise.all(rules.map(rule => serializeRule(rule, childrenByRule.get(rule.id) || []))),
         logs,
         messages
       }
@@ -157,7 +167,7 @@ router.post('/auto-tasks/:id/child-notifications', async (req, res, next) => {
       updated_at: new Date()
     });
     await createRuleMessage(rule.id, 'success', 'child_notify', '子通知已新增');
-    res.json({ code: 0, data: serializeChildNotification(child, rule), message: '子通知已保存' });
+    res.json({ code: 0, data: await serializeChildNotificationAsync(child, rule), message: '子通知已保存' });
   } catch (err) { next(err); }
 });
 
@@ -186,7 +196,7 @@ router.put('/auto-tasks/:id/child-notifications/:childId', async (req, res, next
       updated_at: new Date()
     });
     await createRuleMessage(rule.id, 'success', 'child_notify', '子通知已保存');
-    res.json({ code: 0, data: serializeChildNotification(child, rule), message: '子通知已保存' });
+    res.json({ code: 0, data: await serializeChildNotificationAsync(child, rule), message: '子通知已保存' });
   } catch (err) { next(err); }
 });
 
@@ -209,7 +219,7 @@ router.patch('/auto-tasks/:id/child-notifications/:childId/status', async (req, 
       updated_at: new Date()
     });
     await createRuleMessage(rule.id, 'success', 'child_notify', child.enabled ? '子通知已启用，等待主通知触发' : '子通知已停用');
-    res.json({ code: 0, data: serializeChildNotification(child, rule), message: '子通知状态已更新' });
+    res.json({ code: 0, data: await serializeChildNotificationAsync(child, rule), message: '子通知状态已更新' });
   } catch (err) { next(err); }
 });
 
@@ -283,6 +293,9 @@ router.delete('/auto-tasks/:id/messages', async (req, res, next) => {
 router.delete('/auto-tasks/:id', async (req, res, next) => {
   try {
     await AutoTaskChildNotification.destroy({ where: { rule_id: req.params.id } });
+    await DutySpecialNotificationLog.destroy({ where: { rule_id: req.params.id } });
+    await DutyScheduleSwap.destroy({ where: { rule_id: req.params.id } });
+    await DutyScheduleException.destroy({ where: { rule_id: req.params.id } });
     await AutoTaskMessage.destroy({ where: { rule_id: req.params.id } });
     await AutoTaskRunLog.destroy({ where: { rule_id: req.params.id } });
     const count = await AutoTaskRule.destroy({ where: { id: req.params.id } });

@@ -1,0 +1,32 @@
+测试时间：2026-08-23 23:48:32 +08:00
+页面：http://127.0.0.1:5176/settings?admin=1
+
+浏览器断言：
+- configuredBoth.count=2
+- configuredBoth.actualTwo=true
+- configuredBoth.hasStart=true
+- configuredBoth.hasEnd=true
+- configuredStartOnly.count=1
+- configuredStartOnly.actualOne=true
+- configuredStartOnly.hasEnd=false
+- unconfiguredBoth.count=2
+- unconfiguredBoth.previewTwo=true
+- unconfiguredBoth.actualBlocked=true
+- consoleErrors=0
+- consoleWarnings=0
+
+后端调度断言：
+- start_only_start_events=[start]
+- start_only_end_events=[]
+- start_and_end_start_events=[start]
+- start_and_end_end_events=[end]
+
+接口负向断言：
+- 固定模式 start_and_end 缺少结束文案：HTTP 400
+- 轮换模式 start_and_end 缺少结束文案：HTTP 400
+- remaining_test_rules=0
+- remaining_test_messages=0
+- invalid_active_both=0
+- duty_rule.updated_at 已恢复为 2026-08-23T15:08:07.000Z
+
+数据边界：未调用真实 webhook；临时规则已清理；未向生产读写数据。
