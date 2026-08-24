@@ -1,5 +1,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
+const http = require('http');
+const https = require('https');
 const path = require('path');
 const { DutyHolidaySnapshot } = require('../models');
 
@@ -314,6 +316,83 @@ function normalizeOfficialUrl(value) {
   }
 }
 
+function createAbortError() {
+  const error = new Error('The operation was aborted');
+  error.name = 'AbortError';
+  return error;
+}
+
+function nodeHttpFetch(url, options = {}) {
+  return new Promise((resolve, reject) => {
+    const target = new URL(url);
+    const client = target.protocol === 'https:' ? https : target.protocol === 'http:' ? http : null;
+    if (!client) {
+      reject(new Error(`Unsupported protocol: ${target.protocol}`));
+      return;
+    }
+
+    const signal = options.signal;
+    let settled = false;
+    let request;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener?.('abort', onAbort);
+      callback(value);
+    };
+    const onAbort = () => {
+      const error = createAbortError();
+      request?.destroy(error);
+      finish(reject, error);
+    };
+
+    request = client.request(target, {
+      method: options.method || 'GET',
+      headers: options.headers || {}
+    }, response => {
+      const chunks = [];
+      let byteLength = 0;
+      response.on('data', chunk => {
+        byteLength += chunk.length;
+        if (byteLength > MAX_SOURCE_BYTES) {
+          request.destroy(new Error(`Official response exceeds ${MAX_SOURCE_BYTES} bytes`));
+          return;
+        }
+        chunks.push(chunk);
+      });
+      response.on('error', error => finish(reject, error));
+      response.on('end', () => {
+        const status = Number(response.statusCode || 0);
+        const body = Buffer.concat(chunks).toString('utf8');
+        finish(resolve, {
+          ok: status >= 200 && status < 300,
+          status,
+          url: target.toString(),
+          headers: {
+            get(name) {
+              const value = response.headers[String(name || '').toLowerCase()];
+              return Array.isArray(value) ? value.join(', ') : value ?? null;
+            }
+          },
+          text: async () => body
+        });
+      });
+    });
+    request.on('error', error => finish(reject, error));
+
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
+    signal?.addEventListener?.('abort', onAbort, { once: true });
+    request.end();
+  });
+}
+
+function defaultFetchImplementation() {
+  return typeof global.fetch === 'function' ? global.fetch.bind(global) : nodeHttpFetch;
+}
+
 async function fetchWithTimeout(fetchImpl, url, options = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -357,7 +436,7 @@ async function readOfficialSourceText(response, label) {
   return text;
 }
 
-async function searchOfficialPolicyDocuments(query, fetchImpl = global.fetch) {
+async function searchOfficialPolicyDocuments(query, fetchImpl = defaultFetchImplementation()) {
   const params = new URLSearchParams({
     t: 'zhengcelibrary',
     q: query,
@@ -381,7 +460,7 @@ async function searchOfficialPolicyDocuments(query, fetchImpl = global.fetch) {
     .flatMap(group => Array.isArray(group?.listVO) ? group.listVO : []);
 }
 
-async function discoverOfficialHolidayDocument(year, fetchImpl = global.fetch) {
+async function discoverOfficialHolidayDocument(year, fetchImpl = defaultFetchImplementation()) {
   const expectedTitle = `国务院办公厅关于${year}年部分节假日安排的通知`;
   const candidates = await searchOfficialPolicyDocuments(`${year}年部分节假日安排的通知`, fetchImpl) || [];
   const match = candidates.find(candidate => (
@@ -392,7 +471,7 @@ async function discoverOfficialHolidayDocument(year, fetchImpl = global.fetch) {
   return match ? { ...match, url: normalizeOfficialUrl(match.url) } : null;
 }
 
-async function discoverOfficialHolidayAmendments(year, fetchImpl = global.fetch) {
+async function discoverOfficialHolidayAmendments(year, fetchImpl = defaultFetchImplementation()) {
   const expectedTitle = `国务院办公厅关于延长${year}年春节假期的通知`;
   const candidates = await searchOfficialPolicyDocuments(expectedTitle, fetchImpl) || [];
   return candidates
@@ -404,7 +483,7 @@ async function discoverOfficialHolidayAmendments(year, fetchImpl = global.fetch)
     .map(candidate => ({ ...candidate, url: normalizeOfficialUrl(candidate.url) }));
 }
 
-async function applyOfficialHolidayAmendments(snapshot, fetchImpl = global.fetch) {
+async function applyOfficialHolidayAmendments(snapshot, fetchImpl = defaultFetchImplementation()) {
   const amendments = await discoverOfficialHolidayAmendments(snapshot.year, fetchImpl);
   if (!amendments.length) return snapshot;
   let days = [...snapshot.days];
@@ -561,7 +640,7 @@ async function syncOfficialHolidaySnapshot(yearValue, options = {}) {
   const year = assertSupportedYear(yearValue);
   if (syncInFlight.has(year)) return syncInFlight.get(year);
   const operation = (async () => {
-    const fetchImpl = options.fetchImpl || global.fetch;
+    const fetchImpl = options.fetchImpl || defaultFetchImplementation();
     try {
       const source = await discoverOfficialHolidayDocument(year, fetchImpl);
       if (!source) return persistSyncFailure(year, 'pending', '官方年度节假日通知尚未发布或尚未被政策文件库收录');
@@ -705,6 +784,7 @@ module.exports = {
     checksumDays,
     compactText,
     holidayRangeFromSentence,
+    nodeHttpFetch,
     normalizeOfficialDays,
     snapshotCache,
     statusCache

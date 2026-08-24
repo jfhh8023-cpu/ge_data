@@ -5,7 +5,8 @@ const {
   discoverOfficialHolidayAmendments,
   isAllowedOfficialUrl,
   normalizeSnapshot,
-  parseOfficialHolidayDocument
+  parseOfficialHolidayDocument,
+  __internals
 } = require('../src/services/OfficialHolidaySyncService');
 
 const EXPECTATIONS = {
@@ -76,6 +77,9 @@ async function main() {
   const snapshot2026 = years.find(item => item.year === 2026);
   assert.ok(snapshot2026);
   const source2026 = await discoverOfficialHolidayDocument(2026);
+  const node16Source2026 = await discoverOfficialHolidayDocument(2026, __internals.nodeHttpFetch);
+  assert.ok(node16Source2026, 'Node 16 HTTP fallback did not discover the 2026 official notice');
+  assert.strictEqual(isAllowedOfficialUrl(node16Source2026.url), true);
   const parsed2026 = parseOfficialHolidayDocument({
     year: 2026,
     html: await fetchOfficialHtml(source2026.url),
@@ -121,6 +125,7 @@ async function main() {
       extended_days: ['2020-01-31', '2020-02-01', '2020-02-02']
     },
     future_unpublished: 'pending_without_fabrication',
+    node16_http_fallback: 'passed',
     allowlist_and_conflict_validation: 'passed'
   }, null, 2));
 }
