@@ -513,11 +513,17 @@ async function main() {
       assert.deepStrictEqual(swapped[0].final_staff_ids, [swapDraft.staff_b_id]);
       assert.deepStrictEqual(swapped[1].final_staff_ids, [swapDraft.staff_a_id]);
       assert.deepStrictEqual(swapped[2].final_staff_ids, baseDays[2].final_staff_ids);
+      assert.ok(swapped[0].events.length > 0);
+      assert.ok(swapped[1].events.length > 0);
+      swapped[0].events.forEach(event => assert.deepStrictEqual(event.staff_ids, [swapDraft.staff_b_id]));
+      swapped[1].events.forEach(event => assert.deepStrictEqual(event.staff_ids, [swapDraft.staff_a_id]));
       return {
         evidence: {
           date_a_before_after: [baseDays[0].final_staff[0].name, swapped[0].final_staff[0].name],
           date_b_before_after: [baseDays[1].final_staff[0].name, swapped[1].final_staff[0].name],
-          third_date_unchanged: swapped[2].final_staff_ids[0] === baseDays[2].final_staff_ids[0]
+          third_date_unchanged: swapped[2].final_staff_ids[0] === baseDays[2].final_staff_ids[0],
+          date_a_event_staff_ids: swapped[0].events.map(event => event.staff_ids),
+          date_b_event_staff_ids: swapped[1].events.map(event => event.staff_ids)
         },
         assertions: [
           '两名人员只在指定两日互换',

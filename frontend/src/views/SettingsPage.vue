@@ -1824,6 +1824,11 @@ function previewDutyItemForDate(rule, date) {
   })
 }
 
+function dutyOverviewItem(rule, key) {
+  if (rule.schedule_type === 'monthly') return getResolvedDutyItem(rule, key)
+  return previewDutyItemForDate(rule, dutyDateFromKey(rule, key))
+}
+
 function dutyPreviewEvents(item, date) {
   const events = []
   if (dutyItemHasStartPreview(item)) {
@@ -2615,7 +2620,7 @@ function formatMonthDay(date) {
 
 function dutyFutureDay(rule, date) {
   const key = String(localWeekdayNumber(date))
-  const item = getResolvedDutyItem(rule, key, date)
+  const item = previewDutyItemForDate(rule, date)
   const boundary = dutyFutureMode.value === 'pending'
     ? localDateOnly(dutyFutureStartDate.value)
     : localDateOnly(dutyFutureOpenedAt.value)
@@ -3618,7 +3623,7 @@ onUnmounted(() => {
                       type="button"
                       class="dt-duty-cell"
                       :class="{
-                        'is-configured': dutyItemDisplayConfigured(getResolvedDutyItem(rule, key)),
+                        'is-configured': dutyItemDisplayConfigured(dutyOverviewItem(rule, key)),
                         'is-current-duty': isDutyCurrentKey(rule, key)
                       }"
                       :disabled="!canEditAutoTasks"
@@ -3626,9 +3631,9 @@ onUnmounted(() => {
                     >
                       <strong>{{ dutyKeyLabel(rule, key) }}</strong>
                       <div class="dt-duty-cell-info">
-                        <span>{{ dutyPeopleText(getResolvedDutyItem(rule, key)) }}</span>
-                        <em>{{ dutyTimeText(getResolvedDutyItem(rule, key)) }}</em>
-                        <small>{{ dutyStatusText(getResolvedDutyItem(rule, key)) }}</small>
+                        <span>{{ dutyPeopleText(dutyOverviewItem(rule, key)) }}</span>
+                        <em>{{ dutyTimeText(dutyOverviewItem(rule, key)) }}</em>
+                        <small>{{ dutyStatusText(dutyOverviewItem(rule, key)) }}</small>
                       </div>
                     </button>
                   </div>
