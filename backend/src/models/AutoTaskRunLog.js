@@ -11,6 +11,10 @@ const AutoTaskRunLog = sequelize.define('auto_task_run_logs', {
   created_task_id: { type: DataTypes.CHAR(36) },
   notify_status:   { type: DataTypes.ENUM('not_required', 'success', 'failed', 'skipped'), allowNull: false, defaultValue: 'not_required' },
   notify_error:    { type: DataTypes.TEXT },
+  attempt_count:   { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  last_attempt_at: { type: DataTypes.DATE },
+  next_retry_at:   { type: DataTypes.DATE },
+  retry_payload:   { type: DataTypes.TEXT },
   created_at:      { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
 }, {
   indexes: [

@@ -743,7 +743,8 @@ async function main() {
     });
 
     await runCase('H-008', async () => {
-      const target = new Date(Date.now() + 15000);
+      // Keep the real scheduler before the target while this process verifies the due-time path.
+      const target = new Date(Date.now() + 120000);
       const targetParts = getBeijingParts(target);
       const noticeMessage = `${RUN_PREFIX} isolated special notice`;
       const enabledSave = await api('PUT', '/api/settings/duty-calendar/2026', {
@@ -764,9 +765,9 @@ async function main() {
       savedRevisionNo = enabledSave.payload.data.revision_no;
       state.revisionIds.push(enabledSave.payload.data.revision.id);
       await rule.update({ enabled: true, notify_enabled: true, updated_at: new Date() });
-      await sleep(Math.max(0, target.getTime() - Date.now()) + 1500);
-      const firstExecuted = await processDueSpecialDutyNotifications(new Date(), { ruleIds: [rule.id] });
-      const secondExecuted = await processDueSpecialDutyNotifications(new Date(), { ruleIds: [rule.id] });
+      const simulatedDueAt = new Date(target.getTime() + 1000);
+      const firstExecuted = await processDueSpecialDutyNotifications(simulatedDueAt, { ruleIds: [rule.id] });
+      const secondExecuted = await processDueSpecialDutyNotifications(simulatedDueAt, { ruleIds: [rule.id] });
       await sleep(300);
       await rule.update({ enabled: false, notify_enabled: false, updated_at: new Date() });
       const logs = await DutySpecialNotificationLog.findAll({ where: { rule_id: rule.id } });

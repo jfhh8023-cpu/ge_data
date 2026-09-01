@@ -2,6 +2,9 @@ const assert = require('assert');
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
+
+process.env.ALLOW_LOCAL_WEBHOOK_TEST = '1';
+
 const { Op } = require('sequelize');
 const { v4: uuidv4 } = require('uuid');
 const {

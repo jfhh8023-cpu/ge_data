@@ -1,5 +1,5 @@
 const { v4: uuidv4 } = require('uuid');
-const { Op } = require('sequelize');
+const { DataTypes, Op } = require('sequelize');
 const {
   sequelize,
   AutoTaskRule,
@@ -432,6 +432,33 @@ async function ensureDutyCalendarTables() {
   await DutyScheduleException.sync();
   await DutyScheduleSwap.sync();
   await DutySpecialNotificationLog.sync();
+  const queryInterface = sequelize.getQueryInterface();
+  const columns = await queryInterface.describeTable('duty_special_notification_logs');
+  if (!columns.attempt_count) {
+    await queryInterface.addColumn('duty_special_notification_logs', 'attempt_count', {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0
+    });
+  }
+  if (!columns.last_attempt_at) {
+    await queryInterface.addColumn('duty_special_notification_logs', 'last_attempt_at', {
+      type: DataTypes.DATE,
+      allowNull: true
+    });
+  }
+  if (!columns.next_retry_at) {
+    await queryInterface.addColumn('duty_special_notification_logs', 'next_retry_at', {
+      type: DataTypes.DATE,
+      allowNull: true
+    });
+  }
+  const indexes = await queryInterface.showIndex('duty_special_notification_logs');
+  if (!indexes.some(index => index.name === 'idx_duty_special_retry_due')) {
+    await queryInterface.addIndex('duty_special_notification_logs', ['status', 'next_retry_at'], {
+      name: 'idx_duty_special_retry_due'
+    });
+  }
 }
 
 async function requireDutyRule(ruleId, transaction = null) {

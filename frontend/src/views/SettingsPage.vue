@@ -24,8 +24,20 @@ const rules = ref([])
 const logs = ref([])
 const messages = ref([])
 const historyExpanded = ref({})
+const historyPages = ref({})
 const historyBatchMode = ref({})
 const selectedHistoryIds = ref({})
+const HISTORY_DEFAULT_PAGE_SIZE = 20
+const HISTORY_PAGE_SIZES = [10, 20, 50, 100, 200, 300, 500, 1000]
+const EMPTY_HISTORY_PAGE = Object.freeze({
+  items: [],
+  page: 1,
+  pageSize: HISTORY_DEFAULT_PAGE_SIZE,
+  total: 0,
+  totalPages: 0,
+  loading: false,
+  loaded: false
+})
 const recipientDialogVisible = ref(false)
 const recipientSaving = ref(false)
 const recipientStaffLoading = ref(false)
@@ -257,7 +269,10 @@ function createDefaultChildNotification() {
     status: CHILD_STATUS_INACTIVE,
     next_run_at: null,
     last_sent_at: null,
-    last_error: null
+    last_error: null,
+    attempt_count: 0,
+    last_attempt_at: null,
+    next_retry_at: null
   }
 }
 
@@ -669,7 +684,10 @@ async function loadSettings(options = {}) {
     }
     logs.value = data.logs || []
     messages.value = data.messages || []
-    await refreshDutyRuntimePreviews()
+    await Promise.all([
+      refreshRuleHistories(),
+      refreshDutyRuntimePreviews()
+    ])
   } finally {
     if (!silent) loading.value = false
   }
@@ -742,6 +760,7 @@ async function recordRuleMessage(rule, level, action, message) {
   try {
     const res = await api.post(`/settings/auto-tasks/${rule.id}/messages`, { level, action, message })
     if (res.data) messages.value = [res.data, ...messages.value]
+    await loadRuleHistory(rule, { page: 1, silent: true })
   } catch {
     // 提示历史记录失败不阻断当前用户操作。
   }
@@ -1131,6 +1150,7 @@ function childNotificationStatusText(child) {
   ) return '待主任务启用'
   if (child.status === CHILD_STATUS_PENDING) return '待发送'
   if (child.status === CHILD_STATUS_SENT) return '已发送'
+  if (child.status === CHILD_STATUS_FAILED && child.next_retry_at) return '重试待发送'
   if (child.status === CHILD_STATUS_FAILED) return '发送失败'
   return '待主任务触发'
 }
@@ -1149,6 +1169,9 @@ function childNotificationStatusClass(child) {
 }
 
 function childNotificationCountdown(child) {
+  if (child.status === CHILD_STATUS_FAILED && child.next_retry_at) {
+    return `第 ${Number(child.attempt_count) || 1}/3 次失败，${formatCountdownTarget(child.next_retry_at, '等待重试')}后重试`
+  }
   if (child.status !== CHILD_STATUS_PENDING || !child.next_run_at) {
     if (child.status === CHILD_STATUS_SENT) return '等待主通知下一次执行后重新激活'
     if (child.status === CHILD_STATUS_FAILED) return child.last_error || '本轮发送失败，等待主通知下一次执行'
@@ -2698,6 +2721,106 @@ function historyKey(rule) {
   return rule.id || rule.localKey
 }
 
+function historyPageState(rule) {
+  return historyPages.value[historyKey(rule)] || EMPTY_HISTORY_PAGE
+}
+
+function ensureHistoryPageState(rule) {
+  const key = historyKey(rule)
+  if (!key) return EMPTY_HISTORY_PAGE
+  if (!historyPages.value[key]) {
+    historyPages.value = {
+      ...historyPages.value,
+      [key]: { ...EMPTY_HISTORY_PAGE, requestId: 0, latestItem: null }
+    }
+  }
+  return historyPages.value[key]
+}
+
+function normalizeHistoryRow(item) {
+  return {
+    ...item,
+    message: normalizeHistoryMessage(item.message)
+  }
+}
+
+async function loadRuleHistory(rule, options = {}) {
+  if (!rule?.id) return
+  const key = historyKey(rule)
+  const current = ensureHistoryPageState(rule)
+  const pageSize = HISTORY_PAGE_SIZES.includes(Number(options.pageSize))
+    ? Number(options.pageSize)
+    : current.pageSize
+  const page = Math.max(1, Number(options.page) || current.page || 1)
+  const requestId = Number(current.requestId || 0) + 1
+  historyPages.value = {
+    ...historyPages.value,
+    [key]: { ...current, loading: true, requestId }
+  }
+  try {
+    const res = await api.get(`/settings/auto-tasks/${rule.id}/history`, {
+      params: { page, page_size: pageSize }
+    })
+    if (historyPages.value[key]?.requestId !== requestId) return
+    const data = res.data || {}
+    const items = (data.items || []).map(normalizeHistoryRow)
+    historyPages.value = {
+      ...historyPages.value,
+      [key]: {
+        ...historyPages.value[key],
+        items,
+        page: Number(data.page) || 1,
+        pageSize: Number(data.page_size) || pageSize,
+        total: Number(data.total) || 0,
+        totalPages: Number(data.total_pages) || 0,
+        latestItem: (Number(data.page) || 1) === 1
+          ? (items[0] || null)
+          : historyPages.value[key].latestItem,
+        loading: false,
+        loaded: true
+      }
+    }
+  } catch (error) {
+    if (historyPages.value[key]?.requestId === requestId) {
+      historyPages.value = {
+        ...historyPages.value,
+        [key]: { ...historyPages.value[key], loading: false }
+      }
+    }
+    console.warn('[settings] 加载规则历史失败', rule.id, error?.message || error)
+    if (!options.silent) ElMessage.error('加载规则历史失败')
+  }
+}
+
+async function refreshRuleHistories() {
+  const savedRules = rules.value.filter(rule => rule.id)
+  const nextExpanded = { ...historyExpanded.value }
+  const validKeys = new Set(savedRules.map(historyKey))
+  const nextPages = {}
+  savedRules.forEach(rule => {
+    const key = historyKey(rule)
+    if (!Object.prototype.hasOwnProperty.call(nextExpanded, key)) nextExpanded[key] = true
+    const existing = historyPages.value[key] || { ...EMPTY_HISTORY_PAGE, requestId: 0, latestItem: null }
+    const latestFallback = legacyRuleHistory(rule)[0] || null
+    nextPages[key] = {
+      ...existing,
+      latestItem: latestFallback || existing.latestItem
+    }
+  })
+  historyExpanded.value = Object.fromEntries(
+    Object.entries(nextExpanded).filter(([key]) => validKeys.has(key))
+  )
+  historyPages.value = nextPages
+  await Promise.all(savedRules.map(rule => {
+    const state = historyPageState(rule)
+    return loadRuleHistory(rule, {
+      page: state.page,
+      pageSize: state.pageSize,
+      silent: true
+    })
+  }))
+}
+
 function historyLevelFromStatus(status) {
   if (status === 'success') return 'success'
   if (status === 'skipped') return 'warning'
@@ -2705,7 +2828,7 @@ function historyLevelFromStatus(status) {
   return 'info'
 }
 
-function ruleHistory(rule) {
+function legacyRuleHistory(rule) {
   if (!rule?.id) return []
   const messageRows = messages.value
     .filter(item => item.rule_id === rule.id)
@@ -2721,6 +2844,9 @@ function ruleHistory(rule) {
       message: normalizeHistoryMessage(log.message),
       created_at: log.created_at || log.scheduled_at,
       scheduled_at: log.scheduled_at,
+      attempt_count: log.attempt_count,
+      next_retry_at: log.next_retry_at,
+      notify_error: log.notify_error,
       source: 'run'
     }))
   return [...messageRows, ...runRows].sort((a, b) => {
@@ -2730,17 +2856,59 @@ function ruleHistory(rule) {
   })
 }
 
+function ruleHistory(rule) {
+  const state = historyPageState(rule)
+  return state.loaded
+    ? state.items
+    : legacyRuleHistory(rule).slice(0, HISTORY_DEFAULT_PAGE_SIZE)
+}
+
 function firstHistory(rule) {
-  return ruleHistory(rule)[0] || null
+  const state = historyPageState(rule)
+  return state.loaded ? state.latestItem : (legacyRuleHistory(rule)[0] || null)
+}
+
+function hasRuleHistory(rule) {
+  const state = historyPageState(rule)
+  return state.loaded ? state.total > 0 : Boolean(firstHistory(rule))
+}
+
+function historyTotal(rule) {
+  const state = historyPageState(rule)
+  return state.loaded ? state.total : legacyRuleHistory(rule).length
+}
+
+function historyCurrentPage(rule) {
+  return historyPageState(rule).page
+}
+
+function historyPageSize(rule) {
+  return historyPageState(rule).pageSize
+}
+
+function historyLoading(rule) {
+  return historyPageState(rule).loading
+}
+
+async function changeHistoryPage(rule, page) {
+  await loadRuleHistory(rule, { page, pageSize: historyPageSize(rule) })
+}
+
+async function changeHistoryPageSize(rule, pageSize) {
+  await loadRuleHistory(rule, { page: 1, pageSize })
 }
 
 function normalizeHistoryMessage(message) {
   return message === OLD_SKIP_MESSAGE ? NEW_SKIP_MESSAGE : message
 }
 
-function toggleHistory(rule) {
+async function toggleHistory(rule) {
   const key = historyKey(rule)
-  historyExpanded.value[key] = !historyExpanded.value[key]
+  const expanded = !historyExpanded.value[key]
+  historyExpanded.value[key] = expanded
+  if (expanded && !historyPageState(rule).loaded) {
+    await loadRuleHistory(rule, { page: 1, pageSize: HISTORY_DEFAULT_PAGE_SIZE })
+  }
 }
 
 function isHistorySelected(rule, item) {
@@ -2853,6 +3021,11 @@ function historyStatusClass(item) {
 
 function historyTimeLabel(item) {
   return item.status ? '最近触发' : '记录时间'
+}
+
+function historyRetryText(item) {
+  if (!item?.next_retry_at) return ''
+  return `第 ${Number(item.attempt_count) || 1}/3 次失败，${formatCountdownTarget(item.next_retry_at, '等待重试')}后重试`
 }
 
 function hasSavedNotification(rule) {
@@ -3666,20 +3839,33 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <div v-if="firstHistory(rule)" class="dt-settings-history">
-            <div class="dt-history-summary">
+          <div v-if="hasRuleHistory(rule)" class="dt-settings-history">
+            <div class="dt-history-summary" :class="{ 'is-expanded': historyExpanded[historyKey(rule)] }">
               <button type="button" class="dt-history-toggle" @click="toggleHistory(rule)">
                 {{ historyExpanded[historyKey(rule)] ? '收起' : '展开' }}
               </button>
-              <span class="dt-tag" :class="historyStatusClass(firstHistory(rule))">
-                {{ historyStatusText(firstHistory(rule)) }}
-              </span>
-              <span>{{ historyTimeLabel(firstHistory(rule)) }}：{{ formatDateTime(firstHistory(rule).scheduled_at || firstHistory(rule).created_at) }}</span>
-              <span class="dt-history-message">{{ firstHistory(rule).message }}</span>
-              <button type="button" class="dt-history-delete" title="删除" @click="deleteHistoryItem(rule, firstHistory(rule))">×</button>
+              <template v-if="!historyExpanded[historyKey(rule)]">
+                <span class="dt-tag" :class="historyStatusClass(firstHistory(rule))">
+                  {{ historyStatusText(firstHistory(rule)) }}
+                </span>
+                <span>{{ historyTimeLabel(firstHistory(rule)) }}：{{ formatDateTime(firstHistory(rule).scheduled_at || firstHistory(rule).created_at) }}</span>
+                <span v-if="historyRetryText(firstHistory(rule))" class="dt-history-retry">{{ historyRetryText(firstHistory(rule)) }}</span>
+                <span class="dt-history-message">{{ firstHistory(rule).message }}</span>
+                <button type="button" class="dt-history-delete" title="删除" @click="deleteHistoryItem(rule, firstHistory(rule))">×</button>
+              </template>
+              <template v-else>
+                <strong class="dt-history-summary-title">执行记录</strong>
+                <span class="dt-history-summary-count">
+                  共 {{ historyTotal(rule) }} 条，当前第 {{ historyCurrentPage(rule) }} 页
+                </span>
+              </template>
             </div>
 
-            <div v-if="historyExpanded[historyKey(rule)]" class="dt-history-panel">
+            <div
+              v-if="historyExpanded[historyKey(rule)]"
+              v-loading="historyLoading(rule)"
+              class="dt-history-panel"
+            >
               <div class="dt-history-actions">
                 <el-checkbox
                   :model-value="historyBatchMode[historyKey(rule)]"
@@ -3706,8 +3892,22 @@ onUnmounted(() => {
                 />
                 <span class="dt-tag" :class="historyStatusClass(item)">{{ historyStatusText(item) }}</span>
                 <span class="dt-history-time">{{ historyTimeLabel(item) }}：{{ formatDateTime(item.scheduled_at || item.created_at) }}</span>
+                <span v-if="historyRetryText(item)" class="dt-history-retry">{{ historyRetryText(item) }}</span>
                 <span class="dt-history-message">{{ item.message }}</span>
                 <button type="button" class="dt-history-delete" title="删除" @click="deleteHistoryItem(rule, item)">×</button>
+              </div>
+              <div class="dt-history-pagination">
+                <el-pagination
+                  background
+                  :current-page="historyCurrentPage(rule)"
+                  :page-size="historyPageSize(rule)"
+                  :page-sizes="HISTORY_PAGE_SIZES"
+                  :pager-count="7"
+                  layout="total, sizes, prev, pager, next, jumper"
+                  :total="historyTotal(rule)"
+                  @current-change="page => changeHistoryPage(rule, page)"
+                  @size-change="size => changeHistoryPageSize(rule, size)"
+                />
               </div>
             </div>
           </div>
@@ -6494,6 +6694,21 @@ onUnmounted(() => {
   font-size: 13px;
 }
 
+.dt-history-summary.is-expanded {
+  border: 1px solid var(--color-border-light);
+  background: #f7f9fc;
+}
+
+.dt-history-summary-title {
+  color: var(--color-text-1);
+  font-size: 14px;
+}
+
+.dt-history-summary-count {
+  color: var(--color-text-3);
+  white-space: nowrap;
+}
+
 .dt-history-panel {
   margin-top: 6px;
   padding: 8px;
@@ -6520,6 +6735,20 @@ onUnmounted(() => {
   border-top: 1px solid var(--color-border-light);
 }
 
+.dt-history-pagination {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 10px;
+  margin-top: 6px;
+  border-top: 1px solid var(--color-border-light);
+}
+
+.dt-history-pagination :deep(.el-pagination) {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  row-gap: 8px;
+}
+
 .dt-history-toggle,
 .dt-history-delete {
   border: 0;
@@ -6539,6 +6768,13 @@ onUnmounted(() => {
 }
 
 .dt-history-time {
+  white-space: nowrap;
+}
+
+.dt-history-retry {
+  flex: 0 0 auto;
+  color: #b54708;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -6701,6 +6937,14 @@ onUnmounted(() => {
   .dt-history-summary,
   .dt-history-item {
     flex-wrap: wrap;
+  }
+
+  .dt-history-pagination {
+    justify-content: flex-start;
+  }
+
+  .dt-history-pagination :deep(.el-pagination) {
+    justify-content: flex-start;
   }
 
   .dt-extra-recipient-row {

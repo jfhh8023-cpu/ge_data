@@ -5,7 +5,9 @@
 const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
+const { QueryTypes } = require('sequelize');
 const {
+  sequelize,
   AutoTaskRule,
   AutoTaskRunLog,
   AutoTaskMessage,
@@ -30,6 +32,17 @@ const {
 } = require('../services/AutoTaskService');
 const { buildReportBackup } = require('../services/ReportBackupService');
 const { safeParseJsonArray } = require('../utils/parseJson');
+
+const HISTORY_PAGE_SIZES = new Set([10, 20, 50, 100, 200, 300, 500, 1000]);
+
+function normalizeHistoryPagination(query = {}) {
+  const requestedPage = Number(query.page);
+  const requestedPageSize = Number(query.page_size);
+  return {
+    page: Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1,
+    pageSize: HISTORY_PAGE_SIZES.has(requestedPageSize) ? requestedPageSize : 20
+  };
+}
 
 async function serializeRule(rule, childNotifications = []) {
   const plain = rule.toJSON ? rule.toJSON() : rule;
@@ -102,6 +115,80 @@ router.get('/auto-tasks', async (req, res, next) => {
         rules: await Promise.all(rules.map(rule => serializeRule(rule, childrenByRule.get(rule.id) || []))),
         logs,
         messages
+      }
+    });
+  } catch (err) { next(err); }
+});
+
+/* GET /api/settings/auto-tasks/:id/history?page=1&page_size=20 */
+router.get('/auto-tasks/:id/history', async (req, res, next) => {
+  try {
+    const rule = await AutoTaskRule.findByPk(req.params.id, { attributes: ['id'] });
+    if (!rule) return res.status(404).json({ code: 1, message: '自动任务规则不存在' });
+
+    const { page: requestedPage, pageSize } = normalizeHistoryPagination(req.query);
+    const [messageCount, runCount] = await Promise.all([
+      AutoTaskMessage.count({ where: { rule_id: rule.id } }),
+      AutoTaskRunLog.count({ where: { rule_id: rule.id } })
+    ]);
+    const total = messageCount + runCount;
+    const totalPages = total > 0 ? Math.ceil(total / pageSize) : 0;
+    const page = totalPages > 0 ? Math.min(requestedPage, totalPages) : 1;
+    const offset = (page - 1) * pageSize;
+    const items = total === 0 ? [] : await sequelize.query(`
+      SELECT
+        id,
+        rule_id,
+        NULL AS status,
+        level,
+        action,
+        message,
+        created_at,
+        NULL AS scheduled_at,
+        NULL AS attempt_count,
+        NULL AS last_attempt_at,
+        NULL AS next_retry_at,
+        NULL AS notify_error,
+        'message' AS source
+      FROM auto_task_messages
+      WHERE rule_id = :ruleId
+      UNION ALL
+      SELECT
+        CONCAT('run_', id) AS id,
+        rule_id,
+        status,
+        CASE
+          WHEN status = 'success' THEN 'success'
+          WHEN status = 'skipped' THEN 'warning'
+          WHEN status IN ('failed', 'notify_failed') THEN 'error'
+          ELSE 'info'
+        END AS level,
+        'auto_run' AS action,
+        message,
+        COALESCE(created_at, scheduled_at) AS created_at,
+        scheduled_at,
+        attempt_count,
+        last_attempt_at,
+        next_retry_at,
+        notify_error,
+        'run' AS source
+      FROM auto_task_run_logs
+      WHERE rule_id = :ruleId
+      ORDER BY created_at DESC, id DESC
+      LIMIT :limit OFFSET :offset
+    `, {
+      replacements: { ruleId: rule.id, limit: pageSize, offset },
+      type: QueryTypes.SELECT
+    });
+
+    res.json({
+      code: 0,
+      data: {
+        items,
+        page,
+        page_size: pageSize,
+        total,
+        total_pages: totalPages
       }
     });
   } catch (err) { next(err); }
@@ -191,7 +278,10 @@ router.put('/auto-tasks/:id/child-notifications/:childId', async (req, res, next
         activation_scheduled_at: null,
         activated_at: null,
         status: 'inactive',
-        last_error: null
+        last_error: null,
+        attempt_count: 0,
+        last_attempt_at: null,
+        next_retry_at: null
       } : {}),
       updated_at: new Date()
     });
@@ -216,6 +306,9 @@ router.patch('/auto-tasks/:id/child-notifications/:childId/status', async (req, 
       activated_at: null,
       status: 'inactive',
       last_error: null,
+      attempt_count: 0,
+      last_attempt_at: null,
+      next_retry_at: null,
       updated_at: new Date()
     });
     await createRuleMessage(rule.id, 'success', 'child_notify', child.enabled ? '子通知已启用，等待主通知触发' : '子通知已停用');

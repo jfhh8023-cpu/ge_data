@@ -2,7 +2,7 @@ const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
 const dns = require('dns');
 const net = require('net');
-const { DataTypes, Op } = require('sequelize');
+const { DataTypes, Op, literal } = require('sequelize');
 const {
   sequelize,
   AutoTaskRule,
@@ -48,6 +48,8 @@ const WEEKLY_DUTY_MODE_ROTATION = 'rotation';
 const DAY_MS = 24 * 60 * 60 * 1000;
 const CHILD_FALLBACK_WINDOW_MS = 6 * DAY_MS;
 const STALE_RUNNING_LOG_MS = 60 * 1000;
+const RETRY_INTERVAL_MS = 5 * 60 * 1000;
+const MAX_AUTOMATIC_ATTEMPTS = 3;
 const SCHEDULE_TRIGGER_GRACE_MS = 60 * 1000;
 const MAX_SCHEDULE_SCAN_DAYS = 400;
 const CHILD_STATUS_INACTIVE = 'inactive';
@@ -62,6 +64,14 @@ async function ensureColumn(tableName, columnName, definition) {
   const table = await sequelize.getQueryInterface().describeTable(tableName);
   if (!table[columnName]) {
     await sequelize.getQueryInterface().addColumn(tableName, columnName, definition);
+  }
+}
+
+async function ensureIndex(tableName, indexName, fields) {
+  const queryInterface = sequelize.getQueryInterface();
+  const indexes = await queryInterface.showIndex(tableName);
+  if (!indexes.some(index => index.name === indexName)) {
+    await queryInterface.addIndex(tableName, fields, { name: indexName });
   }
 }
 
@@ -107,6 +117,21 @@ async function ensureAutoTaskTables() {
     });
   }
   await AutoTaskRunLog.sync();
+  await ensureColumn('auto_task_run_logs', 'attempt_count', {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0
+  });
+  await ensureColumn('auto_task_run_logs', 'last_attempt_at', { type: DataTypes.DATE, allowNull: true });
+  await ensureColumn('auto_task_run_logs', 'next_retry_at', { type: DataTypes.DATE, allowNull: true });
+  await ensureColumn('auto_task_run_logs', 'retry_payload', { type: DataTypes.TEXT, allowNull: true });
+  await ensureColumn('auto_task_child_notifications', 'attempt_count', {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0
+  });
+  await ensureColumn('auto_task_child_notifications', 'last_attempt_at', { type: DataTypes.DATE, allowNull: true });
+  await ensureColumn('auto_task_child_notifications', 'next_retry_at', { type: DataTypes.DATE, allowNull: true });
   await ensureColumn('staff', 'phone', { type: DataTypes.STRING(30), allowNull: true });
   await ensureColumn('auto_task_rules', 'action_mode', {
     type: DataTypes.STRING(30),
@@ -121,6 +146,10 @@ async function ensureAutoTaskTables() {
   await ensureColumn('auto_task_rules', 'dingtalk_recipients', { type: DataTypes.TEXT, allowNull: true });
   await ensureColumn('auto_task_rules', 'duty_config', { type: DataTypes.TEXT, allowNull: true });
   await ensureRunLogEventIndex();
+  await ensureIndex('auto_task_run_logs', 'idx_auto_task_retry_due', ['status', 'next_retry_at']);
+  await ensureIndex('auto_task_child_notifications', 'idx_child_notify_retry_due', ['status', 'next_retry_at']);
+  await ensureIndex('auto_task_messages', 'idx_auto_task_messages_rule_created', ['rule_id', 'created_at']);
+  await ensureIndex('auto_task_run_logs', 'idx_auto_task_logs_rule_created', ['rule_id', 'created_at']);
   // v3.3.0 名句搭配
   const { Quote, QuoteConfig } = require('../models');
   await Quote.sync();
@@ -615,6 +644,39 @@ async function recordAutoTaskMessage(ruleId, level, action, message) {
   }
 }
 
+function automaticAttemptCount(value) {
+  const count = Number(value);
+  return Number.isInteger(count) && count > 0 ? count : 0;
+}
+
+function retryAtFrom(now = new Date()) {
+  return new Date(now.getTime() + RETRY_INTERVAL_MS);
+}
+
+function retryFailureDetails(label, attemptCount, errorMessage, now = new Date()) {
+  const count = automaticAttemptCount(attemptCount);
+  const exhausted = count >= MAX_AUTOMATIC_ATTEMPTS;
+  const prefix = `${label}第 ${count}/${MAX_AUTOMATIC_ATTEMPTS} 次尝试失败`;
+  return {
+    exhausted,
+    nextRetryAt: exhausted ? null : retryAtFrom(now),
+    message: exhausted
+      ? `${prefix}，已达到自动尝试上限`
+      : `${prefix}，5 分钟后自动重试`,
+    historyMessage: `${prefix}${exhausted ? '，已达到自动尝试上限' : '，5 分钟后自动重试'}：${errorMessage}`
+  };
+}
+
+function parseRetryPayload(value) {
+  if (!value) return null;
+  try {
+    const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 function normalizeRulePayload(payload, existing = null) {
   const taskType = normalizeTaskType(payload.task_type ?? existing?.task_type);
   const scheduleType = payload.schedule_type || existing?.schedule_type || 'weekly';
@@ -874,7 +936,12 @@ function serializeChildNotification(child, parentRule, now = new Date()) {
   const parentActive = isChildNotificationParentActive(parentRule);
   let displayStatus = plain.enabled ? plain.status : CHILD_STATUS_INACTIVE;
   if (!parentActive || !plain.activation_token) displayStatus = CHILD_STATUS_INACTIVE;
-  const nextRunAt = getNextChildRunAt({ ...plain, status: displayStatus }, parentRule, now);
+  const retryAt = displayStatus === CHILD_STATUS_FAILED && plain.next_retry_at
+    ? new Date(plain.next_retry_at)
+    : null;
+  const nextRunAt = retryAt && !Number.isNaN(retryAt.getTime())
+    ? retryAt
+    : getNextChildRunAt({ ...plain, status: displayStatus }, parentRule, now);
   return {
     ...plain,
     month_days: toIntList(plain.month_days, 1, 31),
@@ -890,7 +957,12 @@ async function serializeChildNotificationAsync(child, parentRule, now = new Date
   const parentActive = isChildNotificationParentActive(parentRule);
   let displayStatus = plain.enabled ? plain.status : CHILD_STATUS_INACTIVE;
   if (!parentActive || !plain.activation_token) displayStatus = CHILD_STATUS_INACTIVE;
-  const nextRunAt = await getNextChildRunAtAsync({ ...plain, status: displayStatus }, parentRule, now);
+  const retryAt = displayStatus === CHILD_STATUS_FAILED && plain.next_retry_at
+    ? new Date(plain.next_retry_at)
+    : null;
+  const nextRunAt = retryAt && !Number.isNaN(retryAt.getTime())
+    ? retryAt
+    : await getNextChildRunAtAsync({ ...plain, status: displayStatus }, parentRule, now);
   return {
     ...plain,
     month_days: toIntList(plain.month_days, 1, 31),
@@ -912,6 +984,9 @@ async function activateChildNotifications(rule, activationScheduledAt) {
     status: CHILD_STATUS_PENDING,
     last_scheduled_at: null,
     last_error: null,
+    attempt_count: 0,
+    last_attempt_at: null,
+    next_retry_at: null,
     updated_at: now
   }, {
     where: { rule_id: rule.id, enabled: true }
@@ -971,25 +1046,33 @@ async function testChildNotification(child, parentRule) {
   return sendDingTalkCard(webhooks, content, atConfig, `${DINGTALK_CARD_TITLE}（子通知测试）`);
 }
 
-async function executeChildNotification(child, parentRule, scheduledAt) {
+async function executeChildNotification(child, parentRule, scheduledAt, options = {}) {
   const token = String(child.activation_token || '');
   if (!token) return null;
-  const claimedAt = new Date();
+  const claimedAt = options.now || new Date();
+  const expectedStatus = options.retry ? CHILD_STATUS_FAILED : CHILD_STATUS_PENDING;
+  const claimWhere = {
+    id: child.id,
+    rule_id: parentRule.id,
+    enabled: true,
+    status: expectedStatus,
+    attempt_count: { [Op.lt]: MAX_AUTOMATIC_ATTEMPTS },
+    activation_token: token
+  };
+  if (options.retry) claimWhere.next_retry_at = { [Op.lte]: claimedAt };
   const [claimed] = await AutoTaskChildNotification.update({
     status: CHILD_STATUS_SENDING,
     last_scheduled_at: scheduledAt,
     last_error: null,
+    attempt_count: literal('attempt_count + 1'),
+    last_attempt_at: claimedAt,
+    next_retry_at: null,
     updated_at: claimedAt
   }, {
-    where: {
-      id: child.id,
-      rule_id: parentRule.id,
-      enabled: true,
-      status: CHILD_STATUS_PENDING,
-      activation_token: token
-    }
+    where: claimWhere
   });
   if (claimed !== 1) return null;
+  await child.reload();
 
   try {
     const webhooks = childTargetWebhooks(child, parentRule);
@@ -1000,21 +1083,29 @@ async function executeChildNotification(child, parentRule, scheduledAt) {
       status: CHILD_STATUS_SENT,
       last_sent_at: sentAt,
       last_error: null,
+      next_retry_at: null,
       updated_at: sentAt
     }, {
       where: { id: child.id, activation_token: token, status: CHILD_STATUS_SENDING }
     });
-    await recordAutoTaskMessage(parentRule.id, 'success', 'child_notify', '子通知发送成功');
+    await recordAutoTaskMessage(
+      parentRule.id,
+      'success',
+      'child_notify',
+      `子通知第 ${child.attempt_count}/${MAX_AUTOMATIC_ATTEMPTS} 次尝试发送成功`
+    );
     return CHILD_STATUS_SENT;
   } catch (err) {
+    const failure = retryFailureDetails('子通知', child.attempt_count, err.message, claimedAt);
     await AutoTaskChildNotification.update({
       status: CHILD_STATUS_FAILED,
       last_error: err.message,
+      next_retry_at: failure.nextRetryAt,
       updated_at: new Date()
     }, {
       where: { id: child.id, activation_token: token, status: CHILD_STATUS_SENDING }
     });
-    await recordAutoTaskMessage(parentRule.id, 'error', 'child_notify', `子通知发送失败：${err.message}`);
+    await recordAutoTaskMessage(parentRule.id, 'error', 'child_notify', failure.historyMessage);
     return CHILD_STATUS_FAILED;
   }
 }
@@ -1023,19 +1114,40 @@ async function processDueChildNotifications(now = new Date()) {
   await recoverChildNotificationsFromParentEvidence(now);
 
   const staleBefore = new Date(now.getTime() - STALE_RUNNING_LOG_MS);
-  await AutoTaskChildNotification.update({
-    status: CHILD_STATUS_FAILED,
-    last_error: '服务在发送过程中中断，本轮不再自动重发，等待下一次主通知激活',
-    updated_at: now
-  }, {
-    where: {
-      status: CHILD_STATUS_SENDING,
-      updated_at: { [Op.lt]: staleBefore }
-    }
+  const staleChildren = await AutoTaskChildNotification.findAll({
+    where: { status: CHILD_STATUS_SENDING, updated_at: { [Op.lt]: staleBefore } }
   });
+  for (const staleChild of staleChildren) {
+    if (automaticAttemptCount(staleChild.attempt_count) === 0) {
+      await staleChild.update({ attempt_count: 1, last_attempt_at: staleChild.updated_at || now });
+    }
+    const failure = retryFailureDetails(
+      '子通知',
+      staleChild.attempt_count,
+      '服务在发送过程中中断',
+      now
+    );
+    await staleChild.update({
+      status: CHILD_STATUS_FAILED,
+      last_error: '服务在发送过程中中断',
+      next_retry_at: failure.nextRetryAt,
+      updated_at: now
+    });
+    await recordAutoTaskMessage(staleChild.rule_id, 'error', 'child_notify', failure.historyMessage);
+  }
 
   const children = await AutoTaskChildNotification.findAll({
-    where: { enabled: true, status: CHILD_STATUS_PENDING }
+    where: {
+      enabled: true,
+      [Op.or]: [
+        { status: CHILD_STATUS_PENDING },
+        {
+          status: CHILD_STATUS_FAILED,
+          attempt_count: { [Op.lt]: MAX_AUTOMATIC_ATTEMPTS },
+          next_retry_at: { [Op.lte]: now }
+        }
+      ]
+    }
   });
   if (children.length === 0) return 0;
   const ruleIds = [...new Set(children.map(child => child.rule_id))];
@@ -1044,10 +1156,14 @@ async function processDueChildNotifications(now = new Date()) {
   let executed = 0;
   for (const child of children) {
     const parentRule = ruleMap.get(child.rule_id);
-    const scheduledAt = await getDueChildScheduledAtAsync(child, parentRule, now);
+    if (!isChildNotificationParentActive(parentRule)) continue;
+    const retry = child.status === CHILD_STATUS_FAILED;
+    const scheduledAt = retry
+      ? (child.last_scheduled_at ? new Date(child.last_scheduled_at) : null)
+      : await getDueChildScheduledAtAsync(child, parentRule, now);
     if (!scheduledAt) continue;
-    await executeChildNotification(child, parentRule, scheduledAt);
-    executed += 1;
+    const result = await executeChildNotification(child, parentRule, scheduledAt, { retry, now });
+    if (result) executed += 1;
   }
   return executed;
 }
@@ -1419,13 +1535,16 @@ async function recoverChildNotificationsFromParentEvidence(now = new Date()) {
   return recovered;
 }
 
-async function createNextWeeklyTask() {
+async function createNextWeeklyTask(options = {}) {
+  const transaction = options.transaction || null;
   const weeklyTasks = await CollectionTask.findAll({
     where: {
       time_dimension: 'week',
       week_number: { [Op.ne]: null }
     },
-    attributes: ['id', 'year', 'week_number', 'start_date', 'end_date']
+    attributes: ['id', 'year', 'week_number', 'start_date', 'end_date'],
+    transaction,
+    ...(transaction ? { lock: transaction.LOCK.UPDATE } : {})
   });
 
   const beijingToday = getBeijingDate();
@@ -1460,7 +1579,9 @@ async function createNextWeeklyTask() {
           { year: weekInfo.year, week_number: weekInfo.week },
           { start_date: nextStartStr, end_date: nextEndStr }
         ]
-      }
+      },
+      transaction,
+      ...(transaction ? { lock: transaction.LOCK.UPDATE } : {})
     });
 
     if (existing) {
@@ -1475,7 +1596,7 @@ async function createNextWeeklyTask() {
       end_date: nextEndStr,
       week_number: weekInfo.week,
       year: weekInfo.year
-    });
+    }, { transaction });
 
     return {
       created: true,
@@ -1661,26 +1782,122 @@ async function sendDutyWebhook(rule, event) {
   return sendDingTalkCard(webhooks, content, atConfig, DINGTALK_DUTY_CARD_TITLE);
 }
 
+function dutyRetryPayload(event) {
+  return JSON.stringify({
+    kind: event?.kind === 'end' ? 'end' : 'start',
+    message: String(event?.message || ''),
+    staff_ids: toStringList(event?.staff_ids)
+  });
+}
+
 async function prepareRunLog(where, defaults) {
   const [log, created] = await AutoTaskRunLog.findOrCreate({ where, defaults });
-  if (created) return log;
-  if (log.status !== 'running') return null;
+  return created ? log : null;
+}
 
-  const createdAt = new Date(log.created_at || 0).getTime();
-  if (Number.isNaN(createdAt) || Date.now() - createdAt < STALE_RUNNING_LOG_MS) {
-    return null;
-  }
-
+async function beginInitialRunAttempt(log, now = new Date()) {
+  const nextCount = automaticAttemptCount(log.attempt_count) + 1;
+  if (nextCount > MAX_AUTOMATIC_ATTEMPTS) return null;
   await log.update({
-    ...defaults,
-    id: log.id,
     status: 'running',
-    notify_status: 'not_required',
-    notify_error: null,
-    created_task_id: null,
-    created_at: new Date()
+    attempt_count: nextCount,
+    last_attempt_at: now,
+    next_retry_at: null
   });
+  return nextCount;
+}
+
+async function claimRunRetry(log, now = new Date()) {
+  const [claimed] = await AutoTaskRunLog.update({
+    status: 'running',
+    attempt_count: literal('attempt_count + 1'),
+    last_attempt_at: now,
+    next_retry_at: null
+  }, {
+    where: {
+      id: log.id,
+      status: { [Op.in]: ['failed', 'notify_failed'] },
+      attempt_count: { [Op.lt]: MAX_AUTOMATIC_ATTEMPTS },
+      next_retry_at: { [Op.lte]: now }
+    }
+  });
+  if (claimed !== 1) return null;
+  await log.reload();
   return log;
+}
+
+async function markRunLogFailure(log, options) {
+  const errorMessage = String(options.error?.message || options.error || '未知错误');
+  const lastAttemptAt = log.last_attempt_at ? new Date(log.last_attempt_at) : null;
+  const retryBase = options.now || (
+    lastAttemptAt && !Number.isNaN(lastAttemptAt.getTime()) ? lastAttemptAt : new Date()
+  );
+  const failure = retryFailureDetails(options.label, log.attempt_count, errorMessage, retryBase);
+  await log.update({
+    status: options.status,
+    message: failure.message,
+    notify_status: options.notifyStatus,
+    notify_error: options.notifyStatus === 'failed' ? errorMessage : null,
+    next_retry_at: failure.nextRetryAt
+  });
+  await recordAutoTaskMessage(log.rule_id, 'error', options.action, failure.historyMessage);
+  return failure;
+}
+
+async function recoverStaleRunLogs(now = new Date()) {
+  const staleBefore = new Date(now.getTime() - STALE_RUNNING_LOG_MS);
+  const staleLogs = await AutoTaskRunLog.findAll({
+    where: {
+      status: 'running',
+      [Op.or]: [
+        { last_attempt_at: { [Op.lt]: staleBefore } },
+        { last_attempt_at: null, created_at: { [Op.lt]: staleBefore } }
+      ]
+    }
+  });
+  for (const log of staleLogs) {
+    if (automaticAttemptCount(log.attempt_count) === 0) {
+      await log.update({ attempt_count: 1, last_attempt_at: log.created_at || now });
+    }
+    const notificationFailure = log.notify_status === 'failed' ||
+      ['duty_start', 'duty_end'].includes(log.event_type) ||
+      Boolean(log.created_task_id);
+    await markRunLogFailure(log, {
+      status: notificationFailure ? 'notify_failed' : 'failed',
+      notifyStatus: notificationFailure ? 'failed' : 'not_required',
+      label: notificationFailure ? '通知发送' : '自动任务执行',
+      action: log.event_type === 'auto_task' ? 'auto_run' : 'duty_notify',
+      error: '服务在执行过程中中断',
+      now
+    });
+  }
+  return staleLogs.length;
+}
+
+async function createTaskForRunLog(log, createTask = createNextWeeklyTask) {
+  return sequelize.transaction(async transaction => {
+    const lockedLog = await AutoTaskRunLog.findByPk(log.id, {
+      transaction,
+      lock: transaction.LOCK.UPDATE
+    });
+    if (!lockedLog) throw new Error('自动任务执行日志不存在');
+    if (lockedLog.created_task_id) {
+      const existingTask = await CollectionTask.findByPk(lockedLog.created_task_id, { transaction });
+      return {
+        created: true,
+        reused: true,
+        task: existingTask || { id: lockedLog.created_task_id },
+        message: '任务已生成，本次仅继续通知'
+      };
+    }
+
+    const result = await createTask({ transaction });
+    if (result?.created && result.task?.id) {
+      await lockedLog.update({ created_task_id: result.task.id }, { transaction });
+      log.created_task_id = result.task.id;
+    }
+    return result;
+  });
 }
 
 async function runRuleOnce(rule) {
@@ -1759,10 +1976,13 @@ async function executeDutyEvent(rule, event) {
       event_type: eventType,
       status: 'running',
       message: `${actionLabel}发送中`,
-      notify_status: 'not_required'
+      notify_status: 'not_required',
+      attempt_count: 0,
+      retry_payload: dutyRetryPayload(event)
     }
   );
   if (!log) return null;
+  await beginInitialRunAttempt(log);
 
   // v3.3.0 名句搭配：发送前消费一句名句并拼接到 message 前方
   let finalEvent = event;
@@ -1775,47 +1995,169 @@ async function executeDutyEvent(rule, event) {
   } catch (quoteErr) {
     console.warn(`[duty-quote] 规则 ${rule.id} 名句注入失败：${quoteErr.message}`);
   }
+  await log.update({ retry_payload: dutyRetryPayload(finalEvent) });
 
   try {
     await sendDutyWebhook(rule, finalEvent);
     await log.update({
       status: 'success',
       message: `${actionLabel}发送成功`,
-      notify_status: 'success'
+      notify_status: 'success',
+      notify_error: null,
+      next_retry_at: null
     });
-    await recordAutoTaskMessage(rule.id, 'success', 'duty_notify', `${actionLabel}发送成功`);
+    await recordAutoTaskMessage(
+      rule.id,
+      'success',
+      'duty_notify',
+      `${actionLabel}第 ${log.attempt_count}/${MAX_AUTOMATIC_ATTEMPTS} 次尝试发送成功`
+    );
   } catch (err) {
-    await log.update({
+    await markRunLogFailure(log, {
       status: 'notify_failed',
-      message: `${actionLabel}发送失败`,
-      notify_status: 'failed',
-      notify_error: err.message
+      notifyStatus: 'failed',
+      label: actionLabel,
+      action: 'duty_notify',
+      error: err
     });
-    await recordAutoTaskMessage(rule.id, 'error', 'duty_notify', `${actionLabel}发送失败：${err.message}`);
   }
   return log;
 }
 
-async function processDueSpecialDutyNotifications(now = new Date(), options = {}) {
-  const parts = getBeijingParts(now);
+function isActiveSpecialNotification(rule, exception) {
+  return Boolean(
+    rule?.enabled &&
+    rule.notify_enabled &&
+    normalizeTaskType(rule.task_type) === TASK_TYPE_DUTY_NOTIFY &&
+    exception?.status === 'active' &&
+    exception.notice_enabled
+  );
+}
+
+async function sendSpecialDutyNotification(rule, exception) {
+  const atMode = String(exception.notice_at_mode || 'none');
+  let atConfig = { enabled: false, atAll: false, mobiles: [], missing: [] };
+  if (atMode === 'all') {
+    atConfig = { enabled: true, atAll: true, mobiles: [], missing: [] };
+  } else if (atMode === 'people') {
+    atConfig = await resolveStaffAtConfig(toStringList(exception.notice_staff_ids));
+  }
+  const webhooks = normalizeWebhookConfigs(rule.dingtalk_webhook);
+  return sendDingTalkCard(
+    webhooks,
+    String(exception.notice_message || '').trim(),
+    atConfig,
+    DINGTALK_SPECIAL_DATE_CARD_TITLE
+  );
+}
+
+async function executeSpecialDutyNotification(log, rule, exception, options = {}) {
+  const now = options.now || new Date();
+  const expectedStatus = options.retry ? 'failed' : 'running';
   const where = {
+    id: log.id,
+    status: expectedStatus,
+    attempt_count: { [Op.lt]: MAX_AUTOMATIC_ATTEMPTS }
+  };
+  if (options.retry) where.next_retry_at = { [Op.lte]: now };
+  const [claimed] = await DutySpecialNotificationLog.update({
+    status: 'running',
+    attempt_count: literal('attempt_count + 1'),
+    last_attempt_at: now,
+    next_retry_at: null,
+    updated_at: now
+  }, { where });
+  if (claimed !== 1) return null;
+  await log.reload();
+
+  const date = String(exception.calendar_date).slice(0, 10);
+  try {
+    await sendSpecialDutyNotification(rule, exception);
+    await log.update({
+      status: 'success',
+      notify_error: null,
+      next_retry_at: null,
+      updated_at: new Date()
+    });
+    await recordAutoTaskMessage(
+      rule.id,
+      'success',
+      'duty_special_notice',
+      `${date} 特殊日期通知第 ${log.attempt_count}/${MAX_AUTOMATIC_ATTEMPTS} 次尝试发送成功`
+    );
+    return 'success';
+  } catch (error) {
+    const failure = retryFailureDetails(`${date} 特殊日期通知`, log.attempt_count, error.message, now);
+    await log.update({
+      status: 'failed',
+      notify_error: error.message,
+      next_retry_at: failure.nextRetryAt,
+      updated_at: new Date()
+    });
+    await recordAutoTaskMessage(rule.id, 'error', 'duty_special_notice', failure.historyMessage);
+    return 'failed';
+  }
+}
+
+async function processDueSpecialDutyNotifications(now = new Date(), options = {}) {
+  const filterRuleIds = Array.isArray(options.ruleIds) ? options.ruleIds.map(String).filter(Boolean) : [];
+  const ruleFilter = filterRuleIds.length > 0 ? { rule_id: { [Op.in]: filterRuleIds } } : {};
+  let executed = 0;
+
+  const staleBefore = new Date(now.getTime() - STALE_RUNNING_LOG_MS);
+  const staleLogs = await DutySpecialNotificationLog.findAll({
+    where: {
+      ...ruleFilter,
+      status: 'running',
+      updated_at: { [Op.lt]: staleBefore }
+    }
+  });
+  for (const log of staleLogs) {
+    if (automaticAttemptCount(log.attempt_count) === 0) {
+      await log.update({ attempt_count: 1, last_attempt_at: log.updated_at || now });
+    }
+    const failure = retryFailureDetails('特殊日期通知', log.attempt_count, '服务在发送过程中中断', now);
+    await log.update({
+      status: 'failed',
+      notify_error: '服务在发送过程中中断',
+      next_retry_at: failure.nextRetryAt,
+      updated_at: now
+    });
+    await recordAutoTaskMessage(log.rule_id, 'error', 'duty_special_notice', failure.historyMessage);
+  }
+
+  const retryLogs = await DutySpecialNotificationLog.findAll({
+    where: {
+      ...ruleFilter,
+      status: 'failed',
+      attempt_count: { [Op.lt]: MAX_AUTOMATIC_ATTEMPTS },
+      next_retry_at: { [Op.lte]: now }
+    }
+  });
+  for (const log of retryLogs) {
+    const [rule, exception] = await Promise.all([
+      AutoTaskRule.findByPk(log.rule_id),
+      DutyScheduleException.findByPk(log.exception_id)
+    ]);
+    if (!isActiveSpecialNotification(rule, exception)) continue;
+    if (await executeSpecialDutyNotification(log, rule, exception, { retry: true, now })) executed += 1;
+  }
+
+  const parts = getBeijingParts(now);
+  const exceptionWhere = {
+    ...ruleFilter,
     calendar_date: parts.date,
     notice_enabled: true,
     status: 'active'
   };
-  const filterRuleIds = Array.isArray(options.ruleIds) ? options.ruleIds.map(String).filter(Boolean) : [];
-  if (filterRuleIds.length > 0) where.rule_id = { [Op.in]: filterRuleIds };
-  const exceptions = await DutyScheduleException.findAll({
-    where
-  });
-  if (exceptions.length === 0) return 0;
+  const exceptions = await DutyScheduleException.findAll({ where: exceptionWhere });
+  if (exceptions.length === 0) return executed;
   const ruleIds = [...new Set(exceptions.map(item => item.rule_id))];
   const rules = await AutoTaskRule.findAll({ where: { id: { [Op.in]: ruleIds } } });
   const ruleMap = new Map(rules.map(rule => [rule.id, rule]));
-  let executed = 0;
   for (const exception of exceptions) {
     const rule = ruleMap.get(exception.rule_id);
-    if (!rule?.enabled || !rule.notify_enabled || normalizeTaskType(rule.task_type) !== TASK_TYPE_DUTY_NOTIFY) continue;
+    if (!isActiveSpecialNotification(rule, exception)) continue;
     const scheduledAt = getBeijingScheduledAt(parts, normalizeTime(exception.notice_time));
     if (!isScheduleEventTriggerable(rule, scheduledAt, now)) continue;
     const [log, created] = await DutySpecialNotificationLog.findOrCreate({
@@ -1826,39 +2168,120 @@ async function processDueSpecialDutyNotifications(now = new Date(), options = {}
         rule_id: rule.id,
         scheduled_at: scheduledAt,
         status: 'running',
+        attempt_count: 0,
         created_at: now,
         updated_at: now
       }
     });
     if (!created) continue;
-    try {
-      const atMode = String(exception.notice_at_mode || 'none');
-      let atConfig = { enabled: false, atAll: false, mobiles: [], missing: [] };
-      if (atMode === 'all') {
-        atConfig = { enabled: true, atAll: true, mobiles: [], missing: [] };
-      } else if (atMode === 'people') {
-        atConfig = await resolveStaffAtConfig(toStringList(exception.notice_staff_ids));
-      }
-      const webhooks = normalizeWebhookConfigs(rule.dingtalk_webhook);
-      await sendDingTalkCard(
-        webhooks,
-        String(exception.notice_message || '').trim(),
-        atConfig,
-        DINGTALK_SPECIAL_DATE_CARD_TITLE
-      );
-      await log.update({ status: 'success', notify_error: null, updated_at: new Date() });
-      await recordAutoTaskMessage(rule.id, 'success', 'duty_special_notice', `${parts.date} 特殊日期通知发送成功`);
-    } catch (error) {
-      await log.update({ status: 'failed', notify_error: error.message, updated_at: new Date() });
-      await recordAutoTaskMessage(rule.id, 'error', 'duty_special_notice', `${parts.date} 特殊日期通知发送失败：${error.message}`);
-    }
-    executed += 1;
+    if (await executeSpecialDutyNotification(log, rule, exception, { now })) executed += 1;
   }
   return executed;
 }
 
-async function executeRule(rule, scheduledAt, dependencies = {}) {
+async function performAutoTaskRunAttempt(rule, log, scheduledAt, dependencies = {}) {
   const actionMode = normalizeActionMode(rule.action_mode);
+  if (actionMode === 'notify_only') {
+    try {
+      await sendDingTalkWebhook(rule);
+      await activateChildNotificationsSafely(rule, scheduledAt);
+      await log.update({
+        status: 'success',
+        message: '仅通知模式，通知发送成功',
+        notify_status: 'success',
+        notify_error: null,
+        next_retry_at: null
+      });
+      await recordAutoTaskMessage(
+        rule.id,
+        'success',
+        'auto_run',
+        `仅通知模式，第 ${log.attempt_count}/${MAX_AUTOMATIC_ATTEMPTS} 次尝试发送成功`
+      );
+    } catch (notifyErr) {
+      await markRunLogFailure(log, {
+        status: 'notify_failed',
+        notifyStatus: 'failed',
+        label: '仅通知模式通知发送',
+        action: 'auto_run',
+        error: notifyErr
+      });
+    }
+    return log;
+  }
+
+  let result;
+  try {
+    result = await createTaskForRunLog(log, dependencies.createTask || createNextWeeklyTask);
+  } catch (error) {
+    await markRunLogFailure(log, {
+      status: 'failed',
+      notifyStatus: 'not_required',
+      label: '自动任务执行',
+      action: 'auto_run',
+      error
+    });
+    return log;
+  }
+
+  if (!result?.created) {
+    await log.update({
+      status: 'skipped',
+      message: result?.message || SKIP_MESSAGE,
+      notify_status: 'skipped',
+      notify_error: null,
+      next_retry_at: null
+    });
+    await recordAutoTaskMessage(rule.id, 'warning', 'auto_run', result?.message || SKIP_MESSAGE);
+    return log;
+  }
+
+  if (actionMode === 'run_only' || !rule.notify_enabled) {
+    await log.update({
+      status: 'success',
+      message: result.message,
+      notify_status: 'skipped',
+      notify_error: null,
+      next_retry_at: null
+    });
+    await recordAutoTaskMessage(
+      rule.id,
+      'success',
+      'auto_run',
+      actionMode === 'run_only' ? `${result.message}，仅执行规则未通知` : `${result.message}，通知开关未开启`
+    );
+    return log;
+  }
+
+  try {
+    await sendDingTalkWebhook(rule);
+    await activateChildNotificationsSafely(rule, scheduledAt);
+    await log.update({
+      status: 'success',
+      message: result.message,
+      notify_status: 'success',
+      notify_error: null,
+      next_retry_at: null
+    });
+    await recordAutoTaskMessage(
+      rule.id,
+      'success',
+      'auto_run',
+      `${result.message}，第 ${log.attempt_count}/${MAX_AUTOMATIC_ATTEMPTS} 次尝试通知发送成功`
+    );
+  } catch (notifyErr) {
+    await markRunLogFailure(log, {
+      status: 'notify_failed',
+      notifyStatus: 'failed',
+      label: '任务已创建，通知发送',
+      action: 'auto_run',
+      error: notifyErr
+    });
+  }
+  return log;
+}
+
+async function executeRule(rule, scheduledAt, dependencies = {}) {
   const log = await prepareRunLog(
     { rule_id: rule.id, scheduled_at: scheduledAt, event_type: 'auto_task' },
     {
@@ -1868,92 +2291,83 @@ async function executeRule(rule, scheduledAt, dependencies = {}) {
       event_type: 'auto_task',
       status: 'running',
       message: '执行中',
-      notify_status: 'not_required'
+      notify_status: 'not_required',
+      attempt_count: 0
     }
   );
   if (!log) return null;
+  await beginInitialRunAttempt(log);
+  return performAutoTaskRunAttempt(rule, log, scheduledAt, dependencies);
+}
 
-  try {
-    if (actionMode === 'notify_only') {
-      try {
-        await sendDingTalkWebhook(rule);
-        await activateChildNotificationsSafely(rule, scheduledAt);
-        await log.update({
-          status: 'success',
-          message: '仅通知模式，通知发送成功',
-          notify_status: 'success'
-        });
-        await recordAutoTaskMessage(rule.id, 'success', 'auto_run', '仅通知模式，通知发送成功');
-      } catch (notifyErr) {
-        await log.update({
-          status: 'notify_failed',
-          message: '仅通知模式，通知发送失败',
-          notify_status: 'failed',
-          notify_error: notifyErr.message
-        });
-        await recordAutoTaskMessage(rule.id, 'error', 'auto_run', `仅通知模式，通知发送失败：${notifyErr.message}`);
-      }
-      return log;
-    }
-
-    const createTask = dependencies.createTask || createNextWeeklyTask;
-    const result = await createTask(scheduledAt);
-    if (!result.created) {
-      await log.update({
-        status: 'skipped',
-        message: result.message || SKIP_MESSAGE,
-        notify_status: 'skipped'
-      });
-      await recordAutoTaskMessage(rule.id, 'warning', 'auto_run', result.message || SKIP_MESSAGE);
-      return log;
-    }
-
-    if (actionMode === 'run_only' || !rule.notify_enabled) {
-      await log.update({
-        status: 'success',
-        message: result.message,
-        created_task_id: result.task.id,
-        notify_status: 'skipped'
-      });
-      await recordAutoTaskMessage(
-        rule.id,
-        'success',
-        'auto_run',
-        actionMode === 'run_only' ? `${result.message}，仅执行规则未通知` : `${result.message}，通知开关未开启`
-      );
-      return log;
-    }
-
-    try {
-      await sendDingTalkWebhook(rule);
-      await activateChildNotificationsSafely(rule, scheduledAt);
-      await log.update({
-        status: 'success',
-        message: result.message,
-        created_task_id: result.task.id,
-        notify_status: 'success'
-      });
-      await recordAutoTaskMessage(rule.id, 'success', 'auto_run', `${result.message}，通知发送成功`);
-    } catch (notifyErr) {
-      await log.update({
-        status: 'notify_failed',
-        message: '任务已创建，通知发送失败',
-        created_task_id: result.task.id,
-        notify_status: 'failed',
-        notify_error: notifyErr.message
-      });
-      await recordAutoTaskMessage(rule.id, 'error', 'auto_run', `任务已创建，通知发送失败：${notifyErr.message}`);
-    }
-    return log;
-  } catch (err) {
-    await log.update({
-      status: 'failed',
-      message: err.message || '自动任务执行失败',
-      notify_status: 'not_required'
+async function retryDutyRunLog(log, rule) {
+  const actionLabel = log.event_type === 'duty_end' ? '值班结束提醒' : '值班开始提醒';
+  const event = parseRetryPayload(log.retry_payload);
+  if (!event?.message) {
+    await markRunLogFailure(log, {
+      status: 'notify_failed',
+      notifyStatus: 'failed',
+      label: actionLabel,
+      action: 'duty_notify',
+      error: '重试事件快照缺失，无法安全补发'
     });
-    await recordAutoTaskMessage(rule.id, 'error', 'auto_run', err.message || '自动任务执行失败');
     return log;
   }
+  try {
+    await sendDutyWebhook(rule, event);
+    await log.update({
+      status: 'success',
+      message: `${actionLabel}重试发送成功`,
+      notify_status: 'success',
+      notify_error: null,
+      next_retry_at: null
+    });
+    await recordAutoTaskMessage(
+      rule.id,
+      'success',
+      'duty_notify',
+      `${actionLabel}第 ${log.attempt_count}/${MAX_AUTOMATIC_ATTEMPTS} 次尝试发送成功`
+    );
+  } catch (error) {
+    await markRunLogFailure(log, {
+      status: 'notify_failed',
+      notifyStatus: 'failed',
+      label: actionLabel,
+      action: 'duty_notify',
+      error
+    });
+  }
+  return log;
+}
+
+async function processDueRunRetries(now = new Date(), rules = null, dependencies = {}) {
+  const dueLogs = await AutoTaskRunLog.findAll({
+    where: {
+      status: { [Op.in]: ['failed', 'notify_failed'] },
+      attempt_count: { [Op.lt]: MAX_AUTOMATIC_ATTEMPTS },
+      next_retry_at: { [Op.lte]: now }
+    },
+    order: [['next_retry_at', 'ASC']]
+  });
+  if (dueLogs.length === 0) return 0;
+  const ruleMap = rules instanceof Map
+    ? rules
+    : new Map((await AutoTaskRule.findAll({
+      where: { id: { [Op.in]: [...new Set(dueLogs.map(log => log.rule_id))] }, enabled: true }
+    })).map(rule => [rule.id, rule]));
+  let executed = 0;
+  for (const log of dueLogs) {
+    const rule = ruleMap.get(log.rule_id);
+    if (!rule?.enabled) continue;
+    if (!await claimRunRetry(log, now)) continue;
+    if (log.event_type === 'auto_task') {
+      await performAutoTaskRunAttempt(rule, log, new Date(log.scheduled_at), dependencies);
+    } else {
+      await retryDutyRunLog(log, rule);
+    }
+    executed += 1;
+  }
+  return executed;
 }
 
 async function schedulerTick() {
@@ -1961,7 +2375,10 @@ async function schedulerTick() {
   ticking = true;
   try {
     const now = new Date();
+    await recoverStaleRunLogs(now);
     const rules = await AutoTaskRule.findAll({ where: { enabled: true } });
+    const ruleMap = new Map(rules.map(rule => [rule.id, rule]));
+    await processDueRunRetries(now, ruleMap);
     for (const rule of rules) {
       try {
         if (normalizeTaskType(rule.task_type) === TASK_TYPE_DUTY_NOTIFY) {
@@ -1985,8 +2402,8 @@ async function schedulerTick() {
         await recordAutoTaskMessage(rule.id, 'error', 'auto_run', `自动任务规则执行失败：${ruleErr.message}`);
       }
     }
-    await processDueSpecialDutyNotifications(new Date());
-    await processDueChildNotifications(new Date());
+    await processDueSpecialDutyNotifications(now);
+    await processDueChildNotifications(now);
   } catch (err) {
     console.error('[auto-task] 调度检查失败:', err.message);
   } finally {
@@ -2014,6 +2431,7 @@ module.exports = {
   deactivateChildNotifications,
   ensureAutoTaskTables,
   executeChildNotification,
+  executeDutyEvent,
   executeRule,
   getDutyItemForParts,
   getDueChildScheduledAtAsync,
@@ -2032,6 +2450,7 @@ module.exports = {
   normalizeWebhookConfigs,
   normalizeWebhookList,
   processDueChildNotifications,
+  processDueRunRetries,
   processDueSpecialDutyNotifications,
   recordAutoTaskMessage,
   recoverChildNotificationsFromParentEvidence,

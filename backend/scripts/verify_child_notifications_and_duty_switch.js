@@ -405,8 +405,10 @@ async function main() {
     }, { silent: true });
     await processDueChildNotifications(staleNow);
     await monthlyChild.reload();
-    assert.strictEqual(monthlyChild.status, 'failed', 'stale sending child must not be retried after a process interruption');
-    assert.ok(monthlyChild.last_error.includes('本轮不再自动重发'));
+    assert.strictEqual(monthlyChild.status, 'failed', 'stale sending child must enter the bounded retry lifecycle');
+    assert.strictEqual(monthlyChild.attempt_count, 1, 'an interrupted sending attempt must count as the first attempt');
+    assert.ok(monthlyChild.next_retry_at, 'an interrupted sending attempt must schedule the next retry');
+    assert.ok(monthlyChild.last_error.includes('服务在发送过程中中断'));
 
     const dutyConfig = normalizeDutyConfig({
       weekly: weeklyMap('LATEST'),

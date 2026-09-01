@@ -19,6 +19,9 @@ const AutoTaskChildNotification = sequelize.define('auto_task_child_notification
   last_scheduled_at:       { type: DataTypes.DATE },
   last_sent_at:            { type: DataTypes.DATE },
   last_error:              { type: DataTypes.TEXT },
+  attempt_count:           { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  last_attempt_at:         { type: DataTypes.DATE },
+  next_retry_at:           { type: DataTypes.DATE },
   created_at:              { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
   updated_at:              { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
 }, {

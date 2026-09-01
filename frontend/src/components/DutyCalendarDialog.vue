@@ -97,6 +97,7 @@ const currentException = computed(() => {
 const selectedSwapRows = computed(() => swaps.value.filter(swap =>
   swap.date_a === selectedDate.value || swap.date_b === selectedDate.value
 ))
+const currentRuleFlags = computed(() => dateRuleFlags(selectedDate.value))
 
 const currentSwapStaffOptions = computed(() => currentPreview.value?.final_staff || [])
 const targetSwapStaffOptions = computed(() => targetPreview.value?.final_staff || [])
@@ -144,9 +145,58 @@ function createEmptyException(date) {
   }
 }
 
+function exceptionForDate(date) {
+  return exceptions.value.find(item => item.calendar_date === date) || null
+}
+
+function hasSpecialNoticeData(exception) {
+  if (!exception) return false
+  return Boolean(
+    exception.notice_enabled ||
+    String(exception.notice_message || '').trim() ||
+    String(exception.notice_at_mode || 'none') !== 'none' ||
+    (exception.notice_staff_ids || []).length
+  )
+}
+
+function dateRuleFlags(date) {
+  const exception = exceptionForDate(date)
+  return {
+    notice: hasSpecialNoticeData(exception),
+    people: Boolean(exception?.skip_staff_ids?.length),
+    swap: swaps.value.some(item => item.date_a === date || item.date_b === date)
+  }
+}
+
+function dayRuleBadges(day) {
+  const flags = dateRuleFlags(day.date)
+  return [
+    flags.notice ? { type: 'notice', text: '特', label: '已配置特殊通知' } : null,
+    flags.people ? { type: 'people', text: '跳', label: '已配置人员跳过' } : null,
+    flags.swap ? { type: 'swap', text: '换', label: '已配置临时换班' } : null
+  ].filter(Boolean)
+}
+
+function noticeAtText(exception) {
+  const mode = String(exception?.notice_at_mode || 'none')
+  if (mode === 'all') return '@所有人'
+  if (mode === 'people') return staffIdsToNames(exception?.notice_staff_ids)
+  return '不 @'
+}
+
+function swapDetailText(row) {
+  return `${row.date_a} ${staffName(row.staff_a_id)} ⇄ ${row.date_b} ${staffName(row.staff_b_id)}`
+}
+
 function compactExceptions() {
   return exceptions.value
-    .filter(item => item.skip_staff_ids.length || item.notice_enabled || item.notice_message || item.notice_staff_ids.length)
+    .filter(item =>
+      item.skip_staff_ids.length ||
+      item.notice_enabled ||
+      item.notice_message ||
+      item.notice_staff_ids.length ||
+      String(item.notice_at_mode || 'none') !== 'none'
+    )
     .map(item => ({ ...clone(item), status: 'active' }))
 }
 
@@ -223,6 +273,7 @@ function dayTooltip(day) {
   if (!draft.configured) parts.push('规则未配置')
   const names = dayDutyNames(day)
   if (names) parts.push(`值班：${names}`)
+  dayRuleBadges(day).forEach(badge => parts.push(badge.label))
   return parts.join(' · ')
 }
 
@@ -237,6 +288,7 @@ function markDirty() {
 
 async function chooseDate(day, toggle = true) {
   selectedDate.value = day.date
+  activeDetailTab.value = 'date'
   if (toggle) {
     if (firstEffectiveFrom.value && day.date < firstEffectiveFrom.value) {
       ElMessage.warning(`当前日期早于 ${firstEffectiveFrom.value} 生效日，仅供历史查看`)
@@ -278,6 +330,7 @@ async function loadCalendar() {
     exceptions.value = clone(response.data.exceptions || [])
     swaps.value = clone(response.data.swaps || [])
     selectedDate.value = firstSelectableDate(response.data)
+    activeDetailTab.value = 'date'
     previewDays.value = {}
     previewSummary.value = null
     dirty.value = false
@@ -550,6 +603,7 @@ function disableSwapDate(date) {
 }
 
 watch(selectedDate, () => {
+  activeDetailTab.value = 'date'
   swapForm.current_staff_id = ''
   swapForm.target_date = ''
   swapForm.target_staff_id = ''
@@ -628,6 +682,9 @@ watch(selectedDate, () => {
             <span><i class="legend-dot is-force"></i>已取消默认停排</span>
             <span><i class="legend-dot is-adjusted"></i>补班工作日</span>
             <span><i class="legend-underline"></i>规则未配置</span>
+            <span><i class="rule-marker is-notice">特</i>特殊通知</span>
+            <span><i class="rule-marker is-people">跳</i>人员跳过</span>
+            <span><i class="rule-marker is-swap">换</i>临时换班</span>
           </div>
           <div class="calendar-source-block" :title="holidaySync.error_message || holidaySyncText">
             <span class="calendar-sync-status" :class="`is-${holidaySync.status}`">{{ holidaySyncText }}</span>
@@ -667,6 +724,15 @@ watch(selectedDate, () => {
                 @click="chooseDate(day)"
                 @contextmenu.prevent="chooseDate(day, false)"
               >
+                <span class="calendar-rule-badges">
+                  <i
+                    v-for="badge in dayRuleBadges(day)"
+                    :key="badge.type"
+                    class="rule-marker"
+                    :class="`is-${badge.type}`"
+                    :title="badge.label"
+                  >{{ badge.text }}</i>
+                </span>
                 <span class="calendar-day-staff" :title="dayDutyNames(day)">{{ dayDutyNames(day) || '\u00a0' }}</span>
                 <strong>{{ day.day }}</strong>
                 <span class="calendar-day-lunar">{{ lunarLabel(day.date) }}</span>
@@ -702,9 +768,43 @@ watch(selectedDate, () => {
                 <div><span>规则配置</span><strong>{{ selectedBaseDay.configured ? '已配置' : '未配置' }}</strong></div>
                 <div><span>覆盖状态</span><strong>{{ selectedDraftDay.override_mode || '无' }}</strong></div>
               </div>
+              <div class="date-rule-detail-list">
+                <div>
+                  <strong>当天排班</strong>
+                  <span v-if="selectedDraftDay.effective_skipped">整日停排，不生成正常值班通知</span>
+                  <span v-else-if="currentPreview">
+                    基础：{{ staffIdsToNames(currentPreview.base_staff_ids) }}；最终：{{ staffIdsToNames(currentPreview.final_staff_ids) }}
+                  </span>
+                  <span v-else>暂无排班预览</span>
+                </div>
+                <div>
+                  <strong>特殊通知 <i v-if="currentRuleFlags.notice" class="rule-marker is-notice">特</i></strong>
+                  <template v-if="currentRuleFlags.notice">
+                    <span>{{ currentException.notice_enabled ? '已开启发送' : '未开启发送' }}；{{ currentException.notice_time }}；{{ noticeAtText(currentException) }}</span>
+                    <span class="detail-message">{{ currentException.notice_message || '未填写通知文案' }}</span>
+                  </template>
+                  <span v-else>未配置</span>
+                </div>
+                <div>
+                  <strong>人员跳过 <i v-if="currentRuleFlags.people" class="rule-marker is-people">跳</i></strong>
+                  <span>{{ currentRuleFlags.people ? staffIdsToNames(currentException.skip_staff_ids) : '无' }}</span>
+                </div>
+                <div>
+                  <strong>临时换班 <i v-if="currentRuleFlags.swap" class="rule-marker is-swap">换</i></strong>
+                  <template v-if="currentRuleFlags.swap">
+                    <span v-for="row in selectedSwapRows" :key="row.id || `${row.date_a}-${row.date_b}-${row.staff_a_id}`">
+                      {{ swapDetailText(row) }}
+                    </span>
+                  </template>
+                  <span v-else>无</span>
+                </div>
+              </div>
             </el-tab-pane>
 
-            <el-tab-pane label="特殊通知" name="notice">
+            <el-tab-pane name="notice">
+              <template #label>
+                <span class="detail-tab-label">特殊通知 <i v-if="currentRuleFlags.notice" class="rule-marker is-notice">特</i></span>
+              </template>
               <div class="notice-editor">
                 <div class="notice-row">
                   <label><span>是否发送</span><el-switch v-model="currentException.notice_enabled" @change="markDirty" /></label>
@@ -735,7 +835,10 @@ watch(selectedDate, () => {
               </div>
             </el-tab-pane>
 
-            <el-tab-pane label="人员跳过" name="people">
+            <el-tab-pane name="people">
+              <template #label>
+                <span class="detail-tab-label">人员跳过 <i v-if="currentRuleFlags.people" class="rule-marker is-people">跳</i></span>
+              </template>
               <div v-if="isBeforeFirstEffective || selectedDraftDay.effective_skipped || !selectedBaseDay.configured" class="detail-disabled-note">
                 {{ isBeforeFirstEffective
                   ? `当前日期早于 ${effectiveFrom} 生效日，不能配置人员跳过`
@@ -753,7 +856,10 @@ watch(selectedDate, () => {
               </el-checkbox-group>
             </el-tab-pane>
 
-            <el-tab-pane label="临时换班" name="swap">
+            <el-tab-pane name="swap">
+              <template #label>
+                <span class="detail-tab-label">临时换班 <i v-if="currentRuleFlags.swap" class="rule-marker is-swap">换</i></span>
+              </template>
               <div v-if="isBeforeFirstEffective || selectedDraftDay.effective_skipped || !selectedBaseDay.configured" class="detail-disabled-note">
                 {{ isBeforeFirstEffective
                   ? `当前日期早于 ${firstEffectiveFrom} 生效日，不能配置临时换班`
@@ -942,6 +1048,25 @@ watch(selectedDate, () => {
 .legend-dot.is-adjusted { background: #f6c344; border: 1px solid #b7791f; }
 .legend-underline { width: 12px; border-bottom: 2px dotted #8c95a3; }
 
+.rule-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  border-radius: 3px;
+  color: #fff;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.rule-marker.is-notice { background: #1f5fd6; }
+.rule-marker.is-people { background: #d97706; }
+.rule-marker.is-swap { background: #d9363e; }
+
 .calendar-impact-summary {
   gap: 18px;
   min-height: 34px;
@@ -989,7 +1114,7 @@ watch(selectedDate, () => {
 .calendar-day,
 .day-blank {
   width: 100%;
-  min-height: 68px;
+  min-height: 84px;
 }
 
 .calendar-day {
@@ -1011,6 +1136,21 @@ watch(selectedDate, () => {
 
 .calendar-day:hover { border-color: #1f5fd6; }
 .calendar-day strong { font-size: 17px; line-height: 1; }
+.calendar-rule-badges {
+  display: flex;
+  align-self: flex-end;
+  justify-content: flex-end;
+  gap: 1px;
+  width: 100%;
+  min-height: 14px;
+}
+
+.calendar-rule-badges .rule-marker {
+  width: 14px;
+  height: 14px;
+  flex-basis: 14px;
+  font-size: 9px;
+}
 .calendar-day small,
 .calendar-day-lunar,
 .calendar-day-staff {
@@ -1129,6 +1269,43 @@ watch(selectedDate, () => {
 
 .detail-grid span { color: var(--color-text-3); font-size: 12px; }
 .detail-grid strong { font-size: 14px; }
+
+.date-rule-detail-list {
+  border: 1px solid var(--color-border-light);
+  border-top: 0;
+}
+
+.date-rule-detail-list > div {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  min-height: 38px;
+  padding: 9px 10px;
+  color: var(--color-text-2);
+  font-size: 13px;
+}
+
+.date-rule-detail-list > div + div {
+  border-top: 1px solid var(--color-border-light);
+}
+
+.date-rule-detail-list strong,
+.detail-tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.date-rule-detail-list .detail-message {
+  grid-column: 2;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.detail-tab-label {
+  white-space: nowrap;
+}
 
 .notice-editor {
   display: flex;

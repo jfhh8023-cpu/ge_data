@@ -8,6 +8,9 @@ const DutySpecialNotificationLog = sequelize.define('duty_special_notification_l
   scheduled_at:  { type: DataTypes.DATE, allowNull: false },
   status:        { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'running' },
   notify_error:  { type: DataTypes.TEXT, allowNull: true },
+  attempt_count: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  last_attempt_at: { type: DataTypes.DATE, allowNull: true },
+  next_retry_at: { type: DataTypes.DATE, allowNull: true },
   created_at:    { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
   updated_at:    { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
 }, {
