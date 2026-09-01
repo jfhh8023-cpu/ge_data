@@ -2799,7 +2799,7 @@ async function refreshRuleHistories() {
   const nextPages = {}
   savedRules.forEach(rule => {
     const key = historyKey(rule)
-    if (!Object.prototype.hasOwnProperty.call(nextExpanded, key)) nextExpanded[key] = true
+    if (!Object.prototype.hasOwnProperty.call(nextExpanded, key)) nextExpanded[key] = false
     const existing = historyPages.value[key] || { ...EMPTY_HISTORY_PAGE, requestId: 0, latestItem: null }
     const latestFallback = legacyRuleHistory(rule)[0] || null
     nextPages[key] = {
