@@ -1648,10 +1648,19 @@ function assertAllowedWebhookUrl(parsed) {
 }
 
 function publicDnsLookup(hostname, options, callback) {
-  dns.lookup(hostname, { all: true, verbatim: true }, (error, addresses) => {
+  const requested = typeof options === 'number' ? { family: options } : (options || {});
+  const lookupOptions = { all: true, verbatim: true };
+  const requestedFamily = Number(requested.family || 0);
+  if (requestedFamily === 4 || requestedFamily === 6) lookupOptions.family = requestedFamily;
+  if (Number.isInteger(requested.hints) && requested.hints > 0) lookupOptions.hints = requested.hints;
+
+  dns.lookup(hostname, lookupOptions, (error, addresses) => {
     if (error) return callback(error);
-    const candidate = addresses.find(item => !isPrivateNetworkAddress(item.address));
-    if (!candidate) return callback(new Error('webhook 域名未解析到公网地址'));
+    const candidates = (Array.isArray(addresses) ? addresses : [addresses])
+      .filter(item => item?.address && !isPrivateNetworkAddress(item.address));
+    if (candidates.length === 0) return callback(new Error('webhook 域名未解析到公网地址'));
+    if (requested.all) return callback(null, candidates);
+    const candidate = candidates[0];
     return callback(null, candidate.address, candidate.family);
   });
 }
@@ -2463,5 +2472,10 @@ module.exports = {
   startAutoTaskScheduler,
   testChildNotification,
   childNotificationFallbackMatch,
-  SKIP_MESSAGE
+  SKIP_MESSAGE,
+  __internals: {
+    assertAllowedWebhookUrl,
+    publicDnsLookup,
+    sendDingTalkCard
+  }
 };
