@@ -3,7 +3,7 @@
 ## 基本信息
 
 - 日期：2026-09-02。
-- 状态：`APPROVED_FOR_PRODUCTION_RELEASE`。
+- 状态：`RELEASED_AND_VERIFIED`。
 - 触发问题：同一 webhook 使用独立 HTTP 客户端推送成功，但录入 DevTracker 后测试推送失败。
 - 实施边界：本地开发与验证已完成；2026-09-02 用户明确授权推送远端并发布生产。
 
@@ -55,5 +55,6 @@
 
 ## 后续操作
 
-- 当前修改已获远端推送和生产发布授权，发布结果将在独立生产发布记录中归档。
+- 功能提交 `ade4693` 已推送 `gitee/master` 并发布生产。
+- 生产发布、备份、数据守恒与运行时验证见 `docs/@development/dingtalk_webhook_compatibility_release_20260902.md`。
 - 用户需在页面中删除/替换停用连接，或只保留已验证可用的连接；否则多目标发送仍会按既有规则显示整体失败。
