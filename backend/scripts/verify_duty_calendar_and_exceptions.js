@@ -700,9 +700,36 @@ async function main() {
         revision_no: savedRevisionNo,
         swaps: [omitIdSwap]
       });
-      assert.strictEqual(executedSwap.status, 409);
+      assert.strictEqual(executedSwap.status, 200);
+      savedRevisionNo = executedSwap.payload.data.revision_no;
+      state.revisionIds.push(executedSwap.payload.data.revision.id);
       await executedLog.destroy();
-      assert.strictEqual(await DutyCalendarRevision.count(), baseline.revisions + 2);
+      assert.strictEqual(await DutyCalendarRevision.count(), baseline.revisions + 3);
+
+      const unfinishedAt = new Date('2026-12-01T19:59:59+08:00');
+      const unfinished = await dutyCalendarService.getDutySwapEditability(rule, '2026-12-01', unfinishedAt);
+      assert.strictEqual(unfinished.editable, true);
+      const afterEndTime = await dutyCalendarService.getDutySwapEditability(
+        rule,
+        '2026-12-01',
+        new Date('2026-12-01T20:00:00+08:00')
+      );
+      assert.strictEqual(afterEndTime.editable, false);
+      assert.strictEqual(afterEndTime.reason, 'duty_completed');
+      const completedEndLog = await AutoTaskRunLog.create({
+        id: uuidv4(),
+        rule_id: rule.id,
+        scheduled_at: new Date('2026-12-01T20:00:00+08:00'),
+        event_type: 'duty_end',
+        status: 'success',
+        message: `${RUN_PREFIX} completed-date guard`,
+        notify_status: 'success',
+        created_at: new Date()
+      });
+      const completedByEndNotice = await dutyCalendarService.getDutySwapEditability(rule, '2026-12-01', unfinishedAt);
+      assert.strictEqual(completedByEndNotice.editable, false);
+      assert.strictEqual(completedByEndNotice.completed_by_end_notice, true);
+      await completedEndLog.destroy();
 
       const cancelled = await api('DELETE', `/api/settings/duty-calendar/swaps/${savedSwapId}`);
       assert.strictEqual(cancelled.status, 200);
@@ -729,14 +756,18 @@ async function main() {
           restored_swap_id: restored.payload.data.swaps[0].id,
           physical_rows: physicalRows,
           stopped_or_unconfigured_swap_status: invalidDaySwap.status,
-          executed_date_swap_status: executedSwap.status,
+          successful_start_swap_status: executedSwap.status,
+          unfinished_same_day_editable: unfinished.editable,
+          after_end_time_editable: afterEndTime.editable,
+          successful_end_editable: completedByEndNotice.editable,
           revision_no: savedRevisionNo
         },
         assertions: [
           '相同自然键无ID保存复用原换班记录',
           '取消换班采用逻辑取消',
           '停排或未配置日期不能换班',
-          '已有成功值班日志的日期不能换班',
+          '开始提醒已成功但值班未结束时仍可换班',
+          '到达结束时间或成功发送结束提醒后禁止换班',
           '取消后重加不会触发唯一键冲突或重复物理行'
         ]
       };

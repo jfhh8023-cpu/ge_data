@@ -3,7 +3,7 @@ const router = express.Router();
 const { DutyScheduleSwap } = require('../models');
 const {
   getDutyCalendar,
-  hasSuccessfulDutyStart,
+  getDutySwapEditability,
   invalidateResolverCache,
   previewDutySchedule,
   saveDutyCalendar
@@ -53,8 +53,13 @@ router.delete('/swaps/:id', async (req, res, next) => {
   try {
     const swap = await DutyScheduleSwap.findByPk(req.params.id);
     if (!swap) return res.status(404).json({ code: 1, message: '临时换班不存在' });
-    if (await hasSuccessfulDutyStart(swap.rule_id, swap.date_a) || await hasSuccessfulDutyStart(swap.rule_id, swap.date_b)) {
-      return res.status(409).json({ code: 1, message: '已执行的临时换班不能取消历史结果' });
+    const editability = await Promise.all([
+      getDutySwapEditability(swap.rule_id, String(swap.date_a).slice(0, 10)),
+      getDutySwapEditability(swap.rule_id, String(swap.date_b).slice(0, 10))
+    ]);
+    const locked = editability.find(item => !item.editable);
+    if (locked) {
+      return res.status(409).json({ code: 1, message: locked.message, error_code: `duty_swap_${locked.reason}` });
     }
     await swap.update({ status: 'cancelled', revision: Number(swap.revision || 0) + 1, updated_at: new Date() });
     invalidateResolverCache();

@@ -1135,28 +1135,6 @@ async function saveDutyCalendar({ year: yearValue, ruleId, payload }) {
       throw httpError('临时换班日期必须处于节假日排班规则生效范围内');
     }
   });
-  if (swaps.length > 0) {
-    const successfulStarts = await AutoTaskRunLog.findAll({
-      where: {
-        rule_id: rule.id,
-        event_type: 'duty_start',
-        status: 'success',
-        scheduled_at: {
-          [Op.between]: [
-            new Date(`${yearStart(year)}T00:00:00+08:00`),
-            new Date(`${yearEnd(year)}T23:59:59+08:00`)
-          ]
-        }
-      },
-      attributes: ['scheduled_at']
-    });
-    const executedDates = new Set(successfulStarts.map(row => getBeijingParts(row.scheduled_at).date));
-    swaps.forEach(item => {
-      if (executedDates.has(item.date_a) || executedDates.has(item.date_b)) {
-        throw httpError('已成功执行值班通知的日期不能新增或编辑临时换班', 409, 'duty_swap_already_executed');
-      }
-    });
-  }
   const draft = {
     calendar_revision: { calendar_year: year, effective_from: effectiveFrom, manual_overrides: overrides },
     exceptions,
@@ -1286,14 +1264,40 @@ async function saveDutyCalendar({ year: yearValue, ruleId, payload }) {
         (item.id && existingById.get(String(item.id))) || existingByNaturalKey.get(swapKey(item)) || null
       ));
       const incomingIds = new Set(matchedRows.filter(Boolean).map(row => String(row.id)));
+      const swapMatchesRow = (item, row) => (
+        row?.status === ACTIVE_STATUS &&
+        String(row.date_a) === item.date_a &&
+        String(row.date_b) === item.date_b &&
+        String(row.staff_a_id) === item.staff_a_id &&
+        String(row.staff_b_id) === item.staff_b_id
+      );
+      const changedSwapDates = new Set();
       for (const row of existingSwaps) {
-        if (!incomingIds.has(String(row.id))) {
+        if (row.status === ACTIVE_STATUS && !incomingIds.has(String(row.id))) {
+          changedSwapDates.add(String(row.date_a).slice(0, 10));
+          changedSwapDates.add(String(row.date_b).slice(0, 10));
+        }
+      }
+      swaps.forEach((item, index) => {
+        const row = matchedRows[index];
+        if (swapMatchesRow(item, row)) return;
+        if (row?.status === ACTIVE_STATUS) {
+          changedSwapDates.add(String(row.date_a).slice(0, 10));
+          changedSwapDates.add(String(row.date_b).slice(0, 10));
+        }
+        changedSwapDates.add(item.date_a);
+        changedSwapDates.add(item.date_b);
+      });
+      await assertDutySwapDatesEditable(rule, [...changedSwapDates], now);
+      for (const row of existingSwaps) {
+        if (row.status === ACTIVE_STATUS && !incomingIds.has(String(row.id))) {
           await row.update({ status: CANCELLED_STATUS, revision: Number(row.revision || 0) + 1, updated_at: now }, { transaction });
         }
       }
       for (let index = 0; index < swaps.length; index += 1) {
         const item = swaps[index];
         const row = matchedRows[index];
+        if (swapMatchesRow(item, row)) continue;
         const values = {
           rule_id: rule.id,
           date_a: item.date_a,
@@ -1362,6 +1366,70 @@ async function hasSuccessfulDutyStart(ruleId, ymd) {
   return count > 0;
 }
 
+async function hasSuccessfulDutyEnd(ruleId, ymd) {
+  const start = new Date(`${ymd}T00:00:00+08:00`);
+  const end = new Date(`${ymd}T23:59:59+08:00`);
+  const count = await AutoTaskRunLog.count({
+    where: {
+      rule_id: ruleId,
+      event_type: 'duty_end',
+      status: 'success',
+      scheduled_at: { [Op.between]: [start, end] }
+    }
+  });
+  return count > 0;
+}
+
+async function getDutySwapEditability(ruleValue, ymd, now = new Date()) {
+  if (!isValidYmd(ymd)) throw httpError('日期格式无效');
+  const rule = ruleValue?.toJSON ? ruleValue : await requireDutyRule(ruleValue?.id || ruleValue);
+  const today = getBeijingParts(now).date;
+  if (ymd < today) {
+    return {
+      editable: false,
+      date: ymd,
+      reason: 'historical_date',
+      message: `${ymd} 已是历史日期，不能新增、编辑或取消临时换班`
+    };
+  }
+  if (ymd > today) {
+    return { editable: true, date: ymd, reason: null, message: '' };
+  }
+
+  const resolved = await resolveDutyDate(rule, ymd);
+  const item = resolved?.item || normalizeDutyItem(rawDutyItemForDate(rule, ymd) || {});
+  const endTime = normalizeTime(item.end_time, '18:30:00');
+  const endAt = new Date(`${ymd}T${endTime}+08:00`);
+  const completedByEndNotice = await hasSuccessfulDutyEnd(rule.id, ymd);
+  if (completedByEndNotice || now >= endAt) {
+    return {
+      editable: false,
+      date: ymd,
+      reason: 'duty_completed',
+      completed_by_end_notice: completedByEndNotice,
+      completed_at: endAt.toISOString(),
+      message: `${ymd} 的值班已完成，不能新增、编辑或取消临时换班`
+    };
+  }
+  return {
+    editable: true,
+    date: ymd,
+    reason: null,
+    completed_by_end_notice: false,
+    completed_at: endAt.toISOString(),
+    message: ''
+  };
+}
+
+async function assertDutySwapDatesEditable(rule, dates, now = new Date()) {
+  for (const date of [...new Set(dates)].filter(Boolean)) {
+    const state = await getDutySwapEditability(rule, date, now);
+    if (!state.editable) {
+      throw httpError(state.message, 409, `duty_swap_${state.reason}`);
+    }
+  }
+}
+
 module.exports = {
   ACTIVE_STATUS,
   CANCELLED_STATUS,
@@ -1374,6 +1442,8 @@ module.exports = {
   getGlobalScheduleSourceDates,
   getNextDutyRunAt,
   getNextGlobalWorkDate,
+  getDutySwapEditability,
+  hasSuccessfulDutyEnd,
   hasSuccessfulDutyStart,
   invalidateResolverCache,
   loadOfficialHolidaySnapshot,
