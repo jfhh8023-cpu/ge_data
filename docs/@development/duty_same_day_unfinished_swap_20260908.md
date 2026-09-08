@@ -2,7 +2,7 @@
 
 日期：2026-09-08
 
-状态：本地开发与验证通过，未推送、未发布。
+状态：已推送并完成生产发布。
 
 ## 触发背景
 
@@ -38,7 +38,7 @@
 
 - 当天开始提醒已经发送后，接收方可能已经看到原值班人员；系统不重写已发送内容，只使未执行事件和实时排班跟随新结果。
 - 本次只调整临时换班，不放宽已发送开始通知后的人员跳过限制。
-- 本次仅本地修改，未触发远端推送或生产发布。
+- 生产发布采用无数据库导入方式；未执行会改变生产业务数据的迁移或初始化操作。
 
 ## 本地验证记录
 
@@ -47,3 +47,13 @@
 - `node --check`：日历服务、日历路由和两份回归脚本通过。
 - `npm run build`（`frontend`）：构建通过；仅保留既有大包体积提示，无构建错误。
 - 数据清理核验：`DutyCalendarRevision=1`、`DutyScheduleSwap=0`、隔离规则数 `0`，与测试前基线一致。
+
+## 生产发布记录
+
+- 代码提交：`0bfe980 fix: 支持未完成值班当天临时换班`，已推送至 `gitee/master`。
+- 发布前备份：`deploy/backups/20260908_094432/devtracker_20260908_094432.sql`，大小 `1,366,785` 字节，SHA-256 为 `5194DE42F7FFB2057EFF754778A64FBF542D78C51CACF3882DFBD349BC582BAD`。
+- 发布方式：前后端构建文件上传后，仅重启生产 `devtracker` PM2 进程加载新代码；未导入本地数据库，未执行数据库迁移。
+- 配置保护：部署脚本的 Nginx 配置校验未通过时，已立即恢复原配置；恢复后 `nginx -t` 与 reload 均通过。
+- 服务验证：生产 `devtracker` 进程在线；内部健康检查通过；公网设置页返回 HTTP `200`。
+- 构建完整性：生产前端 `dist` 的 41 个文件与本地构建逐一 SHA-256 一致；两处换班核心后端源码的 SHA-256 与本地一致。
+- 数据守恒：发布后只读复核 `collection_tasks=33`、`staff=13`、`product_managers=14`、`work_records=849`、`work_hours=10859.50`、`match_groups=553`、`auto_task_rules=3`、`auto_task_run_logs=151`、`auto_task_messages=358`、`auto_task_child_notifications=2`、`duty_schedule_swaps=1`、`duty_calendar_revisions=1`，与发布前基线一致。
