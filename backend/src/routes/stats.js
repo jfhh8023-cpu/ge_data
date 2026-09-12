@@ -108,6 +108,38 @@ function safeExcelText(value) {
   return /^[=+\-@]/.test(text) ? `'${text}` : text;
 }
 
+function currentNaturalWeekStart(date = new Date()) {
+  const result = new Date(date);
+  const day = result.getDay();
+  const daysFromMonday = day === 0 ? 6 : day - 1;
+  result.setHours(0, 0, 0, 0);
+  result.setDate(result.getDate() - daysFromMonday);
+  return result;
+}
+
+function taskDateValue(task) {
+  const value = task?.end_date || task?.start_date;
+  if (!value) return null;
+  const text = value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
+  const parsed = new Date(`${text}T23:59:59`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function isHistoricalNaturalWeekTask(task) {
+  const taskDate = taskDateValue(task);
+  return Boolean(taskDate && taskDate < currentNaturalWeekStart());
+}
+
+function applyHistoricalProgress(record, task) {
+  if (!isHistoricalNaturalWeekTask(task)) return record;
+  return {
+    ...record,
+    delivery_progress: 100,
+    progress_status: '已完成',
+    historical_progress_override: true
+  };
+}
+
 async function loadScopedStatRecords({ scope = 'current', year, quarter, taskId } = {}) {
   const yearNum = parseInt(year) || new Date().getFullYear();
   const range = getDateRange(yearNum, quarter);
@@ -130,7 +162,7 @@ async function loadScopedStatRecords({ scope = 'current', year, quarter, taskId 
   const productNames = new Set(demandSources.map(item => item.name));
   const records = [];
   for (const row of [...visibleEngineeringRows, ...visibleProductRows]) {
-    const plain = row.toJSON();
+    const plain = applyHistoricalProgress(row.toJSON(), taskById.get(row.task_id));
     const isProduct = row instanceof ProductManagerWorkRecord || Array.isArray(plain.demand_sources);
     plain.is_product_manager_record = isProduct;
     plain.source_type = isProduct ? 'product_manager' : 'engineering';
@@ -332,12 +364,13 @@ router.get('/', async (req, res, next) => {
       addRoleHours(pmMap[pmName], role, hours);
       Object.assign(pmMap[pmName], withRoleAliases(pmMap[pmName]));
       pmMap[pmName].total += hours;
+      const historicalProgress = isHistoricalNaturalWeekTask(taskById.get(r.task_id)) ? 100 : r.delivery_progress;
       pmMap[pmName].records.push({
         id: r.id,
         version: r.version,
         requirement_title: r.requirement_title,
         hours: r.hours,
-        delivery_progress: r.delivery_progress,
+        delivery_progress: historicalProgress,
         role,
         staffName: r.staff?.name || '-'
       });
@@ -371,7 +404,7 @@ router.get('/', async (req, res, next) => {
       data: {
         tasks,
         records: await Promise.all(allStatRecords.map(async r => {
-          const plain = r.toJSON();
+          const plain = applyHistoricalProgress(r.toJSON(), taskById.get(r.task_id));
           plain.is_product_manager_record = r instanceof ProductManagerWorkRecord || Array.isArray(plain.demand_sources);
           if (plain.is_product_manager_record) {
             plain.demand_sources = safeParseJsonArray(plain.demand_sources);
@@ -383,7 +416,7 @@ router.get('/', async (req, res, next) => {
         })),
         demandSources,
         productManagerRecords: productManagerRecords.map(r => {
-          const plain = r.toJSON();
+          const plain = applyHistoricalProgress(r.toJSON(), taskById.get(r.task_id));
           const sources = safeParseJsonArray(plain.demand_sources);
           const sourceById = new Map(demandSources.map(item => [item.id, item.name]));
           const sourceIds = safeParseJsonArray(plain.demand_source_ids);
