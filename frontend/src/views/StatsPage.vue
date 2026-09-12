@@ -742,6 +742,12 @@ function firstPmName(productManagers) {
   return arr[0] || '不在上述'
 }
 
+function taskWeekLabel(task) {
+  const weekNumber = Number(task?.week_number)
+  if (Number.isInteger(weekNumber) && weekNumber > 0) return `W${String(weekNumber).padStart(2, '0')}`
+  return '-'
+}
+
 function groupAnalysisRows(records, keyGetter, labelGetter) {
   const map = new Map()
   for (const rec of records) {
@@ -754,7 +760,8 @@ function groupAnalysisRows(records, keyGetter, labelGetter) {
         total: 0,
         recordCount: 0,
         requirementSet: new Set(),
-        taskSet: new Set()
+        taskSet: new Set(),
+        weekSet: new Set()
       }
       roleStore.list.forEach(role => { initial[role.key] = 0 })
       map.set(key, initial)
@@ -765,6 +772,9 @@ function groupAnalysisRows(records, keyGetter, labelGetter) {
     row.total += hours
     row.recordCount += 1
     row.taskSet.add(rec.task_id)
+    const task = (statsStore.tasks || []).find(item => item.id === rec.task_id)
+    const weekLabel = taskWeekLabel(task)
+    if (weekLabel !== '-') row.weekSet.add(weekLabel)
     row.requirementSet.add(`${rec.task_id || ''}||${rec.requirement_title || ''}||${rec.version || ''}`)
     if (row[role] !== undefined) row[role] += hours
   }
@@ -775,6 +785,7 @@ function groupAnalysisRows(records, keyGetter, labelGetter) {
         total: Number(row.total.toFixed(1)),
         taskCount: row.taskSet.size,
         requirementCount: row.requirementSet.size,
+        weeks: [...row.weekSet].sort((a, b) => Number(a.slice(1)) - Number(b.slice(1))),
         share: 0
       }
       roleStore.list.forEach(role => { result[role.key] = Number((row[role.key] || 0).toFixed(1)) })
@@ -2857,6 +2868,9 @@ function exportStatsData() {
         <el-tab-pane label="版本">
           <el-table :data="pagedAnalysisRows('version', analysisData.versionRows)" border size="small" class="dt-analysis-table" table-layout="auto" style="width:100%;" :default-sort="{ prop: 'total', order: 'descending' }">
             <el-table-column prop="label" label="版本" width="1" align="center" sortable class-name="dt-analysis-primary-cell" header-class-name="dt-analysis-primary-header" />
+            <el-table-column label="周" width="120" align="center" sortable>
+              <template #default="{ row }">{{ row.weeks?.join('、') || '-' }}</template>
+            </el-table-column>
             <el-table-column prop="total" label="工时" align="center" sortable />
             <el-table-column prop="share" label="占比" align="center" sortable>
               <template #default="{ row }">{{ row.share }}%</template>
