@@ -629,6 +629,35 @@ const productSummary = computed(() => {
 })
 const analysisVersionedRows = computed(() => analysisData.value.progressRows.filter(row => row.versionType === '有版本号'))
 const analysisNoVersionRows = computed(() => analysisData.value.progressRows.filter(row => row.versionType === '无版本号'))
+const ANALYSIS_PAGE_SIZE_OPTIONS = [10, 20, 30, 50, 100, 200, 300]
+const ANALYSIS_PAGE_KEYS = ['tracking', 'versioned', 'noVersion', 'pm', 'staff', 'task', 'version', 'requirement', 'keyword', 'quality', 'progress', 'progressModal']
+const analysisPagination = ref(Object.fromEntries(ANALYSIS_PAGE_KEYS.map(key => [key, { currentPage: 1, pageSize: 20 }])))
+
+function pagedAnalysisRows(key, rows = []) {
+  const state = analysisPagination.value[key]
+  if (!state) return rows
+  const totalPages = Math.max(1, Math.ceil(rows.length / state.pageSize))
+  if (state.currentPage > totalPages) state.currentPage = totalPages
+  const start = (state.currentPage - 1) * state.pageSize
+  return rows.slice(start, start + state.pageSize)
+}
+
+function analysisPageTotal(rows = []) {
+  return rows.length
+}
+
+function resetAnalysisPage(key) {
+  if (analysisPagination.value[key]) analysisPagination.value[key].currentPage = 1
+}
+
+const analysisVersionProgressCards = computed(() => [
+  { key: 'versioned', label: '普通版本综合进度', rows: analysisVersionedRows.value, color: '#165DFF' },
+  { key: 'noVersion', label: '无版本号综合进度', rows: analysisNoVersionRows.value, color: '#86909C' }
+].map(item => ({
+  ...item,
+  hours: Number(item.rows.reduce((sum, row) => sum + toNumber(row.hours), 0).toFixed(1)),
+  progress: weightedProgress(item.rows.map(row => ({ hours: row.hours, delivery_progress: row.progress })))
+})))
 const engineeringRoles = computed(() => roleStore.list.filter(role => role.key !== 'ai_pm'))
 const engineeringRecords = computed(() => (statsStore.records || []).filter(record => {
   const role = normalizeRole(record.staff?.role || record.role)
@@ -972,10 +1001,16 @@ function openProductAnalysis(demandSourceId = '') {
   openAnalysisDialog('ai_pm', 'product_manager', demandSourceId)
 }
 
-function openProgressList(roleKey = '') {
+function openProgressList(roleKey = '', versionType = '') {
   const role = roleKey ? roleStore.list.find(item => item.key === roleKey) : null
-  progressListTitle.value = role ? `${role.name}需求进度明细` : `${analysisDimensionMeta.value.label}需求进度明细`
-  progressListRows.value = analysisData.value.progressRows.filter(row => !role || row.role === role.name || row.role === role.key)
+  const versionLabel = versionType === 'versioned' ? '普通版本' : versionType === 'noVersion' ? '无版本号' : ''
+  progressListTitle.value = `${role ? `${role.name}` : analysisDimensionMeta.value.label}${versionLabel ? ` · ${versionLabel}` : ''}需求进度明细`
+  progressListRows.value = analysisData.value.progressRows.filter(row => {
+    const roleMatch = !role || row.role === role.name || row.role === role.key
+    const versionMatch = !versionType || (versionType === 'versioned' ? row.versionType === '有版本号' : row.versionType === '无版本号')
+    return roleMatch && versionMatch
+  })
+  resetAnalysisPage('progressModal')
   progressListDialogVisible.value = true
 }
 
@@ -2691,6 +2726,11 @@ function exportStatsData() {
           <strong style="cursor:pointer" title="点击查看需求进度明细" @click="openProgressList()">{{ analysisData.weightedProgress === null ? '-' : `${analysisData.weightedProgress.toFixed(2)}%` }}</strong>
           <em>工时加权</em>
         </div>
+        <div v-for="card in analysisVersionProgressCards" :key="card.key" class="dt-analysis-kpi dt-analysis-kpi-clickable" :style="{ borderColor: `${card.color}55` }" title="点击查看该版本分组的需求进度明细" @click="openProgressList('', card.key)">
+          <span>{{ card.label }} ⓘ</span>
+          <strong :style="{ color: card.color }">{{ card.progress === null ? '-' : `${card.progress.toFixed(2)}%` }}</strong>
+          <em>{{ card.hours.toFixed(1) }}H 工时加权</em>
+        </div>
       </div>
 
       <div class="dt-analysis-role-strip">
@@ -2747,7 +2787,7 @@ function exportStatsData() {
           <el-alert v-if="statsStore.progressDetails" type="info" :closable="false" style="margin-bottom:10px;">
             综合进度：{{ statsStore.progressDetails.weightedProgress === null ? '-' : `${statsStore.progressDetails.weightedProgress.toFixed(2)}%` }}；有效工时 {{ statsStore.progressDetails.effectiveHours }}h；未填写 {{ statsStore.progressDetails.missingProgressCount }} 条。
           </el-alert>
-          <el-table :data="statsStore.progressDetails?.records || []" border size="small" class="dt-analysis-table" style="width:100%;" empty-text="当前筛选暂无追踪数据">
+          <el-table :data="pagedAnalysisRows('tracking', statsStore.progressDetails?.records || [])" border size="small" class="dt-analysis-table" style="width:100%;" empty-text="当前筛选暂无追踪数据">
             <el-table-column type="index" label="#" width="55" />
             <el-table-column prop="source_type" label="来源" width="105"><template #default="{ row }">{{ row.source_type === 'product_manager' ? 'AI产品经理' : '研发' }}</template></el-table-column>
             <el-table-column prop="staff.name" label="人员" width="110"><template #default="{ row }">{{ row.staff?.name || '-' }}</template></el-table-column>
@@ -2757,21 +2797,24 @@ function exportStatsData() {
             <el-table-column prop="hours" label="工时/h" width="90" align="right" />
             <el-table-column label="进度/状态" width="130" align="center"><template #default="{ row }">{{ row.delivery_progress === null || row.delivery_progress === undefined ? '-' : `${row.delivery_progress}%` }} · {{ row.progress_status }}</template></el-table-column>
           </el-table>
+          <el-pagination v-model:current-page="analysisPagination.tracking.currentPage" v-model:page-size="analysisPagination.tracking.pageSize" class="dt-analysis-pagination" :page-sizes="ANALYSIS_PAGE_SIZE_OPTIONS" :total="analysisPageTotal(statsStore.progressDetails?.records || [])" layout="total, sizes, prev, pager, next, jumper" @size-change="resetAnalysisPage('tracking')" />
         </el-tab-pane>
         <el-tab-pane label="普通版本（有版本号）">
           <div class="dt-analysis-scope-row"><span>当前范围内有版本号需求</span><el-button size="small" type="success" plain @click="downloadProgressDetails('current')">下载 Excel</el-button></div>
-          <el-table :data="analysisVersionedRows" border size="small" class="dt-analysis-table" style="width:100%;" empty-text="当前范围暂无有版本号需求">
+          <el-table :data="pagedAnalysisRows('versioned', analysisVersionedRows)" border size="small" class="dt-analysis-table" style="width:100%;" empty-text="当前范围暂无有版本号需求">
             <el-table-column prop="person" label="人员" width="110" sortable /><el-table-column prop="version" label="版本号" width="120" sortable /><el-table-column prop="requirement" label="需求" min-width="220" show-overflow-tooltip sortable /><el-table-column prop="hours" label="工时/h" width="90" sortable /><el-table-column label="综合进度" width="120" align="center"><template #default="{ row }"><span :class="row.completed ? 'dt-progress-completed' : 'dt-progress-value'">{{ row.progress === null ? '未填写' : row.completed ? '已完成100%' : `${row.progress.toFixed(2)}%` }}</span></template></el-table-column>
           </el-table>
+          <el-pagination v-model:current-page="analysisPagination.versioned.currentPage" v-model:page-size="analysisPagination.versioned.pageSize" class="dt-analysis-pagination" :page-sizes="ANALYSIS_PAGE_SIZE_OPTIONS" :total="analysisPageTotal(analysisVersionedRows)" layout="total, sizes, prev, pager, next, jumper" @size-change="resetAnalysisPage('versioned')" />
         </el-tab-pane>
         <el-tab-pane label="无版本号版本">
           <div class="dt-analysis-scope-row"><span>当前范围内无版本号需求</span><el-button size="small" type="success" plain @click="downloadProgressDetails('current')">下载 Excel</el-button></div>
-          <el-table :data="analysisNoVersionRows" border size="small" class="dt-analysis-table" style="width:100%;" empty-text="当前范围暂无无版本号需求">
+          <el-table :data="pagedAnalysisRows('noVersion', analysisNoVersionRows)" border size="small" class="dt-analysis-table" style="width:100%;" empty-text="当前范围暂无无版本号需求">
             <el-table-column prop="person" label="人员" width="110" sortable /><el-table-column label="版本号" width="120">无版本号</el-table-column><el-table-column prop="requirement" label="需求" min-width="220" show-overflow-tooltip sortable /><el-table-column prop="hours" label="工时/h" width="90" sortable /><el-table-column label="综合进度" width="120" align="center"><template #default="{ row }"><span :class="row.completed ? 'dt-progress-completed' : 'dt-progress-value'">{{ row.progress === null ? '未填写' : row.completed ? '已完成100%' : `${row.progress.toFixed(2)}%` }}</span></template></el-table-column>
           </el-table>
+          <el-pagination v-model:current-page="analysisPagination.noVersion.currentPage" v-model:page-size="analysisPagination.noVersion.pageSize" class="dt-analysis-pagination" :page-sizes="ANALYSIS_PAGE_SIZE_OPTIONS" :total="analysisPageTotal(analysisNoVersionRows)" layout="total, sizes, prev, pager, next, jumper" @size-change="resetAnalysisPage('noVersion')" />
         </el-tab-pane>
         <el-tab-pane label="AI产品经理">
-          <el-table :data="analysisData.pmRows.slice(0, 20)" border size="small" class="dt-analysis-table" table-layout="auto" style="width:100%;" :default-sort="{ prop: 'total', order: 'descending' }">
+          <el-table :data="pagedAnalysisRows('pm', analysisData.pmRows)" border size="small" class="dt-analysis-table" table-layout="auto" style="width:100%;" :default-sort="{ prop: 'total', order: 'descending' }">
             <el-table-column prop="label" label="AI产品经理" width="1" align="center" sortable class-name="dt-analysis-primary-cell" header-class-name="dt-analysis-primary-header" />
             <el-table-column prop="total" label="工时" align="center" sortable />
             <el-table-column prop="share" label="占比" align="center" sortable>
@@ -2781,9 +2824,10 @@ function exportStatsData() {
             <el-table-column prop="recordCount" label="记录数" align="center" sortable />
             <el-table-column prop="requirementCount" label="需求数" align="center" sortable />
           </el-table>
+          <el-pagination v-model:current-page="analysisPagination.pm.currentPage" v-model:page-size="analysisPagination.pm.pageSize" class="dt-analysis-pagination" :page-sizes="ANALYSIS_PAGE_SIZE_OPTIONS" :total="analysisPageTotal(analysisData.pmRows)" layout="total, sizes, prev, pager, next, jumper" @size-change="resetAnalysisPage('pm')" />
         </el-tab-pane>
         <el-tab-pane label="人员">
-          <el-table :data="analysisData.staffRows.slice(0, 20)" border size="small" class="dt-analysis-table" table-layout="auto" style="width:100%;" :default-sort="{ prop: 'total', order: 'descending' }">
+          <el-table :data="pagedAnalysisRows('staff', analysisData.staffRows)" border size="small" class="dt-analysis-table" table-layout="auto" style="width:100%;" :default-sort="{ prop: 'total', order: 'descending' }">
             <el-table-column prop="label" label="人员" width="1" align="center" sortable class-name="dt-analysis-primary-cell" header-class-name="dt-analysis-primary-header" />
             <el-table-column prop="total" label="工时" align="center" sortable />
             <el-table-column prop="share" label="占比" align="center" sortable>
@@ -2793,9 +2837,10 @@ function exportStatsData() {
             <el-table-column prop="taskCount" label="周期数" align="center" sortable />
             <el-table-column prop="requirementCount" label="需求数" align="center" sortable />
           </el-table>
+          <el-pagination v-model:current-page="analysisPagination.staff.currentPage" v-model:page-size="analysisPagination.staff.pageSize" class="dt-analysis-pagination" :page-sizes="ANALYSIS_PAGE_SIZE_OPTIONS" :total="analysisPageTotal(analysisData.staffRows)" layout="total, sizes, prev, pager, next, jumper" @size-change="resetAnalysisPage('staff')" />
         </el-tab-pane>
         <el-tab-pane label="周期">
-          <el-table :data="analysisData.taskRows" border size="small" class="dt-analysis-table" table-layout="auto" style="width:100%;" :default-sort="{ prop: 'sortTime', order: 'descending' }">
+          <el-table :data="pagedAnalysisRows('task', analysisData.taskRows)" border size="small" class="dt-analysis-table" table-layout="auto" style="width:100%;" :default-sort="{ prop: 'sortTime', order: 'descending' }">
             <el-table-column prop="sortTime" label="周期" width="1" align="center" sortable :sort-method="(a, b) => a.sortTime - b.sortTime" class-name="dt-analysis-primary-cell" header-class-name="dt-analysis-primary-header">
               <template #default="{ row }">{{ row.label }}</template>
             </el-table-column>
@@ -2807,9 +2852,10 @@ function exportStatsData() {
             <el-table-column prop="recordCount" label="记录数" align="center" sortable />
             <el-table-column prop="requirementCount" label="需求数" align="center" sortable />
           </el-table>
+          <el-pagination v-model:current-page="analysisPagination.task.currentPage" v-model:page-size="analysisPagination.task.pageSize" class="dt-analysis-pagination" :page-sizes="ANALYSIS_PAGE_SIZE_OPTIONS" :total="analysisPageTotal(analysisData.taskRows)" layout="total, sizes, prev, pager, next, jumper" @size-change="resetAnalysisPage('task')" />
         </el-tab-pane>
         <el-tab-pane label="版本">
-          <el-table :data="analysisData.versionRows.slice(0, 30)" border size="small" class="dt-analysis-table" table-layout="auto" style="width:100%;" :default-sort="{ prop: 'total', order: 'descending' }">
+          <el-table :data="pagedAnalysisRows('version', analysisData.versionRows)" border size="small" class="dt-analysis-table" table-layout="auto" style="width:100%;" :default-sort="{ prop: 'total', order: 'descending' }">
             <el-table-column prop="label" label="版本" width="1" align="center" sortable class-name="dt-analysis-primary-cell" header-class-name="dt-analysis-primary-header" />
             <el-table-column prop="total" label="工时" align="center" sortable />
             <el-table-column prop="share" label="占比" align="center" sortable>
@@ -2819,9 +2865,10 @@ function exportStatsData() {
             <el-table-column prop="recordCount" label="记录数" align="center" sortable />
             <el-table-column prop="requirementCount" label="需求数" align="center" sortable />
           </el-table>
+          <el-pagination v-model:current-page="analysisPagination.version.currentPage" v-model:page-size="analysisPagination.version.pageSize" class="dt-analysis-pagination" :page-sizes="ANALYSIS_PAGE_SIZE_OPTIONS" :total="analysisPageTotal(analysisData.versionRows)" layout="total, sizes, prev, pager, next, jumper" @size-change="resetAnalysisPage('version')" />
         </el-tab-pane>
         <el-tab-pane label="需求">
-          <el-table :data="analysisData.requirementRows.slice(0, 50)" border size="small" class="dt-analysis-table dt-analysis-requirement-table" table-layout="auto" style="width:100%;" :default-sort="{ prop: 'total', order: 'descending' }">
+          <el-table :data="pagedAnalysisRows('requirement', analysisData.requirementRows)" border size="small" class="dt-analysis-table dt-analysis-requirement-table" table-layout="auto" style="width:100%;" :default-sort="{ prop: 'total', order: 'descending' }">
             <el-table-column prop="label" label="需求" width="130" align="left" header-align="center" show-overflow-tooltip sortable class-name="dt-analysis-requirement-cell" />
             <el-table-column prop="total" label="工时" align="center" sortable />
             <el-table-column prop="share" label="占比" align="center" sortable>
@@ -2830,9 +2877,10 @@ function exportStatsData() {
             <el-table-column v-for="role in analysisRoleMeta.filter(item => showAnalysisRole(item.key))" :key="role.key" :prop="role.key" :label="role.label" align="center" sortable />
             <el-table-column prop="recordCount" label="记录数" align="center" sortable />
           </el-table>
+          <el-pagination v-model:current-page="analysisPagination.requirement.currentPage" v-model:page-size="analysisPagination.requirement.pageSize" class="dt-analysis-pagination" :page-sizes="ANALYSIS_PAGE_SIZE_OPTIONS" :total="analysisPageTotal(analysisData.requirementRows)" layout="total, sizes, prev, pager, next, jumper" @size-change="resetAnalysisPage('requirement')" />
         </el-tab-pane>
         <el-tab-pane label="关键词">
-          <el-table :data="analysisData.keywordRows.slice(0, 30)" border size="small" class="dt-analysis-table" table-layout="auto" style="width:100%;" :default-sort="{ prop: 'total', order: 'descending' }">
+          <el-table :data="pagedAnalysisRows('keyword', analysisData.keywordRows)" border size="small" class="dt-analysis-table" table-layout="auto" style="width:100%;" :default-sort="{ prop: 'total', order: 'descending' }">
             <el-table-column prop="label" label="关键词" width="1" align="center" sortable class-name="dt-analysis-primary-cell" header-class-name="dt-analysis-primary-header" />
             <el-table-column prop="total" label="命中工时" align="center" sortable />
             <el-table-column prop="share" label="占比" align="center" sortable>
@@ -2841,10 +2889,11 @@ function exportStatsData() {
             <el-table-column prop="recordCount" label="记录数" align="center" sortable />
             <el-table-column prop="requirementCount" label="需求数" align="center" sortable />
           </el-table>
+          <el-pagination v-model:current-page="analysisPagination.keyword.currentPage" v-model:page-size="analysisPagination.keyword.pageSize" class="dt-analysis-pagination" :page-sizes="ANALYSIS_PAGE_SIZE_OPTIONS" :total="analysisPageTotal(analysisData.keywordRows)" layout="total, sizes, prev, pager, next, jumper" @size-change="resetAnalysisPage('keyword')" />
           <p class="dt-analysis-note">关键词按固定正则命中需求名称和版本字段，同一记录可命中多个关键词，仅用于识别特征，不用于反推总工时。</p>
         </el-tab-pane>
         <el-tab-pane label="数据质量">
-          <el-table :data="analysisData.qualityRows" border size="small" class="dt-analysis-table" table-layout="auto" style="width:100%;" :default-sort="{ prop: 'total', order: 'descending' }">
+          <el-table :data="pagedAnalysisRows('quality', analysisData.qualityRows)" border size="small" class="dt-analysis-table" table-layout="auto" style="width:100%;" :default-sort="{ prop: 'total', order: 'descending' }">
             <el-table-column prop="label" label="检查项" width="1" align="center" sortable class-name="dt-analysis-primary-cell" header-class-name="dt-analysis-primary-header" />
             <el-table-column prop="recordCount" label="记录数" align="center" sortable />
             <el-table-column prop="total" label="工时" align="center" sortable />
@@ -2852,12 +2901,13 @@ function exportStatsData() {
               <template #default="{ row }">{{ row.share }}%</template>
             </el-table-column>
           </el-table>
+          <el-pagination v-model:current-page="analysisPagination.quality.currentPage" v-model:page-size="analysisPagination.quality.pageSize" class="dt-analysis-pagination" :page-sizes="ANALYSIS_PAGE_SIZE_OPTIONS" :total="analysisPageTotal(analysisData.qualityRows)" layout="total, sizes, prev, pager, next, jumper" @size-change="resetAnalysisPage('quality')" />
         </el-tab-pane>
         <el-tab-pane label="需求进度">
           <el-tooltip :content="WEIGHTED_PROGRESS_TIP" placement="top">
             <p style="margin:0 0 10px; color:var(--color-text-3); font-size:12px;">按人员、版本号/无版本号和需求展示综合进度 ⓘ</p>
           </el-tooltip>
-          <el-table :data="analysisData.progressRows" border size="small" class="dt-analysis-table" style="width:100%;">
+          <el-table :data="pagedAnalysisRows('progress', analysisData.progressRows)" border size="small" class="dt-analysis-table" style="width:100%;">
             <el-table-column prop="person" label="人员" width="110" sortable />
             <el-table-column prop="role" label="岗位" width="100" sortable />
             <el-table-column prop="versionType" label="版本分组" width="100" sortable />
@@ -2874,6 +2924,7 @@ function exportStatsData() {
               </template>
             </el-table-column>
           </el-table>
+          <el-pagination v-model:current-page="analysisPagination.progress.currentPage" v-model:page-size="analysisPagination.progress.pageSize" class="dt-analysis-pagination" :page-sizes="ANALYSIS_PAGE_SIZE_OPTIONS" :total="analysisPageTotal(analysisData.progressRows)" layout="total, sizes, prev, pager, next, jumper" @size-change="resetAnalysisPage('progress')" />
         </el-tab-pane>
         <el-tab-pane label="公式步骤">
           <div class="dt-analysis-formula">
@@ -2898,7 +2949,7 @@ function exportStatsData() {
         <el-tooltip :content="WEIGHTED_PROGRESS_TIP" placement="top"><span>综合进度：工时加权</span></el-tooltip>
         <el-button size="small" type="success" plain @click="downloadProgressDetails('current')">下载 Excel</el-button>
       </div>
-      <el-table :data="progressListRows" border size="small" class="dt-analysis-table" style="width:100%;" empty-text="当前范围暂无需求进度">
+      <el-table :data="pagedAnalysisRows('progressModal', progressListRows)" border size="small" class="dt-analysis-table" style="width:100%;" empty-text="当前范围暂无需求进度">
         <el-table-column type="index" label="#" width="55" />
         <el-table-column prop="person" label="人员" width="110" sortable />
         <el-table-column prop="role" label="岗位" width="120" sortable />
@@ -2908,6 +2959,7 @@ function exportStatsData() {
         <el-table-column prop="hours" label="工时/h" width="90" align="right" sortable />
         <el-table-column label="进度/状态" width="140" align="center"><template #default="{ row }"><span :class="row.completed ? 'dt-progress-completed' : 'dt-progress-value'">{{ row.progress === null ? '未填写' : row.completed ? '已完成100%' : `${row.progress.toFixed(2)}%` }}</span></template></el-table-column>
       </el-table>
+      <el-pagination v-model:current-page="analysisPagination.progressModal.currentPage" v-model:page-size="analysisPagination.progressModal.pageSize" class="dt-analysis-pagination" :page-sizes="ANALYSIS_PAGE_SIZE_OPTIONS" :total="analysisPageTotal(progressListRows)" layout="total, sizes, prev, pager, next, jumper" @size-change="resetAnalysisPage('progressModal')" />
     </el-dialog>
 
     <!-- v3.2.1: 需求总数统计弹窗 -->
@@ -3411,17 +3463,27 @@ function exportStatsData() {
 
 .dt-analysis-kpis {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
   margin-bottom: 12px;
 }
 
 .dt-analysis-kpi {
-  padding: 14px 16px;
+  min-width: 0;
+  padding: 12px 10px;
   border: 1px solid var(--color-border-light, #F2F3F5);
   border-radius: 8px;
   background: #fff;
   text-align: center;
+}
+
+.dt-analysis-kpi-clickable {
+  cursor: pointer;
+  transition: border-color .16s ease, box-shadow .16s ease;
+}
+
+.dt-analysis-kpi-clickable:hover {
+  box-shadow: 0 0 0 2px rgba(22, 93, 255, .10);
 }
 
 .dt-analysis-kpi span {
@@ -3508,6 +3570,11 @@ function exportStatsData() {
 .dt-analysis-table :deep(.dt-analysis-primary-header .cell),
 .dt-analysis-table :deep(.dt-analysis-primary-cell .cell) {
   white-space: nowrap;
+}
+
+.dt-analysis-pagination {
+  justify-content: flex-end;
+  margin: 12px 0 4px;
 }
 
 .dt-analysis-requirement-table :deep(th.is-left),
