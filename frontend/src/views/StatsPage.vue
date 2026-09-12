@@ -108,6 +108,7 @@ const showBackTop = ref(false)
 const hideZeroValueBars = ref(true)
 const departmentListTab = ref('engineering')
 const productSourceFilter = ref('')
+const productManagerFilter = ref('')
 
 /* ========== 弹窗状态 ========== */
 const reqStatsDialogVisible = ref(false)
@@ -603,9 +604,58 @@ function productDemandBarStyle(row) {
 }
 
 const productRecords = computed(() => statsStore.productManagerRecords || [])
+const productChartSources = computed(() => (statsStore.demandSources || []).slice().sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0)))
+const productManagerChartRows = computed(() => {
+  const sourceList = productChartSources.value
+  const sourceByName = new Map(sourceList.map(source => [source.name, source]))
+  const grouped = new Map()
+  for (const record of productRecords.value) {
+    const staffName = record.staff?.name || record.staff_name || '-'
+    if (!grouped.has(staffName)) {
+      grouped.set(staffName, {
+        staffName,
+        total: 0,
+        sourceValues: Object.fromEntries(sourceList.map(source => [source.id, 0]))
+      })
+    }
+    const row = grouped.get(staffName)
+    const hours = toNumber(record.hours)
+    row.total += hours
+    const names = (record.demand_sources || []).filter(name => sourceByName.has(name))
+    if (!names.length) continue
+    const rawWeights = record.demand_source_weights || {}
+    const supplied = names.map(name => Number(rawWeights[name])).map(value => Number.isFinite(value) && value >= 0 ? value : 0)
+    const weightTotal = supplied.reduce((sum, value) => sum + value, 0)
+    names.forEach((name, index) => {
+      const weight = weightTotal > 0 ? supplied[index] / weightTotal : 1 / names.length
+      const source = sourceByName.get(name)
+      row.sourceValues[source.id] += hours * weight
+    })
+  }
+  return [...grouped.values()]
+    .map(row => ({
+      ...row,
+      total: Number(row.total.toFixed(1)),
+      sourceValues: Object.fromEntries(Object.entries(row.sourceValues).map(([id, value]) => [id, Number(value.toFixed(1))]))
+    }))
+    .sort((a, b) => b.total - a.total || a.staffName.localeCompare(b.staffName, 'zh-Hans-CN'))
+})
+const productManagerChartMax = computed(() => Math.max(...productManagerChartRows.value.flatMap(row => [row.total, ...productChartSources.value.map(source => row.sourceValues[source.id] || 0)]), 1))
+
+function productManagerChartBarStyle(value, color) {
+  return {
+    height: `${value > 0 ? Math.max((value / productManagerChartMax.value) * 170, 4) : 0}px`,
+    background: color
+  }
+}
+
 const filteredProductRecords = computed(() => {
-  if (!productSourceFilter.value) return productRecords.value
-  return productRecords.value.filter(record => (record.demand_sources || []).includes(productSourceFilter.value))
+  return productRecords.value.filter(record => {
+    const staffName = record.staff?.name || record.staff_name || '-'
+    const managerMatch = !productManagerFilter.value || staffName === productManagerFilter.value
+    const sourceMatch = !productSourceFilter.value || (record.demand_sources || []).includes(productSourceFilter.value)
+    return managerMatch && sourceMatch
+  })
 })
 const sortedProductRecords = computed(() => {
   const records = [...filteredProductRecords.value]
@@ -682,6 +732,11 @@ function getProductMedalRank(row) {
 
 function selectProductDemandSource(source = '') {
   productSourceFilter.value = productSourceFilter.value === source ? '' : source
+}
+
+function selectProductManager(name = '') {
+  productManagerFilter.value = productManagerFilter.value === name ? '' : name
+  productSourceFilter.value = ''
 }
 
 const departmentSummaryCardCount = computed(() => roleStore.list.length + 5)
@@ -2134,23 +2189,39 @@ function exportStatsData() {
 
         <div class="dt-data-card dt-product-demand-panel" style="padding:24px; margin-bottom:24px;">
           <div class="dt-product-demand-header">
-            <h3 style="font-size:15px; font-weight:600; color:var(--color-text-1); margin:0;">AI产品经理工时分布（按需求方） — {{ filterLabel }}</h3>
-            <span class="dt-product-demand-note">点击柱子筛选下方列表</span>
+            <h3 style="font-size:15px; font-weight:600; color:var(--color-text-1); margin:0;">AI产品经理工时分布（按人员与需求方） — {{ filterLabel }}</h3>
+            <div class="dt-product-demand-chart-actions">
+              <span class="dt-product-demand-note">点击产品经理名称筛选下方列表</span>
+              <span class="dt-product-demand-zero-toggle">隐藏零值 <el-switch v-model="hideZeroValueBars" size="small" aria-label="隐藏零值产品经理柱状图" /></span>
+            </div>
           </div>
-          <div v-if="productRecords.length" class="dt-product-demand-chart">
-            <div v-for="row in productDemandRows" :key="row.id || row.name" class="dt-product-demand-group" :class="{ 'is-selected': productSourceFilter === row.name }" @click="openProductAnalysis(row.id)">
-              <div class="dt-product-demand-bars"><div class="dt-product-demand-bar" :style="productDemandBarStyle(row)"><span v-if="row.product > 0">{{ row.product.toFixed(1) }}</span></div></div>
-              <div class="dt-product-demand-label">{{ row.name }}</div>
+          <div v-if="productRecords.length" class="dt-product-manager-chart">
+            <div class="dt-product-manager-legend">
+              <span v-for="source in productChartSources" :key="source.id"><i :style="{ background: source.color }"></i>{{ source.name }}</span>
+              <span><i style="background:#F53F3F"></i>总计</span>
+            </div>
+            <div class="dt-product-manager-chart-groups">
+              <div v-for="row in productManagerChartRows" :key="row.staffName" class="dt-product-manager-group" :class="{ 'is-selected': productManagerFilter === row.staffName }">
+                <div class="dt-product-manager-bars">
+                  <template v-for="source in productChartSources" :key="source.id">
+                    <div v-if="!hideZeroValueBars || row.sourceValues[source.id] > 0" class="dt-product-manager-bar" :style="productManagerChartBarStyle(row.sourceValues[source.id] || 0, source.color)">
+                      <span v-if="row.sourceValues[source.id] > 0">{{ row.sourceValues[source.id].toFixed(1) }}</span>
+                    </div>
+                  </template>
+                  <div v-if="!hideZeroValueBars || row.total > 0" class="dt-product-manager-bar dt-product-manager-total-bar" :style="productManagerChartBarStyle(row.total, '#F53F3F')"><span>{{ row.total.toFixed(1) }}</span></div>
+                </div>
+                <button type="button" class="dt-product-manager-label" @click="selectProductManager(row.staffName)">{{ row.staffName }}</button>
+              </div>
             </div>
           </div>
           <div v-else class="dt-empty" style="padding:28px;">当前范围暂无AI产品经理工时</div>
-          <el-tooltip content="多选需求方按保存权重均摊；卡片和明细总工时按原始记录只计一次。" placement="top"><div class="dt-product-demand-tip">ⓘ 当前筛选：{{ productSourceFilter || '全部需求方' }}</div></el-tooltip>
+          <el-tooltip content="多选需求方按保存权重均摊；每名AI产品经理的总计柱按原始记录只计一次；零值柱子由开关控制。" placement="top"><div class="dt-product-demand-tip">ⓘ 当前筛选：{{ productManagerFilter || productSourceFilter || '全部产品经理' }}</div></el-tooltip>
         </div>
 
         <div class="dt-data-card">
           <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 16px; border-bottom:1px solid var(--color-border-light, #F2F3F5);">
             <strong>AI产品经理工时明细</strong>
-            <span class="dt-product-demand-note">独立存储 · {{ productSourceFilter || '全部需求方' }}</span>
+            <span class="dt-product-demand-note">独立存储 · {{ productManagerFilter || productSourceFilter || '全部产品经理' }}</span>
           </div>
           <div v-if="sortedProductRecords.length > 0" style="padding:10px 16px; border-bottom:1px solid var(--color-border-light, #F2F3F5); text-align:right;">
             <el-radio-group v-model="pmSortOrder" size="small">
@@ -3157,6 +3228,118 @@ function exportStatsData() {
   color: var(--color-text-3, #86909C);
   font-size: 12px;
   white-space: nowrap;
+}
+
+.dt-product-demand-chart-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.dt-product-demand-zero-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-2, #4E5969);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.dt-product-manager-chart {
+  min-height: 260px;
+  padding: 8px 16px 34px;
+  border-bottom: 1px solid var(--color-border, #E5E6EB);
+}
+
+.dt-product-manager-legend {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 8px;
+  color: var(--color-text-2, #4E5969);
+  font-size: 12px;
+}
+
+.dt-product-manager-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dt-product-manager-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.dt-product-manager-chart-groups {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  min-height: 220px;
+}
+
+.dt-product-manager-group {
+  flex: 1 1 0;
+  min-width: 120px;
+  padding: 8px 6px 0;
+  border-radius: 6px;
+  text-align: center;
+  transition: background-color .2s ease;
+}
+
+.dt-product-manager-group:hover,
+.dt-product-manager-group.is-selected {
+  background: var(--color-primary-light, #E8F3FF);
+}
+
+.dt-product-manager-bars {
+  height: 190px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 4px;
+  border-bottom: 1px solid var(--color-border, #E5E6EB);
+}
+
+.dt-product-manager-bar {
+  position: relative;
+  width: clamp(18px, 2.5vw, 34px);
+  min-height: 0;
+  border-radius: 4px 4px 0 0;
+  transition: height .2s ease;
+}
+
+.dt-product-manager-bar span {
+  position: absolute;
+  left: 50%;
+  top: -20px;
+  transform: translateX(-50%);
+  color: var(--color-text-1, #1D2129);
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.dt-product-manager-total-bar {
+  margin-left: 4px;
+}
+
+.dt-product-manager-label {
+  margin-top: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-2, #4E5969);
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.dt-product-manager-label:hover {
+  color: var(--color-primary, #165DFF);
+  text-decoration: underline;
 }
 
 .dt-product-demand-chart {
