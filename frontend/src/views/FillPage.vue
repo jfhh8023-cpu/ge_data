@@ -14,8 +14,10 @@ import api from '../api'
 import { broadcastDataChange, SYNC_EVENTS } from '../utils/sync'
 import { parseExcelFile, validateHeaders, generateAndDownloadExcel, uploadExcelToServer, downloadTemplate } from '../utils/excel'
 import { roleLabel } from '../utils/roles'
+import { useDemandSourceStore } from '../stores/demandSources'
 
 const route = useRoute()
+const demandSourceStore = useDemandSourceStore()
 const loading = ref(true)
 const submitting = ref(false)
 const savingDraft = ref(false)
@@ -37,7 +39,7 @@ const editingHistoryTask = ref(null)
 const currentTask = computed(() => editingHistoryTask.value ?? fillData.value?.task ?? null)
 const isProductManager = computed(() => fillData.value?.staff?.role === 'ai_pm')
 const PROGRESS_OPTIONS = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-const DEMAND_SOURCE_OPTIONS = ['内部需求', '客户需求', '对外服务', '其他需求']
+const DEMAND_SOURCE_OPTIONS = computed(() => demandSourceStore.activeNames)
 const HISTORY_PROGRESS_DISPLAY = '100%'
 
 /** 是否有首选任务（用于显示"返回首选"按钮） */
@@ -63,7 +65,7 @@ function createEmptyRow() {
 }
 
 function defaultDemandSourceWeights(sources = []) {
-  const list = [...new Set((Array.isArray(sources) ? sources : []).filter(source => DEMAND_SOURCE_OPTIONS.includes(source)))]
+  const list = [...new Set((Array.isArray(sources) ? sources : []).filter(source => DEMAND_SOURCE_OPTIONS.value.includes(source)))]
   if (!list.length) return {}
   const equal = Number((100 / list.length).toFixed(2))
   const weights = Object.fromEntries(list.map(source => [source, equal]))
@@ -108,6 +110,8 @@ onMounted(async () => {
       api.get('/pm').catch(() => ({ data: [] }))
     ])
     fillData.value = fillRes.data
+    if (Array.isArray(fillData.value?.demandSources)) demandSourceStore.apply(fillData.value.demandSources)
+    else await demandSourceStore.fetchAll()
     // 初始化 PM 选项（仅活跃的 PM）
     const pmList = Array.isArray(pmRes.data) ? pmRes.data : []
     pmOptions.value = pmList
@@ -388,7 +392,7 @@ function parseRecognizeText() {
   for (const rawLine of lines) {
     if (isProductManager.value) {
       let remaining = rawLine.trim()
-      const demand_sources = DEMAND_SOURCE_OPTIONS.filter(source => remaining.includes(source))
+      const demand_sources = DEMAND_SOURCE_OPTIONS.value.filter(source => remaining.includes(source))
       demand_sources.forEach(source => { remaining = remaining.replaceAll(source, ' ') })
       const progressMatch = remaining.match(/(?:进度\s*)?(100|[0-9]0)\s*%/)
       const delivery_progress = progressMatch ? Number(progressMatch[1]) : null
@@ -528,10 +532,10 @@ async function handleFillImport(event) {
         ? String(pickPmValue(r)).split(/[,，、\s]+/).filter(Boolean)
         : [],
       demand_sources: isProductManager.value
-        ? String(r['需求方'] || '').split(/[,，、\s]+/).filter(source => DEMAND_SOURCE_OPTIONS.includes(source))
+        ? String(r['需求方'] || '').split(/[,，、\s]+/).filter(source => DEMAND_SOURCE_OPTIONS.value.includes(source))
         : [],
       demand_source_weights: isProductManager.value
-        ? defaultDemandSourceWeights(String(r['需求方'] || '').split(/[,，、\s]+/).filter(source => DEMAND_SOURCE_OPTIONS.includes(source)))
+        ? defaultDemandSourceWeights(String(r['需求方'] || '').split(/[,，、\s]+/).filter(source => DEMAND_SOURCE_OPTIONS.value.includes(source)))
         : {},
       delivery_progress: r['交付进度'] === '' || r['交付进度'] === undefined ? null : Number(String(r['交付进度']).replace('%', '')),
       hours: parseFloat(r['工时(小时)']) || 0

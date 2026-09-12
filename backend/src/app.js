@@ -11,6 +11,7 @@ const errorHandler = require('./middleware/errorHandler');
 const { ensureAutoTaskTables, startAutoTaskScheduler } = require('./services/AutoTaskService');
 const { ensurePersonStatusTables } = require('./services/PersonStatusService');
 const { ensureStaffRoleSchema, ensureMatchGroupRoleSchema } = require('./services/RoleService');
+const { ensureDemandSourceSchema } = require('./services/DemandSourceService');
 const ProductManagerWorkRecord = require('./models/ProductManagerWorkRecord');
 const { ensureDutyCalendarTables } = require('./services/DutyCalendarService');
 const { startOfficialHolidaySyncScheduler } = require('./services/OfficialHolidaySyncService');
@@ -26,6 +27,7 @@ app.use(express.urlencoded({ extended: true }));
 /* ========== 路由注册 ========== */
 app.use('/api/staff',       require('./routes/staff'));
 app.use('/api/roles',       require('./routes/roles'));
+app.use('/api/demand-sources', require('./routes/demandSources'));
 app.use('/api/tasks',       require('./routes/tasks'));
 app.use('/api/records',     require('./routes/records'));
 app.use('/api/report',      require('./routes/report'));
@@ -61,10 +63,17 @@ async function start() {
     await sequelize.authenticate();
     console.log('[DB] MySQL 连接成功');
     await ensureStaffRoleSchema();
+    await ensureDemandSourceSchema();
     await ProductManagerWorkRecord.sync();
     const productRecordColumns = await sequelize.getQueryInterface().describeTable('product_manager_work_records');
     if (!productRecordColumns.demand_source_weights) {
       await sequelize.getQueryInterface().addColumn('product_manager_work_records', 'demand_source_weights', {
+        type: require('sequelize').DataTypes.JSON,
+        allowNull: true
+      });
+    }
+    if (!productRecordColumns.demand_source_ids) {
+      await sequelize.getQueryInterface().addColumn('product_manager_work_records', 'demand_source_ids', {
         type: require('sequelize').DataTypes.JSON,
         allowNull: true
       });

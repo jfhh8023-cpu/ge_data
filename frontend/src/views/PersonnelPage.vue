@@ -9,6 +9,7 @@ import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useStaffStore } from '../stores/staff'
 import { usePmStore } from '../stores/pm'
 import { useRoleStore } from '../stores/roles'
+import { useDemandSourceStore } from '../stores/demandSources'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, Setting } from '@element-plus/icons-vue'
 import BackButton from '../components/BackButton.vue'
@@ -22,6 +23,7 @@ import { broadcastDataChange, SYNC_EVENTS } from '../utils/sync'
 const staffStore = useStaffStore()
 const pmStore = usePmStore()
 const roleStore = useRoleStore()
+const demandSourceStore = useDemandSourceStore()
 const authStore = useAuthStore()
 const pageLoading = ref(true)
 
@@ -248,6 +250,9 @@ const roleDrafts = ref([])
 const roleSavingKey = ref('')
 const newRoleSaving = ref(false)
 const newRole = ref({ name: '', short_name: '', color: '#14B8A6' })
+const demandSourceSavingId = ref('')
+const newDemandSourceSaving = ref(false)
+const newDemandSource = ref({ name: '', color: '#165DFF', sort_order: 50, is_active: true })
 
 function refreshRoleDrafts() {
   roleDrafts.value = roleStore.list.map(role => ({ ...role }))
@@ -255,9 +260,43 @@ function refreshRoleDrafts() {
 
 async function openRoleConfig() {
   await roleStore.fetchAll({ force: true })
+  await demandSourceStore.fetchAll({ force: true, includeInactive: true })
   refreshRoleDrafts()
   newRole.value = { name: '', short_name: '', color: '#14B8A6' }
+  newDemandSource.value = { name: '', color: '#165DFF', sort_order: 50, is_active: true }
   roleConfigVisible.value = true
+}
+
+async function saveDemandSource(source) {
+  demandSourceSavingId.value = source.id
+  try {
+    await demandSourceStore.update(source.id, { name: source.name, color: source.color, sort_order: source.sort_order, is_active: source.is_active })
+    ElMessage.success('需求方配置已保存并全局生效')
+  } catch (err) {
+    ElMessage.error(err.response?.data?.message || '需求方配置保存失败')
+  } finally { demandSourceSavingId.value = '' }
+}
+
+async function createDemandSource() {
+  newDemandSourceSaving.value = true
+  try {
+    await demandSourceStore.create(newDemandSource.value)
+    newDemandSource.value = { name: '', color: '#165DFF', sort_order: 50, is_active: true }
+    ElMessage.success('新需求方已新增并全局生效')
+  } catch (err) {
+    ElMessage.error(err.response?.data?.message || '需求方新增失败')
+  } finally { newDemandSourceSaving.value = false }
+}
+
+async function deleteDemandSource(source) {
+  try {
+    await ElMessageBox.confirm(`需求方“${source.name}”将执行引用检查。已被引用时会被阻止删除，确认继续？`, '删除需求方', { confirmButtonText: '继续检查', cancelButtonText: '取消', type: 'warning' })
+    await demandSourceStore.remove(source.id)
+    ElMessage.success('需求方已删除')
+  } catch (err) {
+    if (err === 'cancel' || err === 'close') return
+    ElMessage.error(err.response?.data?.message || '需求方删除失败')
+  }
 }
 
 async function saveRoleConfig(role) {
@@ -779,6 +818,25 @@ async function updatePmStatus(pm, status) {
             <el-button type="primary" :loading="newRoleSaving" @click="createRoleConfig">新增</el-button>
           </div>
         </div>
+        <div class="dt-demand-source-config">
+          <div class="dt-role-config-add-title">AI产品经理需求方配置</div>
+          <p class="dt-demand-source-config-tip">新增和改名全局生效；已被工时记录引用的需求方不能删除，只能停用或修改名称。</p>
+          <div v-for="source in demandSourceStore.list" :key="source.id" class="dt-demand-source-row">
+            <el-color-picker v-model="source.color" />
+            <el-input v-model="source.name" maxlength="30" placeholder="需求方名称" />
+            <el-input-number v-model="source.sort_order" :min="0" :max="9999" controls-position="right" />
+            <el-switch v-model="source.is_active" active-text="启用" inactive-text="停用" />
+            <el-button type="primary" :loading="demandSourceSavingId === source.id" @click="saveDemandSource(source)">保存</el-button>
+            <el-button type="danger" link :disabled="source.is_system" @click="deleteDemandSource(source)">删除</el-button>
+          </div>
+          <div class="dt-demand-source-row dt-demand-source-add">
+            <el-color-picker v-model="newDemandSource.color" />
+            <el-input v-model="newDemandSource.name" maxlength="30" placeholder="新增需求方名称" />
+            <el-input-number v-model="newDemandSource.sort_order" :min="0" :max="9999" controls-position="right" />
+            <el-switch v-model="newDemandSource.is_active" active-text="启用" inactive-text="停用" />
+            <el-button type="primary" :loading="newDemandSourceSaving" @click="createDemandSource">新增</el-button>
+          </div>
+        </div>
         <template #footer>
           <el-button @click="roleConfigVisible = false">关闭</el-button>
         </template>
@@ -975,6 +1033,27 @@ async function updatePmStatus(pm, status) {
   margin-bottom: 10px;
   font-size: 14px;
   font-weight: 600;
+}
+.dt-demand-source-config {
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border-light, #E5E6EB);
+}
+.dt-demand-source-config-tip {
+  margin: 0 0 10px;
+  color: var(--color-text-3);
+  font-size: 12px;
+}
+.dt-demand-source-row {
+  display: grid;
+  grid-template-columns: 40px minmax(150px, 1fr) 110px 150px 64px 54px;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.dt-demand-source-add {
+  padding-top: 8px;
+  border-top: 1px dashed var(--color-border-light, #E5E6EB);
 }
 
 /* v1.6.1: 链接操作按钮横排加粗加大 */

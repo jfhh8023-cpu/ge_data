@@ -26,6 +26,9 @@ export const useStatsStore = defineStore('stats', {
     pmDistribution: [],
     productManagerRecords: [],
     productDemandDistribution: [],
+    demandSources: [],
+    progressDetails: null,
+    progressDetailsLoading: false,
     loading: false,
     /* 个人统计 */
     personalData: null,
@@ -57,6 +60,7 @@ export const useStatsStore = defineStore('stats', {
         this.pmDistribution = data.pmDistribution || []
         this.productManagerRecords = data.productManagerRecords || []
         this.productDemandDistribution = data.productDemandDistribution || []
+        this.demandSources = data.demandSources || []
       } finally { this.loading = false }
     },
     /** 个人统计 */
@@ -70,6 +74,14 @@ export const useStatsStore = defineStore('stats', {
         const res = await api.get(`/stats/personal/${staffId}`, { params })
         this.personalData = res.data.data || res.data
       } finally { this.personalLoading = false }
+    },
+    async fetchProgressDetails(params = {}) {
+      this.progressDetailsLoading = true
+      try {
+        const res = await api.get('/stats/progress-details', { params })
+        this.progressDetails = res.data.data || res.data || null
+        return this.progressDetails
+      } finally { this.progressDetailsLoading = false }
     },
     /** PM 聚焦统计 */
     async fetchPmFocus(pmId, { year, quarter, taskId } = {}) {

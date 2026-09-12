@@ -65,6 +65,9 @@ const PRODUCT_SOURCE_COLORS = {
   '对外服务': '#F77234',
   '其他需求': '#0E9384'
 }
+function productSourceColor(name) {
+  return statsStore.demandSources?.find(source => source.name === name)?.color || PRODUCT_SOURCE_COLORS[name] || PM_THEME_COLOR
+}
 const analysisRoleMeta = computed(() => roleStore.list.map(role => ({
   key: role.key,
   label: role.short_name,
@@ -110,7 +113,12 @@ const productSourceFilter = ref('')
 const reqStatsDialogVisible = ref(false)
 const staffDialogVisible = ref(false)
 const analysisDialogVisible = ref(false)
+const progressListDialogVisible = ref(false)
+const progressListTitle = ref('')
+const progressListRows = ref([])
 const analysisDimension = ref('total')
+const analysisSourceType = ref('')
+const analysisDemandSourceId = ref('')
 
 /* ========== 筛选状态（共享） ========== */
 const selectedYear = ref(CURRENT_YEAR)
@@ -590,7 +598,7 @@ function productDemandBarStyle(row) {
   const value = Number(row.product || 0)
   return {
     height: `${value > 0 ? Math.max((value / productDemandMax.value) * 170, 4) : 0}px`,
-    background: PRODUCT_SOURCE_COLORS[row.name] || PM_THEME_COLOR
+    background: row.color || productSourceColor(row.name)
   }
 }
 
@@ -619,6 +627,8 @@ const productSummary = computed(() => {
     weightedProgress: weightedProgress(records)
   }
 })
+const analysisVersionedRows = computed(() => analysisData.value.progressRows.filter(row => row.versionType === '有版本号'))
+const analysisNoVersionRows = computed(() => analysisData.value.progressRows.filter(row => row.versionType === '无版本号'))
 const engineeringRoles = computed(() => roleStore.list.filter(role => role.key !== 'ai_pm'))
 const engineeringRecords = computed(() => (statsStore.records || []).filter(record => {
   const role = normalizeRole(record.staff?.role || record.role)
@@ -752,7 +762,10 @@ const analysisDimensionMeta = computed(() => {
 
 const analysisVisibleRoles = computed(() => {
   const role = analysisDimensionMeta.value.role
-  return role ? [role] : analysisRoleMeta.value.map(item => item.key)
+  if (role) return [role]
+  if (analysisSourceType.value === 'product_manager') return ['ai_pm']
+  if (analysisSourceType.value === 'engineering') return analysisRoleMeta.value.filter(item => item.key !== 'ai_pm').map(item => item.key)
+  return analysisRoleMeta.value.map(item => item.key)
 })
 
 function showAnalysisRole(role) {
@@ -760,7 +773,12 @@ function showAnalysisRole(role) {
 }
 
 const analysisRecords = computed(() => {
-  const records = statsStore.records || []
+  const sourceRecords = statsStore.records || []
+  const records = analysisSourceType.value
+    ? sourceRecords.filter(record => analysisSourceType.value === 'product_manager'
+      ? record.is_product_manager_record
+      : !record.is_product_manager_record)
+    : sourceRecords
   const role = analysisDimensionMeta.value.role
   return role ? records.filter(r => normalizeRole(r.staff?.role || r.role) === role) : records
 })
@@ -911,9 +929,54 @@ const analysisRoleSummaryText = computed(() => {
   return `${roleStore.list.map(role => `${role.name} ${Number(analysisData.value.roleTotals[role.key] || 0).toFixed(1)}h`).join('，')}。`
 })
 
-function openAnalysisDialog(dimension = 'total') {
+async function openAnalysisDialog(dimension = 'total', sourceType = '', demandSourceId = '') {
   analysisDimension.value = dimension
+  analysisSourceType.value = sourceType
+  analysisDemandSourceId.value = demandSourceId
   analysisDialogVisible.value = true
+  await loadProgressDetails('all')
+}
+
+async function loadProgressDetails(scope = 'all') {
+  const params = {
+    scope,
+    year: selectedYear.value,
+    quarter: selectedQuarter.value,
+    taskId: effectiveTaskId.value,
+    sourceType: analysisSourceType.value,
+    demandSourceId: analysisDemandSourceId.value
+  }
+  await statsStore.fetchProgressDetails(params)
+}
+
+function downloadProgressDetails(scope = 'all') {
+  const params = new URLSearchParams({
+    scope,
+    year: String(selectedYear.value),
+    quarter: selectedQuarter.value,
+    taskId: effectiveTaskId.value,
+    sourceType: analysisSourceType.value,
+    demandSourceId: analysisDemandSourceId.value
+  })
+  const base = api.defaults.baseURL || '/api'
+  const url = `${base}/stats/export.xlsx?${params.toString()}`
+  const link = document.createElement('a')
+  link.href = url
+  link.target = '_blank'
+  link.rel = 'noopener'
+  link.click()
+}
+
+function openProductAnalysis(demandSourceId = '') {
+  productSourceFilter.value = demandSourceId ? (statsStore.demandSources.find(source => source.id === demandSourceId)?.name || '') : ''
+  openAnalysisDialog('ai_pm', 'product_manager', demandSourceId)
+}
+
+function openProgressList(roleKey = '') {
+  const role = roleKey ? roleStore.list.find(item => item.key === roleKey) : null
+  progressListTitle.value = role ? `${role.name}需求进度明细` : `${analysisDimensionMeta.value.label}需求进度明细`
+  progressListRows.value = analysisData.value.progressRows.filter(row => !role || row.role === role.name || row.role === role.key)
+  progressListDialogVisible.value = true
 }
 
 function workloadReportUrl(extra = {}) {
@@ -1298,7 +1361,7 @@ function drawProductDepartmentChart() {
     const barHeight = value * yScale
     const y = padding.top + chartH - barHeight
     if (barVisible && barHeight > 0) {
-      ctx.fillStyle = PRODUCT_SOURCE_COLORS[row.name] || PM_THEME_COLOR
+      ctx.fillStyle = row.color || productSourceColor(row.name)
       ctx.beginPath()
       const radius = 3
       ctx.moveTo(x, y + radius)
@@ -1323,13 +1386,25 @@ function drawProductDepartmentChart() {
   rows.forEach(row => {
     const label = row.name
     const itemWidth = 10 + 5 + ctx.measureText(label).width
-    ctx.fillStyle = PRODUCT_SOURCE_COLORS[label] || PM_THEME_COLOR
+    ctx.fillStyle = productSourceColor(label)
     ctx.fillRect(legendX, legendY - 7, 10, 10)
     ctx.fillStyle = '#4E5969'
     ctx.textAlign = 'left'
     ctx.fillText(label, legendX + 15, legendY + 2)
     legendX += itemWidth + 16
   })
+}
+
+function onProductDepartmentChartClick(event) {
+  const canvas = departmentProductChartRef.value
+  const rows = productDemandRows.value
+  if (!canvas || !rows.length) return
+  const rect = canvas.getBoundingClientRect()
+  const padding = { left: 50, right: 24 }
+  const groupWidth = (rect.width - padding.left - padding.right) / rows.length
+  const index = Math.floor((event.clientX - rect.left - padding.left) / groupWidth)
+  const row = rows[index]
+  if (row) openProductAnalysis(row.id)
 }
 
 /* v3.2.1: Canvas 点击/悬停事件 — PM 标签跳转 */
@@ -1904,7 +1979,7 @@ function exportStatsData() {
           <div class="dt-data-card dt-department-chart-card">
             <h3>AI产品工时分布 · 按需求方 — {{ filterLabel }}</h3>
             <div class="dt-pm-chart-stage" :data-hide-zero-bars="hideZeroValueBars ? 'true' : 'false'">
-              <canvas ref="departmentProductChartRef" :height="CANVAS_HEIGHT"></canvas>
+              <canvas ref="departmentProductChartRef" :height="CANVAS_HEIGHT" @click="onProductDepartmentChartClick"></canvas>
               <div class="dt-pm-chart-zero-toggle" title="开启后隐藏数值为0的柱子">
                 <span>隐藏零值</span>
                 <el-switch v-model="hideZeroValueBars" size="small" aria-label="隐藏零值产品柱状图" />
@@ -2000,15 +2075,15 @@ function exportStatsData() {
       <!-- ===== Tab 2: AI产品经理工时 ===== -->
       <el-tab-pane label="AI产品展示" name="productHours">
         <div class="dt-stat-cards dt-stat-cards-single-row" :style="{ '--dt-stat-card-count': 5 }">
-          <div class="dt-stat-card dt-stat-card-clickable" @click="selectProductDemandSource('')">
+          <div class="dt-stat-card dt-stat-card-clickable" @click="openProductAnalysis()">
             <div class="dt-stat-card-label">{{ filterLabel }} AI产品经理总工时</div>
             <div class="dt-stat-card-value" :style="{ color: PRODUCT_CARD_COLORS.total }">{{ productSummary.totalHours.toFixed(1) }} <span class="dt-stat-card-unit">小时</span></div>
             <el-tooltip :content="WEIGHTED_PROGRESS_TIP" placement="top"><div class="dt-stat-card-progress">综合进度：<span class="dt-stat-card-progress-value" :style="{ color: PRODUCT_CARD_COLORS.total }">{{ productSummary.weightedProgress === null ? '-' : `${productSummary.weightedProgress.toFixed(2)}%` }}</span></div></el-tooltip>
           </div>
-          <div class="dt-stat-card"><div class="dt-stat-card-label">{{ filterLabel }} 提交记录数</div><div class="dt-stat-card-value" :style="{ color: PRODUCT_CARD_COLORS.records }">{{ productSummary.recordCount }}</div></div>
-          <div class="dt-stat-card"><div class="dt-stat-card-label">{{ filterLabel }} 统计需求总数</div><div class="dt-stat-card-value" :style="{ color: PRODUCT_CARD_COLORS.requirements }">{{ productSummary.requirementCount }}</div></div>
-          <div class="dt-stat-card"><div class="dt-stat-card-label">{{ filterLabel }} 收集任务数</div><div class="dt-stat-card-value" :style="{ color: PRODUCT_CARD_COLORS.tasks }">{{ productSummary.taskCount }}</div></div>
-          <div class="dt-stat-card"><div class="dt-stat-card-label">{{ filterLabel }} 产品人员数</div><div class="dt-stat-card-value" :style="{ color: PRODUCT_CARD_COLORS.staff }">{{ productSummary.staffCount }}</div></div>
+          <div class="dt-stat-card dt-stat-card-clickable" @click="openProductAnalysis()"><div class="dt-stat-card-label">{{ filterLabel }} 提交记录数</div><div class="dt-stat-card-value" :style="{ color: PRODUCT_CARD_COLORS.records }">{{ productSummary.recordCount }}</div></div>
+          <div class="dt-stat-card dt-stat-card-clickable" @click="openProductAnalysis()"><div class="dt-stat-card-label">{{ filterLabel }} 统计需求总数</div><div class="dt-stat-card-value" :style="{ color: PRODUCT_CARD_COLORS.requirements }">{{ productSummary.requirementCount }}</div></div>
+          <div class="dt-stat-card dt-stat-card-clickable" @click="openProductAnalysis()"><div class="dt-stat-card-label">{{ filterLabel }} 收集任务数</div><div class="dt-stat-card-value" :style="{ color: PRODUCT_CARD_COLORS.tasks }">{{ productSummary.taskCount }}</div></div>
+          <div class="dt-stat-card dt-stat-card-clickable" @click="openProductAnalysis()"><div class="dt-stat-card-label">{{ filterLabel }} 产品人员数</div><div class="dt-stat-card-value" :style="{ color: PRODUCT_CARD_COLORS.staff }">{{ productSummary.staffCount }}</div></div>
         </div>
 
         <div class="dt-data-card dt-product-demand-panel" style="padding:24px; margin-bottom:24px;">
@@ -2017,7 +2092,7 @@ function exportStatsData() {
             <span class="dt-product-demand-note">点击柱子筛选下方列表</span>
           </div>
           <div v-if="productRecords.length" class="dt-product-demand-chart">
-            <div v-for="row in productDemandRows" :key="row.name" class="dt-product-demand-group" :class="{ 'is-selected': productSourceFilter === row.name }" @click="selectProductDemandSource(row.name)">
+            <div v-for="row in productDemandRows" :key="row.id || row.name" class="dt-product-demand-group" :class="{ 'is-selected': productSourceFilter === row.name }" @click="openProductAnalysis(row.id)">
               <div class="dt-product-demand-bars"><div class="dt-product-demand-bar" :style="productDemandBarStyle(row)"><span v-if="row.product > 0">{{ row.product.toFixed(1) }}</span></div></div>
               <div class="dt-product-demand-label">{{ row.name }}</div>
             </div>
@@ -2054,12 +2129,12 @@ function exportStatsData() {
       <!-- ===== Tab 3: AI研发人员工时 ===== -->
       <el-tab-pane label="AI研发展示" name="engineeringHours">
         <div class="dt-stat-cards dt-stat-cards-single-row" :style="{ '--dt-stat-card-count': engineeringSummaryCardCount }">
-          <div class="dt-stat-card"><div class="dt-stat-card-label">{{ filterLabel }} AI研发人员总工时</div><div class="dt-stat-card-value" style="color:#F53F3F;">{{ engineeringTotalHours.toFixed(1) }} <span class="dt-stat-card-unit">小时</span></div><el-tooltip :content="WEIGHTED_PROGRESS_TIP" placement="top"><div class="dt-stat-card-progress">综合进度：<span class="dt-stat-card-progress-value" style="color:#F53F3F;">{{ engineeringTotalWeightedProgress === null ? '-' : `${engineeringTotalWeightedProgress.toFixed(2)}%` }}</span></div></el-tooltip></div>
-          <div v-for="role in engineeringRoles" :key="role.key" class="dt-stat-card"><div class="dt-stat-card-label">{{ filterLabel }} {{ role.name }}总工时</div><div class="dt-stat-card-value" :style="{ color: role.color }">{{ Number(engineeringRoleTotals[role.key] || 0).toFixed(1) }} <span class="dt-stat-card-unit">小时</span></div></div>
-          <div class="dt-stat-card"><div class="dt-stat-card-label">{{ filterLabel }} 提交记录数</div><div class="dt-stat-card-value" :style="{ color: PRODUCT_CARD_COLORS.records }">{{ engineeringRecords.length }}</div></div>
-          <div class="dt-stat-card"><div class="dt-stat-card-label">{{ filterLabel }} 统计需求总数</div><div class="dt-stat-card-value" :style="{ color: PRODUCT_CARD_COLORS.requirements }">{{ engineeringRequirementCount }}</div></div>
-          <div class="dt-stat-card"><div class="dt-stat-card-label">{{ filterLabel }} 收集任务数</div><div class="dt-stat-card-value" :style="{ color: PRODUCT_CARD_COLORS.tasks }">{{ engineeringTaskCount }}</div></div>
-          <div class="dt-stat-card"><div class="dt-stat-card-label">{{ filterLabel }} 研发人员数</div><div class="dt-stat-card-value" :style="{ color: PRODUCT_CARD_COLORS.staff }">{{ engineeringStaffCount }}</div></div>
+          <div class="dt-stat-card dt-stat-card-clickable" @click="openAnalysisDialog('total', 'engineering')"><div class="dt-stat-card-label">{{ filterLabel }} AI研发人员总工时</div><div class="dt-stat-card-value" style="color:#F53F3F;">{{ engineeringTotalHours.toFixed(1) }} <span class="dt-stat-card-unit">小时</span></div><el-tooltip :content="WEIGHTED_PROGRESS_TIP" placement="top"><div class="dt-stat-card-progress">综合进度：<span class="dt-stat-card-progress-value" style="color:#F53F3F;">{{ engineeringTotalWeightedProgress === null ? '-' : `${engineeringTotalWeightedProgress.toFixed(2)}%` }}</span></div></el-tooltip></div>
+          <div v-for="role in engineeringRoles" :key="role.key" class="dt-stat-card dt-stat-card-clickable" @click="openAnalysisDialog(role.key, 'engineering')"><div class="dt-stat-card-label">{{ filterLabel }} {{ role.name }}总工时</div><div class="dt-stat-card-value" :style="{ color: role.color }">{{ Number(engineeringRoleTotals[role.key] || 0).toFixed(1) }} <span class="dt-stat-card-unit">小时</span></div></div>
+          <div class="dt-stat-card dt-stat-card-clickable" @click="openAnalysisDialog('total', 'engineering')"><div class="dt-stat-card-label">{{ filterLabel }} 提交记录数</div><div class="dt-stat-card-value" :style="{ color: PRODUCT_CARD_COLORS.records }">{{ engineeringRecords.length }}</div></div>
+          <div class="dt-stat-card dt-stat-card-clickable" @click="openAnalysisDialog('total', 'engineering')"><div class="dt-stat-card-label">{{ filterLabel }} 统计需求总数</div><div class="dt-stat-card-value" :style="{ color: PRODUCT_CARD_COLORS.requirements }">{{ engineeringRequirementCount }}</div></div>
+          <div class="dt-stat-card dt-stat-card-clickable" @click="openAnalysisDialog('total', 'engineering')"><div class="dt-stat-card-label">{{ filterLabel }} 收集任务数</div><div class="dt-stat-card-value" :style="{ color: PRODUCT_CARD_COLORS.tasks }">{{ engineeringTaskCount }}</div></div>
+          <div class="dt-stat-card dt-stat-card-clickable" @click="openAnalysisDialog('total', 'engineering')"><div class="dt-stat-card-label">{{ filterLabel }} 研发人员数</div><div class="dt-stat-card-value" :style="{ color: PRODUCT_CARD_COLORS.staff }">{{ engineeringStaffCount }}</div></div>
         </div>
         <div class="dt-data-card" style="padding:24px; margin-bottom:24px;"><div class="dt-product-demand-header"><h3 style="font-size:15px; font-weight:600; margin:0;">研发工时分布 · 按 AI产品经理归属人</h3><span class="dt-product-demand-note">不含 AI产品经理独立工时</span></div><div class="dt-pm-chart-stage"><canvas ref="engineeringChartRef" :height="CANVAS_HEIGHT"></canvas></div></div>
         <div class="dt-data-card"><div style="display:flex; justify-content:space-between; align-items:center; padding:12px 16px; border-bottom:1px solid var(--color-border-light, #F2F3F5);"><strong>AI研发人员工时明细</strong><el-radio-group v-model="pmSortOrder" size="small"><el-radio-button value="">按新增顺序</el-radio-button><el-radio-button value="desc">工时降序 ↓</el-radio-button><el-radio-button value="asc">工时升序 ↑</el-radio-button></el-radio-group></div><el-table :data="flatTableData" :span-method="pmSpanMethod" :row-class-name="rowClassName" border empty-text="当前范围暂无研发工时"><el-table-column type="index" label="#" width="55" /><el-table-column label="AI产品经理归属人" width="150"><template #default="{ row }"><span :style="{ color: selectedPM === row.pmName ? 'var(--color-primary)' : 'inherit', fontWeight: 600, cursor: 'pointer' }" @click="togglePM(row.pmName)">{{ row.pmName }}</span></template></el-table-column><el-table-column label="版本号" width="110"><template #default="{ row }">{{ row.isTotalRow ? `合计 ${row.pmTotal}小时` : row.version }}</template></el-table-column><el-table-column prop="requirement_title" label="需求名称" min-width="220" show-overflow-tooltip /><el-table-column prop="staffName" label="人员" width="100" /><el-table-column prop="role" label="角色" width="120" /><el-table-column label="工时/h" width="120" align="right"><template #default="{ row }"><template v-if="row.isTotalRow">{{ row.pmTotal }}小时</template><template v-else><div class="hours-cell" :class="MEDAL_CLASS[getDeptMedalRank(row)] || ''"><span class="hours-val">{{ row.hours }}</span><span v-if="getDeptMedalRank(row) >= 0" class="medal-badge">{{ MEDAL_EMOJI[getDeptMedalRank(row)] }}</span></div></template></template></el-table-column><el-table-column label="交付进度" width="110" align="center"><template #default="{ row }">{{ row.isTotalRow ? '-' : (row.delivery_progress === null || row.delivery_progress === undefined ? '-' : `${row.delivery_progress}%`) }}</template></el-table-column></el-table></div>
@@ -2591,29 +2666,29 @@ function exportStatsData() {
       <div class="dt-analysis-kpis">
         <div class="dt-analysis-kpi">
           <span>当前维度工时</span>
-          <strong :style="{ color: analysisDimensionMeta.color }">{{ analysisData.total.toFixed(1) }}</strong>
+        <strong :style="{ color: analysisDimensionMeta.color, cursor: 'pointer' }" title="点击查看需求进度明细" @click="openProgressList()">{{ analysisData.total.toFixed(1) }}</strong>
           <em>小时</em>
         </div>
         <div class="dt-analysis-kpi">
           <span>记录数</span>
-          <strong>{{ analysisData.recordCount }}</strong>
+          <strong style="cursor:pointer" title="点击查看需求进度明细" @click="openProgressList()">{{ analysisData.recordCount }}</strong>
           <em>条</em>
         </div>
         <div class="dt-analysis-kpi">
           <span>需求数</span>
-          <strong>{{ analysisData.requirementCount }}</strong>
+          <strong style="cursor:pointer" title="点击查看需求进度明细" @click="openProgressList()">{{ analysisData.requirementCount }}</strong>
           <em>个</em>
         </div>
         <div class="dt-analysis-kpi">
           <span>周期数</span>
-          <strong>{{ analysisData.taskCount }}</strong>
+          <strong style="cursor:pointer" title="点击查看需求进度明细" @click="openProgressList()">{{ analysisData.taskCount }}</strong>
           <em>个</em>
         </div>
         <div class="dt-analysis-kpi">
           <el-tooltip :content="WEIGHTED_PROGRESS_TIP" placement="top">
             <span>综合进度 ⓘ</span>
           </el-tooltip>
-          <strong>{{ analysisData.weightedProgress === null ? '-' : `${analysisData.weightedProgress.toFixed(2)}%` }}</strong>
+          <strong style="cursor:pointer" title="点击查看需求进度明细" @click="openProgressList()">{{ analysisData.weightedProgress === null ? '-' : `${analysisData.weightedProgress.toFixed(2)}%` }}</strong>
           <em>工时加权</em>
         </div>
       </div>
@@ -2624,6 +2699,8 @@ function exportStatsData() {
           :key="role.key"
           class="dt-analysis-role-item"
           :style="{ borderColor: `${role.color}55`, color: role.color, background: `${role.color}0D` }"
+          title="点击查看该岗位的需求进度明细"
+          @click="openProgressList(role.key)"
         >
           <span>{{ role.label }}</span>
           <strong>{{ role.hours.toFixed(1) }}H</strong>
@@ -2659,6 +2736,39 @@ function exportStatsData() {
               <strong>{{ role.hours.toFixed(1) }}h</strong>
             </div>
           </div>
+        </el-tab-pane>
+        <el-tab-pane label="全部追踪和进度">
+          <div class="dt-analysis-scope-row">
+            <span>当前范围：{{ selectedPeriodRangeText }}</span>
+            <span>全部范围：{{ statsStore.progressDetails?.scopeMeta?.taskCount || 0 }} 个周期</span>
+            <el-button size="small" type="primary" plain :loading="statsStore.progressDetailsLoading" @click="loadProgressDetails('all')">刷新</el-button>
+            <el-button size="small" type="success" plain @click="downloadProgressDetails('all')">下载 Excel</el-button>
+          </div>
+          <el-alert v-if="statsStore.progressDetails" type="info" :closable="false" style="margin-bottom:10px;">
+            综合进度：{{ statsStore.progressDetails.weightedProgress === null ? '-' : `${statsStore.progressDetails.weightedProgress.toFixed(2)}%` }}；有效工时 {{ statsStore.progressDetails.effectiveHours }}h；未填写 {{ statsStore.progressDetails.missingProgressCount }} 条。
+          </el-alert>
+          <el-table :data="statsStore.progressDetails?.records || []" border size="small" class="dt-analysis-table" style="width:100%;" empty-text="当前筛选暂无追踪数据">
+            <el-table-column type="index" label="#" width="55" />
+            <el-table-column prop="source_type" label="来源" width="105"><template #default="{ row }">{{ row.source_type === 'product_manager' ? 'AI产品经理' : '研发' }}</template></el-table-column>
+            <el-table-column prop="staff.name" label="人员" width="110"><template #default="{ row }">{{ row.staff?.name || '-' }}</template></el-table-column>
+            <el-table-column prop="version" label="版本号" width="110"><template #default="{ row }">{{ String(row.version || '').trim() && String(row.version).trim() !== '-' ? row.version : '无版本号' }}</template></el-table-column>
+            <el-table-column prop="requirement_title" label="需求" min-width="180" show-overflow-tooltip />
+            <el-table-column label="需求方" min-width="150"><template #default="{ row }">{{ row.demand_sources?.join('、') || '-' }}</template></el-table-column>
+            <el-table-column prop="hours" label="工时/h" width="90" align="right" />
+            <el-table-column label="进度/状态" width="130" align="center"><template #default="{ row }">{{ row.delivery_progress === null || row.delivery_progress === undefined ? '-' : `${row.delivery_progress}%` }} · {{ row.progress_status }}</template></el-table-column>
+          </el-table>
+        </el-tab-pane>
+        <el-tab-pane label="普通版本（有版本号）">
+          <div class="dt-analysis-scope-row"><span>当前范围内有版本号需求</span><el-button size="small" type="success" plain @click="downloadProgressDetails('current')">下载 Excel</el-button></div>
+          <el-table :data="analysisVersionedRows" border size="small" class="dt-analysis-table" style="width:100%;" empty-text="当前范围暂无有版本号需求">
+            <el-table-column prop="person" label="人员" width="110" sortable /><el-table-column prop="version" label="版本号" width="120" sortable /><el-table-column prop="requirement" label="需求" min-width="220" show-overflow-tooltip sortable /><el-table-column prop="hours" label="工时/h" width="90" sortable /><el-table-column label="综合进度" width="120" align="center"><template #default="{ row }"><span :class="row.completed ? 'dt-progress-completed' : 'dt-progress-value'">{{ row.progress === null ? '未填写' : row.completed ? '已完成100%' : `${row.progress.toFixed(2)}%` }}</span></template></el-table-column>
+          </el-table>
+        </el-tab-pane>
+        <el-tab-pane label="无版本号版本">
+          <div class="dt-analysis-scope-row"><span>当前范围内无版本号需求</span><el-button size="small" type="success" plain @click="downloadProgressDetails('current')">下载 Excel</el-button></div>
+          <el-table :data="analysisNoVersionRows" border size="small" class="dt-analysis-table" style="width:100%;" empty-text="当前范围暂无无版本号需求">
+            <el-table-column prop="person" label="人员" width="110" sortable /><el-table-column label="版本号" width="120">无版本号</el-table-column><el-table-column prop="requirement" label="需求" min-width="220" show-overflow-tooltip sortable /><el-table-column prop="hours" label="工时/h" width="90" sortable /><el-table-column label="综合进度" width="120" align="center"><template #default="{ row }"><span :class="row.completed ? 'dt-progress-completed' : 'dt-progress-value'">{{ row.progress === null ? '未填写' : row.completed ? '已完成100%' : `${row.progress.toFixed(2)}%` }}</span></template></el-table-column>
+          </el-table>
         </el-tab-pane>
         <el-tab-pane label="AI产品经理">
           <el-table :data="analysisData.pmRows.slice(0, 20)" border size="small" class="dt-analysis-table" table-layout="auto" style="width:100%;" :default-sort="{ prop: 'total', order: 'descending' }">
@@ -2780,6 +2890,24 @@ function exportStatsData() {
           </div>
         </el-tab-pane>
       </el-tabs>
+    </el-dialog>
+
+    <el-dialog v-model="progressListDialogVisible" :title="progressListTitle" width="78%">
+      <div class="dt-analysis-scope-row">
+        <span>统计范围：{{ selectedPeriodRangeText }}</span>
+        <el-tooltip :content="WEIGHTED_PROGRESS_TIP" placement="top"><span>综合进度：工时加权</span></el-tooltip>
+        <el-button size="small" type="success" plain @click="downloadProgressDetails('current')">下载 Excel</el-button>
+      </div>
+      <el-table :data="progressListRows" border size="small" class="dt-analysis-table" style="width:100%;" empty-text="当前范围暂无需求进度">
+        <el-table-column type="index" label="#" width="55" />
+        <el-table-column prop="person" label="人员" width="110" sortable />
+        <el-table-column prop="role" label="岗位" width="120" sortable />
+        <el-table-column prop="versionType" label="版本分组" width="110" sortable />
+        <el-table-column prop="version" label="版本号" width="120"><template #default="{ row }">{{ row.version || '无版本号' }}</template></el-table-column>
+        <el-table-column prop="requirement" label="需求" min-width="220" show-overflow-tooltip />
+        <el-table-column prop="hours" label="工时/h" width="90" align="right" sortable />
+        <el-table-column label="进度/状态" width="140" align="center"><template #default="{ row }"><span :class="row.completed ? 'dt-progress-completed' : 'dt-progress-value'">{{ row.progress === null ? '未填写' : row.completed ? '已完成100%' : `${row.progress.toFixed(2)}%` }}</span></template></el-table-column>
+      </el-table>
     </el-dialog>
 
     <!-- v3.2.1: 需求总数统计弹窗 -->
@@ -3927,4 +4055,15 @@ function exportStatsData() {
   border-color: var(--color-primary, #165DFF);
   box-shadow: 0 4px 16px rgba(22, 93, 255, 0.15);
 }
+.dt-analysis-scope-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 10px;
+  color: var(--color-text-3);
+  font-size: 12px;
+}
+.dt-analysis-scope-row span:first-child { flex: 1; }
+.dt-progress-value { color: #165DFF; font-weight: 600; }
+.dt-progress-completed { color: #16883B; background: #E8F7EE; padding: 3px 8px; border-radius: 4px; font-weight: 700; }
 </style>

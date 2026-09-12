@@ -10,6 +10,7 @@ const ProductManagerWorkRecord = sequelize.define('product_manager_work_records'
   requirement_title: { type: DataTypes.STRING(200), allowNull: false },
   version:           { type: DataTypes.STRING(50) },
   demand_sources:    { type: DataTypes.JSON, allowNull: false },
+  demand_source_ids: { type: DataTypes.JSON, allowNull: true },
   // 需求方维度展示权重，百分比合计 100；历史空值按需求方数量均分。
   demand_source_weights: { type: DataTypes.JSON, allowNull: true },
   hours:             { type: DataTypes.DECIMAL(6, 2), allowNull: false },

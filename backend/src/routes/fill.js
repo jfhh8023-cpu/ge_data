@@ -14,6 +14,7 @@ const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
 const { FillLink, CollectionTask, Staff, WorkRecord, ProductManagerWorkRecord, MatchGroup, StaffFillLink } = require('../models');
 const { matchRecords } = require('../services/MatchService');
+const { getDemandSourceDefinitions, resolveDemandSources } = require('../services/DemandSourceService');
 const { Op } = require('sequelize');
 const {
   STAFF_RESIGNED_MESSAGE,
@@ -28,16 +29,15 @@ const {
 
 const EDITING_TIMEOUT_MS = 30000;
 const PRODUCT_MANAGER_ROLE = 'ai_pm';
-const DEMAND_SOURCE_OPTIONS = new Set(['内部需求', '客户需求', '对外服务', '其他需求']);
 const VALID_DELIVERY_PROGRESS = new Set([0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]);
 
 function isProductManagerStaff(staff) {
   return String(staff?.role || '').trim() === PRODUCT_MANAGER_ROLE;
 }
 
-function normalizeDemandSources(value) {
+function normalizeDemandSources(value, allowedNames = new Set()) {
   const values = Array.isArray(value) ? value : (typeof value === 'string' ? value.split(/[,，、|\s]+/) : []);
-  return [...new Set(values.map(v => String(v || '').trim()).filter(v => DEMAND_SOURCE_OPTIONS.has(v)))];
+  return [...new Set(values.map(v => String(v || '').trim()).filter(v => allowedNames.has(v)))];
 }
 
 function normalizeDemandSourceWeights(value, sources) {
@@ -81,16 +81,18 @@ function validateDeliveryProgress(records) {
   return '';
 }
 
-function validateProductManagerRecords(records) {
+async function validateProductManagerRecords(records) {
   for (let i = 0; i < records.length; i += 1) {
-    const sources = normalizeDemandSources(records[i]?.demand_sources);
+    const resolved = await resolveDemandSources(records[i]?.demand_sources);
+    const sources = resolved.names;
     if (sources.length === 0) return `第 ${i + 1} 条记录请选择需求方`;
     const progress = records[i]?.delivery_progress;
     const isHistory = Boolean(records[i]?.existing_record_id);
     if (!isHistory && (progress === null || progress === undefined || progress === '' || !VALID_DELIVERY_PROGRESS.has(Number(progress)))) {
       return `第 ${i + 1} 条记录请选择交付进度`;
     }
-    records[i].demand_sources = sources;
+    records[i].demand_sources = resolved.names;
+    records[i].demand_source_ids = resolved.ids;
     records[i].demand_source_weights = normalizeDemandSourceWeights(records[i]?.demand_source_weights, sources);
     records[i].delivery_progress = progress === '' || progress === undefined ? null : Number(progress);
   }
@@ -174,6 +176,7 @@ async function resolveToken(token) {
  * ====================================================== */
 router.get('/:token', async (req, res, next) => {
   try {
+    const demandSources = await getDemandSourceDefinitions();
     const resolved = await resolveToken(req.params.token);
     if (!resolved) return res.status(404).json({ code: 1, message: '链接无效' });
 
@@ -193,6 +196,7 @@ router.get('/:token', async (req, res, next) => {
             draft_records: null,
             draft_saved_at: null,
             is_submitted: false
+            , demandSources
           }
         });
       }
@@ -235,6 +239,7 @@ router.get('/:token', async (req, res, next) => {
           draft_records,
           draft_saved_at,
           is_submitted
+          , demandSources
         }
       });
     }
@@ -272,6 +277,7 @@ router.get('/:token', async (req, res, next) => {
         draft_records: link.draft_data || null,
         draft_saved_at: link.draft_saved_at || null,
         is_submitted: link.is_submitted || false
+        , demandSources
       }
     });
   } catch (err) { next(err); }
@@ -351,7 +357,7 @@ router.post('/:token/submit', async (req, res, next) => {
       if (!existingIds.has(record.existing_record_id)) record.existing_record_id = '';
     });
     const validationError = isProductManagerStaff(writeStaff)
-      ? validateProductManagerRecords(records)
+      ? await validateProductManagerRecords(records)
       : validateRequiredProductManagers(records) || validateDeliveryProgress(records);
     if (validationError) return res.status(400).json({ code: 1, message: validationError });
 
@@ -371,7 +377,7 @@ router.post('/:token/submit', async (req, res, next) => {
           created.push(await ProductManagerWorkRecord.create({
             id: uuidv4(), link_id: null, task_id, staff_id: sfl.staff_id,
             requirement_title: r.requirement_title, version: r.version,
-            demand_sources: r.demand_sources, demand_source_weights: r.demand_source_weights, hours: r.hours,
+            demand_sources: r.demand_sources, demand_source_ids: r.demand_source_ids, demand_source_weights: r.demand_source_weights, hours: r.hours,
             delivery_progress: r.delivery_progress, submit_count: 1
           }));
         }
@@ -463,7 +469,7 @@ router.post('/:token/submit', async (req, res, next) => {
         created.push(await ProductManagerWorkRecord.create({
           id: uuidv4(), link_id: link.id, task_id: link.task_id, staff_id: link.staff_id,
           requirement_title: r.requirement_title, version: r.version,
-          demand_sources: r.demand_sources, demand_source_weights: r.demand_source_weights, hours: r.hours,
+          demand_sources: r.demand_sources, demand_source_ids: r.demand_source_ids, demand_source_weights: r.demand_source_weights, hours: r.hours,
           delivery_progress: r.delivery_progress, submit_count: 1
         }));
       }

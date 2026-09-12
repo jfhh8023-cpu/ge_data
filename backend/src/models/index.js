@@ -23,6 +23,7 @@ const QuoteConfig = require('./QuoteConfig');
 const StaffStatusHistory = require('./StaffStatusHistory');
 const ProductManagerStatusHistory = require('./ProductManagerStatusHistory');
 const StaffRole = require('./StaffRole');
+const DemandSource = require('./DemandSource');
 const DutyCalendarRevision = require('./DutyCalendarRevision');
 const DutyScheduleException = require('./DutyScheduleException');
 const DutyScheduleSwap = require('./DutyScheduleSwap');
@@ -116,6 +117,7 @@ module.exports = {
   StaffStatusHistory,
   ProductManagerStatusHistory,
   StaffRole,
+  DemandSource,
   DutyCalendarRevision,
   DutyScheduleException,
   DutyScheduleSwap,

@@ -10,6 +10,7 @@
  */
 const express = require('express');
 const router = express.Router();
+const XLSX = require('xlsx');
 const { CollectionTask, WorkRecord, ProductManagerWorkRecord, MatchGroup, Staff, ProductManager } = require('../models');
 const { Op, fn, col } = require('sequelize');
 const { safeParseJsonArray } = require('../utils/parseJson');
@@ -30,13 +31,12 @@ const {
   normalizeStaffRole,
   withRoleAliases
 } = require('../services/RoleService');
+const { getDemandSourceDefinitions } = require('../services/DemandSourceService');
 
 /* 季度月份映射 */
 const QUARTER_MONTHS = { Q1: [1,2,3], Q2: [4,5,6], Q3: [7,8,9], Q4: [10,11,12] };
 
 const PM_DEFAULT_NAME = '不在上述';
-const DEMAND_SOURCE_OPTIONS = ['内部需求', '客户需求', '对外服务', '其他需求'];
-
 function recordBelongsToPm(pms, pmName) {
   return pms.includes(pmName) || (pmName === PM_DEFAULT_NAME && pms.length === 0);
 }
@@ -45,8 +45,9 @@ function productManagersForPmResponse(pms, pmName) {
   return pmName === PM_DEFAULT_NAME && pms.length === 0 ? [PM_DEFAULT_NAME] : pms;
 }
 
-function normalizeDemandSourceWeights(value, sources) {
-  const sourceList = Array.isArray(sources) ? sources.filter(source => DEMAND_SOURCE_OPTIONS.includes(source)) : [];
+function normalizeDemandSourceWeights(value, sources, definitions = []) {
+  const allowed = new Set(definitions.map(item => item.name));
+  const sourceList = Array.isArray(sources) ? sources.filter(source => allowed.has(source)) : [];
   if (sourceList.length === 0) return {};
   let parsed = value;
   if (typeof parsed === 'string') {
@@ -69,14 +70,17 @@ function normalizeDemandSourceWeights(value, sources) {
   return Object.fromEntries(normalized);
 }
 
-function buildProductDemandDistribution(records) {
-  const rows = Object.fromEntries(DEMAND_SOURCE_OPTIONS.map(name => [name, {
-    name, total: 0, product: 0, recordCount: 0, records: []
+function buildProductDemandDistribution(records, definitions = []) {
+  const rows = Object.fromEntries(definitions.map(definition => [definition.name, {
+    id: definition.id, name: definition.name, color: definition.color, total: 0, product: 0, recordCount: 0, records: []
   }]));
   for (const record of records) {
     const plain = record.toJSON ? record.toJSON() : record;
-    const sources = safeParseJsonArray(plain.demand_sources).filter(source => DEMAND_SOURCE_OPTIONS.includes(source));
-    const weights = normalizeDemandSourceWeights(plain.demand_source_weights, sources);
+    const sourceById = new Map(definitions.map(definition => [definition.id, definition.name]));
+    const legacyNames = safeParseJsonArray(plain.demand_sources);
+    const ids = safeParseJsonArray(plain.demand_source_ids);
+    const sources = (ids.length ? ids.map(id => sourceById.get(id)).filter(Boolean) : legacyNames).filter(source => rows[source]);
+    const weights = normalizeDemandSourceWeights(plain.demand_source_weights, sources, definitions);
     const hours = parseFloat(plain.hours || 0);
     for (const source of sources) {
       const allocatedHours = hours * Number(weights[source] || 0) / 100;
@@ -92,6 +96,97 @@ function buildProductDemandDistribution(records) {
     product: Number(row.product.toFixed(2)),
     records: row.records.map(record => ({ ...record, hours: Number(record.hours.toFixed(2)) }))
   }));
+}
+
+function versionTypeOf(record) {
+  const value = String(record?.version || '').trim();
+  return value && value !== '-' ? 'versioned' : 'no_version';
+}
+
+function safeExcelText(value) {
+  const text = String(value ?? '');
+  return /^[=+\-@]/.test(text) ? `'${text}` : text;
+}
+
+async function loadScopedStatRecords({ scope = 'current', year, quarter, taskId } = {}) {
+  const yearNum = parseInt(year) || new Date().getFullYear();
+  const range = getDateRange(yearNum, quarter);
+  const taskWhere = scope === 'all' ? {} : {
+    year: yearNum,
+    end_date: { [Op.between]: [range.startFrom, range.startTo] }
+  };
+  const tasks = await CollectionTask.findAll({ where: taskWhere, order: [['end_date', 'DESC']] });
+  let taskIds = tasks.map(task => task.id);
+  if (taskId && taskId !== 'all') taskIds = taskIds.includes(taskId) ? [taskId] : [];
+  const taskById = new Map(tasks.map(task => [task.id, task]));
+  if (!taskIds.length) return { tasks, records: [], demandSources: await getDemandSourceDefinitions() };
+  const [engineeringRows, productRows] = await Promise.all([
+    WorkRecord.findAll({ where: { task_id: { [Op.in]: taskIds } }, include: [{ model: Staff, as: 'staff', attributes: ['id', 'name', 'role'] }] }),
+    ProductManagerWorkRecord.findAll({ where: { task_id: { [Op.in]: taskIds } }, include: [{ model: Staff, as: 'staff', attributes: ['id', 'name', 'role'] }] })
+  ]);
+  const visibleEngineeringRows = await filterRecordsByStaffStatus(engineeringRows, taskById);
+  const visibleProductRows = await filterRecordsByStaffStatus(productRows, taskById);
+  const demandSources = await getDemandSourceDefinitions();
+  const productNames = new Set(demandSources.map(item => item.name));
+  const records = [];
+  for (const row of [...visibleEngineeringRows, ...visibleProductRows]) {
+    const plain = row.toJSON();
+    const isProduct = row instanceof ProductManagerWorkRecord || Array.isArray(plain.demand_sources);
+    plain.is_product_manager_record = isProduct;
+    plain.source_type = isProduct ? 'product_manager' : 'engineering';
+    const sourceById = new Map(demandSources.map(item => [item.id, item.name]));
+    const names = safeParseJsonArray(plain.demand_sources);
+    const ids = safeParseJsonArray(plain.demand_source_ids);
+    plain.demand_sources = isProduct
+      ? (ids.length ? ids.map(id => sourceById.get(id)).filter(Boolean) : names).filter(name => productNames.has(name))
+      : [];
+    if (!isProduct) plain.product_managers = safeParseJsonArray(plain.product_managers);
+    records.push(plain);
+  }
+  return { tasks, records, demandSources };
+}
+
+function filterScopedRecords(records, query, definitions) {
+  const sourceType = String(query.sourceType || '').trim();
+  const versionType = String(query.versionType || '').trim();
+  const staffId = String(query.staffId || '').trim();
+  const demandSourceId = String(query.demandSourceId || '').trim();
+  const sourceName = definitions.find(item => item.id === demandSourceId)?.name || demandSourceId;
+  return records.filter(record => {
+    if (sourceType && record.source_type !== sourceType) return false;
+    if (versionType && versionTypeOf(record) !== versionType) return false;
+    if (staffId && String(record.staff_id || record.staff?.id) !== staffId) return false;
+    if (sourceName && !record.demand_sources.includes(sourceName)) return false;
+    return true;
+  });
+}
+
+function buildProgressDetails(records) {
+  const valid = records.filter(record => Number(record.hours) > 0 && Number.isFinite(Number(record.delivery_progress)));
+  const totalHours = valid.reduce((sum, record) => sum + Number(record.hours), 0);
+  const weightedHours = valid.reduce((sum, record) => sum + Number(record.hours) * Number(record.delivery_progress), 0);
+  return {
+    records: records.map(record => ({
+      ...record,
+      progress_status: record.delivery_progress === null || record.delivery_progress === undefined || record.delivery_progress === ''
+        ? '未填写' : Number(record.delivery_progress) >= 100 ? '已完成' : Number(record.delivery_progress) > 0 ? '部分完成' : '未开始'
+    })),
+    weightedProgress: totalHours > 0 ? Number((weightedHours / totalHours).toFixed(2)) : null,
+    effectiveHours: Number(totalHours.toFixed(2)),
+    missingProgressCount: records.filter(record => record.delivery_progress === null || record.delivery_progress === undefined || record.delivery_progress === '').length,
+    formula: 'Σ(有效工时×进度)÷Σ有效工时；有效工时必须大于0且进度为数值；历史空进度不进入分母。示例：10h×100%+2h×50%=91.67%'
+  };
+}
+
+async function getFilteredScopeData(req) {
+  const scopeData = await loadScopedStatRecords({
+    scope: req.query.scope === 'all' ? 'all' : 'current',
+    year: req.query.year,
+    quarter: req.query.quarter,
+    taskId: req.query.taskId
+  });
+  const records = filterScopedRecords(scopeData.records, req.query, scopeData.demandSources);
+  return { ...scopeData, records };
 }
 
 /**
@@ -127,6 +222,7 @@ function getDateRange(yearNum, quarter) {
 router.get('/', async (req, res, next) => {
   try {
     const { year, quarter, taskId } = req.query;
+    const demandSources = await getDemandSourceDefinitions();
     const yearNum = parseInt(year) || new Date().getFullYear();
     const { startFrom, startTo } = getDateRange(yearNum, quarter);
 
@@ -167,7 +263,8 @@ router.get('/', async (req, res, next) => {
           summary: { totalHours: 0, recordCount: 0, staffCount: currentStaff.length, taskCount: 0 },
           roleSummary: withRoleAliases(createRoleSummary()),
           pmDistribution: [],
-          productDemandDistribution: DEMAND_SOURCE_OPTIONS.map(name => ({ name, total: 0, product: 0, recordCount: 0, records: [] }))
+          demandSources,
+          productDemandDistribution: buildProductDemandDistribution([], demandSources)
         }
       });
     }
@@ -284,12 +381,16 @@ router.get('/', async (req, res, next) => {
           }
           return plain;
         })),
+        demandSources,
         productManagerRecords: productManagerRecords.map(r => {
           const plain = r.toJSON();
           const sources = safeParseJsonArray(plain.demand_sources);
-          return { ...plain, is_product_manager_record: true, demand_sources: sources, demand_source_weights: normalizeDemandSourceWeights(plain.demand_source_weights, sources) };
+          const sourceById = new Map(demandSources.map(item => [item.id, item.name]));
+          const sourceIds = safeParseJsonArray(plain.demand_source_ids);
+          const names = sourceIds.length ? sourceIds.map(id => sourceById.get(id)).filter(Boolean) : sources;
+          return { ...plain, is_product_manager_record: true, demand_sources: names, demand_source_ids: sourceIds, demand_source_weights: normalizeDemandSourceWeights(plain.demand_source_weights, names, demandSources) };
         }),
-        productDemandDistribution: buildProductDemandDistribution(productManagerRecords),
+        productDemandDistribution: buildProductDemandDistribution(productManagerRecords, demandSources),
         matchGroups, staff: visibleStaff, currentStaff, roleDefinitions,
         summary: {
           totalHours,
@@ -301,6 +402,57 @@ router.get('/', async (req, res, next) => {
         pmDistribution
       }
     });
+  } catch (err) { next(err); }
+});
+
+/* GET /api/stats/progress-details — 统一详情与进度明细（REQ-055） */
+router.get('/progress-details', async (req, res, next) => {
+  try {
+    const { tasks, records, demandSources } = await getFilteredScopeData(req);
+    const detail = buildProgressDetails(records);
+    res.json({
+      code: 0,
+      data: {
+        scope: req.query.scope === 'all' ? 'all' : 'current',
+        scopeMeta: { year: req.query.year || null, quarter: req.query.quarter || null, taskId: req.query.taskId || 'all', taskCount: tasks.length },
+        demandSources,
+        ...detail
+      }
+    });
+  } catch (err) { next(err); }
+});
+
+/* GET /api/stats/export.xlsx — 服务端只读详情导出（REQ-055） */
+router.get('/export.xlsx', async (req, res, next) => {
+  try {
+    const { tasks, records, demandSources } = await getFilteredScopeData(req);
+    const detail = buildProgressDetails(records);
+    const scope = req.query.scope === 'all' ? '全部可见历史' : '当前统计范围';
+    const metaRows = [
+      ['数据范围', scope], ['年份', req.query.year || '全部'], ['季度', req.query.quarter || '全部'],
+      ['任务', req.query.taskId || '全部'], ['来源', req.query.sourceType || '全部'],
+      ['版本分组', req.query.versionType || '全部'], ['需求方筛选', req.query.demandSourceId || '全部'],
+      ['综合进度', detail.weightedProgress == null ? '-' : `${detail.weightedProgress}%`],
+      ['有效工时', detail.effectiveHours], ['未填写进度记录数', detail.missingProgressCount], ['计算公式', detail.formula]
+    ];
+    const rows = records.map(record => ({
+      来源: record.source_type === 'product_manager' ? 'AI产品经理' : '研发',
+      人员: record.staff?.name || '-', 岗位: record.staff?.role || '-',
+      周期: tasks.find(task => task.id === record.task_id)?.title || record.task_id || '-',
+      版本号: versionTypeOf(record) === 'no_version' ? '无版本号' : record.version,
+      需求名称: record.requirement_title || '-',
+      需求方: record.demand_sources.join('、') || '-', 工时: Number(record.hours || 0),
+      交付进度: record.delivery_progress === null || record.delivery_progress === undefined ? '-' : `${record.delivery_progress}%`,
+      状态: record.progress_status
+    }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(metaRows), '导出说明');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.map(row => Object.fromEntries(Object.entries(row).map(([key, value]) => [key, typeof value === 'string' ? safeExcelText(value) : value])))), '进度明细');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(demandSources.map(source => ({ ID: source.id, 需求方: source.name, 颜色: source.color, 启用: source.is_active ? '是' : '否' }))), '需求方目录快照');
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(`工时进度追踪_${req.query.scope === 'all' ? '全部' : '当前'}.xlsx`)}`);
+    res.send(buffer);
   } catch (err) { next(err); }
 });
 
