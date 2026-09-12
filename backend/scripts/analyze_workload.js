@@ -13,6 +13,8 @@
 const fs = require('fs');
 const path = require('path');
 const mysql = require('mysql2/promise');
+const { buildVersionView } = require('../src/services/WorkloadVersionData');
+const { VERSION_STYLES, versionControlsHtml, mountVersionPage } = require('./workload_version_page');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env'), quiet: true });
 
 let ROLE_KEYS = ['frontend', 'voip', 'test', 'embedded'];
@@ -773,6 +775,7 @@ function analyze(data) {
     recordDetails.push({
       id: row.id,
       taskId: row.task_id,
+      staffId: row.staff_id,
       period: weekName,
       periodSort: dateStr(row.end_date),
       quarter: q,
@@ -785,6 +788,7 @@ function analyze(data) {
       title: String(row.requirement_title || '').trim(),
       version,
       hours: round(hours),
+      rawHours: hours,
       productManagers: pmsForRow,
       emptyProductManager: pmsForRow.length === 0,
       missingVersion: !String(row.version || '').trim()
@@ -2032,6 +2036,7 @@ function renderHtml(report, options = {}) {
     .formulas ol { margin: 0; padding-left: 22px; }
     .formulas li { margin: 8px 0; }
     ${dynamicRoleStyles()}
+    ${VERSION_STYLES}
     @media (max-width: 980px) {
       .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .dimension-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -2198,11 +2203,16 @@ function renderHtml(report, options = {}) {
     </section>
 
     <section class="tab-panel" id="tab-versions">
-      <section class="chart-grid">
+      ${versionControlsHtml()}
+      <section class="chart-grid" data-version-charts>
         ${simpleBarChart(topVersions, '版本投入 Top 16', { limit: 16, metaField: 'versionName' })}
         ${pieChart(report.versions, '版本工时占比', { limit: 10 })}
       </section>
-      ${versionTable}
+      <div data-version-summary>${versionTable}</div>
+      <section class="version-detail-section">
+        <div class="section-head"><h2 id="version-details-title">去重汇总</h2></div>
+        <div data-version-details></div>
+      </section>
     </section>
 
     <section class="tab-panel" id="tab-keywords">
@@ -2251,6 +2261,16 @@ function renderHtml(report, options = {}) {
     })};
     window.__PERIOD_REPORTS__ = ${scriptJson(periodReports || [])};
     window.__NATURAL_WEEKS__ = ${scriptJson(naturalWeeks)};
+    (function () {
+      const escapeHtml = ${escapeHtml.toString()};
+      const fmt = ${fmt.toString()};
+      const round = ${round.toString()};
+      const pct = ${pct.toString()};
+      const chartLabel = ${chartLabel.toString()};
+      const simpleBarChart = ${simpleBarChart.toString()};
+      const pieChart = ${pieChart.toString()};
+      (${mountVersionPage.toString()})(${scriptJson({ generatedAt: report.generatedAt, records: report.records, roleDefinitions: report.roleDefinitions, versions: report.versions })}, ${buildVersionView.toString()}, { escapeHtml, fmt, simpleBarChart, pieChart });
+    })();
 
     function openTab(tab) {
       const tabButtons = [...document.querySelectorAll('[data-open-tab]')];

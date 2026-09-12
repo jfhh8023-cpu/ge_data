@@ -1,5 +1,5 @@
-const fs = require('fs');
 const path = require('path');
+const fs = require('fs');
 const crypto = require('crypto');
 const { execFile } = require('child_process');
 const { QueryTypes } = require('sequelize');
@@ -80,6 +80,8 @@ async function currentDataSignature() {
   const generatorHash = crypto
     .createHash('sha256')
     .update(await fs.promises.readFile(ANALYZE_SCRIPT))
+    .update(await fs.promises.readFile(path.join(BACKEND_DIR, 'scripts', 'workload_version_page.js')))
+    .update(await fs.promises.readFile(path.join(__dirname, 'WorkloadVersionData.js')))
     .digest('hex');
 
   return JSON.stringify(Object.fromEntries(
