@@ -10,7 +10,7 @@
  */
 const express = require('express');
 const router = express.Router();
-const { CollectionTask, WorkRecord, MatchGroup, Staff, ProductManager } = require('../models');
+const { CollectionTask, WorkRecord, ProductManagerWorkRecord, MatchGroup, Staff, ProductManager } = require('../models');
 const { Op, fn, col } = require('sequelize');
 const { safeParseJsonArray } = require('../utils/parseJson');
 const {
@@ -35,6 +35,7 @@ const {
 const QUARTER_MONTHS = { Q1: [1,2,3], Q2: [4,5,6], Q3: [7,8,9], Q4: [10,11,12] };
 
 const PM_DEFAULT_NAME = '不在上述';
+const DEMAND_SOURCE_OPTIONS = ['内部需求', '客户需求', '对外服务', '其他需求'];
 
 function recordBelongsToPm(pms, pmName) {
   return pms.includes(pmName) || (pmName === PM_DEFAULT_NAME && pms.length === 0);
@@ -42,6 +43,55 @@ function recordBelongsToPm(pms, pmName) {
 
 function productManagersForPmResponse(pms, pmName) {
   return pmName === PM_DEFAULT_NAME && pms.length === 0 ? [PM_DEFAULT_NAME] : pms;
+}
+
+function normalizeDemandSourceWeights(value, sources) {
+  const sourceList = Array.isArray(sources) ? sources.filter(source => DEMAND_SOURCE_OPTIONS.includes(source)) : [];
+  if (sourceList.length === 0) return {};
+  let parsed = value;
+  if (typeof parsed === 'string') {
+    try { parsed = JSON.parse(parsed); } catch { parsed = null; }
+  }
+  const values = sourceList.map(source => {
+    const n = Number(parsed && typeof parsed === 'object' ? parsed[source] : NaN);
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  });
+  const total = values.reduce((sum, n) => sum + n, 0);
+  if (total <= 0) {
+    const equal = Number((100 / sourceList.length).toFixed(2));
+    const weights = Object.fromEntries(sourceList.map(source => [source, equal]));
+    weights[sourceList[sourceList.length - 1]] = Number((equal + 100 - equal * sourceList.length).toFixed(2));
+    return weights;
+  }
+  const normalized = sourceList.map((source, index) => [source, Number((values[index] * 100 / total).toFixed(2))]);
+  const roundedTotal = normalized.reduce((sum, [, n]) => sum + n, 0);
+  normalized[normalized.length - 1][1] = Number((normalized[normalized.length - 1][1] + 100 - roundedTotal).toFixed(2));
+  return Object.fromEntries(normalized);
+}
+
+function buildProductDemandDistribution(records) {
+  const rows = Object.fromEntries(DEMAND_SOURCE_OPTIONS.map(name => [name, {
+    name, total: 0, product: 0, recordCount: 0, records: []
+  }]));
+  for (const record of records) {
+    const plain = record.toJSON ? record.toJSON() : record;
+    const sources = safeParseJsonArray(plain.demand_sources).filter(source => DEMAND_SOURCE_OPTIONS.includes(source));
+    const weights = normalizeDemandSourceWeights(plain.demand_source_weights, sources);
+    const hours = parseFloat(plain.hours || 0);
+    for (const source of sources) {
+      const allocatedHours = hours * Number(weights[source] || 0) / 100;
+      rows[source].total += allocatedHours;
+      rows[source].product += allocatedHours;
+      rows[source].recordCount += 1;
+      rows[source].records.push({ id: plain.id, staffName: plain.staff?.name || '-', requirement_title: plain.requirement_title, version: plain.version || '-', hours: allocatedHours, originalHours: hours, delivery_progress: plain.delivery_progress });
+    }
+  }
+  return Object.values(rows).map(row => ({
+    ...row,
+    total: Number(row.total.toFixed(2)),
+    product: Number(row.product.toFixed(2)),
+    records: row.records.map(record => ({ ...record, hours: Number(record.hours.toFixed(2)) }))
+  }));
 }
 
 /**
@@ -116,7 +166,8 @@ router.get('/', async (req, res, next) => {
           currentStaff, roleDefinitions,
           summary: { totalHours: 0, recordCount: 0, staffCount: currentStaff.length, taskCount: 0 },
           roleSummary: withRoleAliases(createRoleSummary()),
-          pmDistribution: []
+          pmDistribution: [],
+          productDemandDistribution: DEMAND_SOURCE_OPTIONS.map(name => ({ name, total: 0, product: 0, recordCount: 0, records: [] }))
         }
       });
     }
@@ -128,10 +179,16 @@ router.get('/', async (req, res, next) => {
     });
     const taskById = new Map(tasks.map(t => [t.id, t]));
     const records = await filterRecordsByStaffStatus(allRecords, taskById);
+    const allProductRecords = await ProductManagerWorkRecord.findAll({
+      where: { task_id: { [Op.in]: taskIds } },
+      include: [{ model: Staff, as: 'staff', attributes: ['id', 'name', 'role', 'employment_status', 'is_active', 'status_changed_at'] }]
+    });
+    const productManagerRecords = await filterRecordsByStaffStatus(allProductRecords, taskById);
+    const allStatRecords = [...records, ...productManagerRecords];
     const pmContextByName = await getPmStatusContextByName(collectPmNamesFromRecords(records));
 
     const staffById = new Map(currentStaff.map(s => [s.id, s]));
-    for (const record of records) {
+    for (const record of allStatRecords) {
       const staffPlain = record.staff?.toJSON ? record.staff.toJSON() : record.staff;
       if (staffPlain?.id && !staffById.has(staffPlain.id)) {
         staffById.set(staffPlain.id, { ...staffPlain, ...buildCurrentStatusPayload(staffPlain) });
@@ -144,10 +201,10 @@ router.get('/', async (req, res, next) => {
     const matchGroups = await MatchGroup.findAll({ where: { task_id: { [Op.in]: taskIds } } });
 
     // === 基于 WorkRecord + Staff.role 的聚合统计（REQ-11） ===
-    const totalHours = records.reduce((s, r) => s + parseFloat(r.hours || 0), 0);
+    const totalHours = allStatRecords.reduce((s, r) => s + parseFloat(r.hours || 0), 0);
 
     const roleSummary = createRoleSummary();
-    for (const r of records) {
+    for (const r of allStatRecords) {
       addRoleHours(roleSummary, r.staff?.role, parseFloat(r.hours || 0));
     }
 
@@ -183,6 +240,7 @@ router.get('/', async (req, res, next) => {
         version: r.version,
         requirement_title: r.requirement_title,
         hours: r.hours,
+        delivery_progress: r.delivery_progress,
         role,
         staffName: r.staff?.name || '-'
       });
@@ -215,15 +273,27 @@ router.get('/', async (req, res, next) => {
       code: 0,
       data: {
         tasks,
-        records: await Promise.all(records.map(async r => {
+        records: await Promise.all(allStatRecords.map(async r => {
           const plain = r.toJSON();
-          plain.product_managers = await filterPmNamesForRecord(r, taskById.get(r.task_id), pmContextByName);
+          plain.is_product_manager_record = r instanceof ProductManagerWorkRecord || Array.isArray(plain.demand_sources);
+          if (plain.is_product_manager_record) {
+            plain.demand_sources = safeParseJsonArray(plain.demand_sources);
+            plain.product_managers = [];
+          } else {
+            plain.product_managers = await filterPmNamesForRecord(r, taskById.get(r.task_id), pmContextByName);
+          }
           return plain;
         })),
+        productManagerRecords: productManagerRecords.map(r => {
+          const plain = r.toJSON();
+          const sources = safeParseJsonArray(plain.demand_sources);
+          return { ...plain, is_product_manager_record: true, demand_sources: sources, demand_source_weights: normalizeDemandSourceWeights(plain.demand_source_weights, sources) };
+        }),
+        productDemandDistribution: buildProductDemandDistribution(productManagerRecords),
         matchGroups, staff: visibleStaff, currentStaff, roleDefinitions,
         summary: {
           totalHours,
-          recordCount: records.length,
+          recordCount: allStatRecords.length,
           staffCount: currentStaff.length,
           taskCount: taskIds.length
         },
@@ -286,7 +356,8 @@ router.get('/personal/:staffId', async (req, res, next) => {
     }
 
     // 获取该人员在这些任务下的全部工时记录，并按人员/PM 状态过滤
-    const allRecords = await WorkRecord.findAll({
+    const RecordModel = String(staff.role || '') === 'ai_pm' ? ProductManagerWorkRecord : WorkRecord;
+    const allRecords = await RecordModel.findAll({
       where: {
         staff_id: staffId,
         task_id: { [Op.in]: taskIds }
@@ -318,7 +389,10 @@ router.get('/personal/:staffId', async (req, res, next) => {
     for (const r of records) {
       if (taskMap[r.task_id]) {
         const plain = r.toJSON();
-        plain.product_managers = await filterPmNamesForRecord(r, taskById.get(r.task_id), pmContextByName);
+        plain.product_managers = String(staff.role || '') === 'ai_pm'
+          ? []
+          : await filterPmNamesForRecord(r, taskById.get(r.task_id), pmContextByName);
+        if (String(staff.role || '') === 'ai_pm') plain.demand_sources = safeParseJsonArray(plain.demand_sources);
         taskMap[r.task_id].records.push(plain);
       }
     }

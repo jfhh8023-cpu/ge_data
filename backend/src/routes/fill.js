@@ -12,7 +12,7 @@
 const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
-const { FillLink, CollectionTask, Staff, WorkRecord, MatchGroup, StaffFillLink } = require('../models');
+const { FillLink, CollectionTask, Staff, WorkRecord, ProductManagerWorkRecord, MatchGroup, StaffFillLink } = require('../models');
 const { matchRecords } = require('../services/MatchService');
 const { Op } = require('sequelize');
 const {
@@ -27,6 +27,75 @@ const {
 } = require('../services/PersonStatusService');
 
 const EDITING_TIMEOUT_MS = 30000;
+const PRODUCT_MANAGER_ROLE = 'ai_pm';
+const DEMAND_SOURCE_OPTIONS = new Set(['内部需求', '客户需求', '对外服务', '其他需求']);
+const VALID_DELIVERY_PROGRESS = new Set([0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]);
+
+function isProductManagerStaff(staff) {
+  return String(staff?.role || '').trim() === PRODUCT_MANAGER_ROLE;
+}
+
+function normalizeDemandSources(value) {
+  const values = Array.isArray(value) ? value : (typeof value === 'string' ? value.split(/[,，、|\s]+/) : []);
+  return [...new Set(values.map(v => String(v || '').trim()).filter(v => DEMAND_SOURCE_OPTIONS.has(v)))];
+}
+
+function normalizeDemandSourceWeights(value, sources) {
+  const sourceList = Array.isArray(sources) ? sources : [];
+  if (sourceList.length === 0) return {};
+  let parsed = value;
+  if (typeof parsed === 'string') {
+    try { parsed = JSON.parse(parsed); } catch { parsed = null; }
+  }
+  const values = sourceList.map(source => {
+    const n = Number(parsed && typeof parsed === 'object' ? parsed[source] : NaN);
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  });
+  const total = values.reduce((sum, n) => sum + n, 0);
+  if (total <= 0) {
+    const equal = Number((100 / sourceList.length).toFixed(2));
+    const weights = Object.fromEntries(sourceList.map(source => [source, equal]));
+    const remainder = Number((100 - equal * sourceList.length).toFixed(2));
+    weights[sourceList[sourceList.length - 1]] = Number((equal + remainder).toFixed(2));
+    return weights;
+  }
+  const normalized = sourceList.map((source, index) => [source, Number((values[index] * 100 / total).toFixed(2))]);
+  const roundedTotal = normalized.reduce((sum, [, n]) => sum + n, 0);
+  normalized[normalized.length - 1][1] = Number((normalized[normalized.length - 1][1] + 100 - roundedTotal).toFixed(2));
+  return Object.fromEntries(normalized);
+}
+
+function validateDeliveryProgress(records) {
+  for (let i = 0; i < records.length; i += 1) {
+    const progress = records[i]?.delivery_progress;
+    // 带 existing_record_id 的历史记录允许保留空值；新行必须填写。
+    const isHistory = Boolean(records[i]?.existing_record_id);
+    if (!isHistory && (progress === null || progress === undefined || progress === '' || !VALID_DELIVERY_PROGRESS.has(Number(progress)))) {
+      return `第 ${i + 1} 条记录请选择交付进度`;
+    }
+    if (progress !== null && progress !== undefined && progress !== '' && !VALID_DELIVERY_PROGRESS.has(Number(progress))) {
+      return `第 ${i + 1} 条记录的交付进度无效`;
+    }
+    records[i].delivery_progress = progress === '' || progress === undefined ? null : Number(progress);
+  }
+  return '';
+}
+
+function validateProductManagerRecords(records) {
+  for (let i = 0; i < records.length; i += 1) {
+    const sources = normalizeDemandSources(records[i]?.demand_sources);
+    if (sources.length === 0) return `第 ${i + 1} 条记录请选择需求方`;
+    const progress = records[i]?.delivery_progress;
+    const isHistory = Boolean(records[i]?.existing_record_id);
+    if (!isHistory && (progress === null || progress === undefined || progress === '' || !VALID_DELIVERY_PROGRESS.has(Number(progress)))) {
+      return `第 ${i + 1} 条记录请选择交付进度`;
+    }
+    records[i].demand_sources = sources;
+    records[i].demand_source_weights = normalizeDemandSourceWeights(records[i]?.demand_source_weights, sources);
+    records[i].delivery_progress = progress === '' || progress === undefined ? null : Number(progress);
+  }
+  return '';
+}
 
 function normalizeProductManagers(value) {
   if (Array.isArray(value)) {
@@ -146,9 +215,8 @@ router.get('/:token', async (req, res, next) => {
 
       if (currentTask) {
         // 查询该成员在当前任务下的已提交记录
-        records = await WorkRecord.findAll({
-          where: { staff_id: sfl.staff_id, task_id: currentTask.id }
-        });
+        const Model = isProductManagerStaff(sfl.staff) ? ProductManagerWorkRecord : WorkRecord;
+        records = await Model.findAll({ where: { staff_id: sfl.staff_id, task_id: currentTask.id } });
         // 草稿只在当前任务下有效
         if (sfl.draft_task_id === currentTask.id) {
           draft_records = sfl.draft_data || null;
@@ -191,7 +259,8 @@ router.get('/:token', async (req, res, next) => {
         }
       });
     }
-    const records = await WorkRecord.findAll({ where: { link_id: link.id } });
+    const Model = isProductManagerStaff(link.staff) ? ProductManagerWorkRecord : WorkRecord;
+    const records = await Model.findAll({ where: { link_id: link.id } });
     return res.json({
       code: 0,
       data: {
@@ -267,10 +336,24 @@ router.post('/:token/submit', async (req, res, next) => {
 
     const { records, task_id } = req.body || {};
     if (!Array.isArray(records)) return res.status(400).json({ code: 1, message: 'records 须为数组' });
-    const pmValidationError = validateRequiredProductManagers(records);
-    if (pmValidationError) return res.status(400).json({ code: 1, message: pmValidationError });
     const writeStaff = resolved.type === 'system' ? resolved.sfl.staff : resolved.link.staff;
     assertStaffCanWrite(writeStaff);
+    // 只有当前人员/当前任务真实存在的旧记录才允许历史空进度，防止伪造 existing_record_id 绕过新行校验。
+    const existingModel = isProductManagerStaff(writeStaff) ? ProductManagerWorkRecord : WorkRecord;
+    const existingWhere = resolved.type === 'system'
+      ? { task_id, staff_id: resolved.sfl.staff_id }
+      : { link_id: resolved.link.id };
+    const existingRecords = resolved.type === 'system' && !task_id
+      ? []
+      : await existingModel.findAll({ where: existingWhere, attributes: ['id'] });
+    const existingIds = new Set(existingRecords.map(record => record.id));
+    records.forEach(record => {
+      if (!existingIds.has(record.existing_record_id)) record.existing_record_id = '';
+    });
+    const validationError = isProductManagerStaff(writeStaff)
+      ? validateProductManagerRecords(records)
+      : validateRequiredProductManagers(records) || validateDeliveryProgress(records);
+    if (validationError) return res.status(400).json({ code: 1, message: validationError });
 
     if (resolved.type === 'system') {
       const { sfl } = resolved;
@@ -280,6 +363,26 @@ router.post('/:token/submit', async (req, res, next) => {
       if (!task) return res.status(404).json({ code: 1, message: '任务不存在' });
       if (task.status === 'closed') {
         return res.status(403).json({ code: 1, message: '该任务已停止收集，无法提交' });
+      }
+      if (isProductManagerStaff(writeStaff)) {
+        await ProductManagerWorkRecord.destroy({ where: { task_id, staff_id: sfl.staff_id } });
+        const created = [];
+        for (const r of records) {
+          created.push(await ProductManagerWorkRecord.create({
+            id: uuidv4(), link_id: null, task_id, staff_id: sfl.staff_id,
+            requirement_title: r.requirement_title, version: r.version,
+            demand_sources: r.demand_sources, demand_source_weights: r.demand_source_weights, hours: r.hours,
+            delivery_progress: r.delivery_progress, submit_count: 1
+          }));
+        }
+        sfl.editing_at = null;
+        sfl.last_action = 'submitted';
+        sfl.last_action_at = new Date();
+        if (sfl.draft_task_id === task_id) {
+          sfl.draft_data = null; sfl.draft_task_id = null; sfl.draft_saved_at = null;
+        }
+        await sfl.save();
+        return res.json({ code: 0, data: created, message: `提交了 ${created.length} 条产品工时记录` });
       }
       await assertProductManagersCanWrite(records, task);
 
@@ -296,6 +399,7 @@ router.post('/:token/submit', async (req, res, next) => {
           version: r.version,
           product_managers: r.product_managers,
           hours: r.hours,
+          delivery_progress: r.delivery_progress,
           submit_count: 1
         });
         created.push(rec);
@@ -352,6 +456,22 @@ router.post('/:token/submit', async (req, res, next) => {
     if (link.task?.status === 'closed') {
       return res.status(403).json({ code: 1, message: '该任务已停止收集，请联系管理员重新开启任务收集！' });
     }
+    if (isProductManagerStaff(writeStaff)) {
+      await ProductManagerWorkRecord.destroy({ where: { link_id: link.id } });
+      const created = [];
+      for (const r of records) {
+        created.push(await ProductManagerWorkRecord.create({
+          id: uuidv4(), link_id: link.id, task_id: link.task_id, staff_id: link.staff_id,
+          requirement_title: r.requirement_title, version: r.version,
+          demand_sources: r.demand_sources, demand_source_weights: r.demand_source_weights, hours: r.hours,
+          delivery_progress: r.delivery_progress, submit_count: 1
+        }));
+      }
+      link.is_submitted = true; link.last_action = 'submitted'; link.last_action_at = new Date();
+      link.editing_at = null; link.draft_data = null; link.draft_saved_at = null;
+      await link.save();
+      return res.json({ code: 0, data: created, message: `提交了 ${created.length} 条产品工时记录` });
+    }
     await assertProductManagersCanWrite(records, link.task);
     await WorkRecord.destroy({ where: { link_id: link.id } });
     const created = [];
@@ -359,7 +479,8 @@ router.post('/:token/submit', async (req, res, next) => {
       const rec = await WorkRecord.create({
         id: uuidv4(), link_id: link.id, task_id: link.task_id, staff_id: link.staff_id,
         requirement_title: r.requirement_title, version: r.version,
-        product_managers: r.product_managers, hours: r.hours, submit_count: 1
+        product_managers: r.product_managers, hours: r.hours,
+        delivery_progress: r.delivery_progress, submit_count: 1
       });
       created.push(rec);
     }
@@ -448,7 +569,9 @@ router.get('/:token/history', async (req, res, next) => {
     const linkTaskIds = allLinks.map(l => l.task_id).filter(Boolean);
 
     // 渠道2：WorkRecord（覆盖系统级链接提交及导入数据）
-    const workRecordTaskIds = await WorkRecord.findAll({
+    const WorkModel = isProductManagerStaff(resolved.type === 'system' ? resolved.sfl.staff : resolved.link.staff)
+      ? ProductManagerWorkRecord : WorkRecord;
+    const workRecordTaskIds = await WorkModel.findAll({
       where: { staff_id: staffId },
       attributes: [[require('sequelize').fn('DISTINCT', require('sequelize').col('task_id')), 'task_id']],
       raw: true
@@ -462,7 +585,7 @@ router.get('/:token/history', async (req, res, next) => {
       where: { id: { [Op.in]: allTaskIds } },
       order: [['start_date', 'DESC']]
     });
-    const records = await WorkRecord.findAll({
+    const records = await WorkModel.findAll({
       where: { staff_id: staffId, task_id: { [Op.in]: allTaskIds } }
     });
 
@@ -496,7 +619,9 @@ router.get('/:token/task/:taskId/records', async (req, res, next) => {
     const task = await CollectionTask.findByPk(req.params.taskId);
     if (!task) return res.status(404).json({ code: 1, message: '任务不存在' });
 
-    const records = await WorkRecord.findAll({
+    const Model = isProductManagerStaff(resolved.type === 'system' ? resolved.sfl.staff : resolved.link.staff)
+      ? ProductManagerWorkRecord : WorkRecord;
+    const records = await Model.findAll({
       where: { staff_id: staffId, task_id: req.params.taskId }
     });
 

@@ -50,6 +50,17 @@ function requireProductManagers(value, label = '记录') {
   return productManagers;
 }
 
+const VALID_PROGRESS = new Set([0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]);
+function requireDeliveryProgress(value, label = '记录') {
+  const progress = Number(value);
+  if (!VALID_PROGRESS.has(progress)) {
+    const err = new Error(`${label}：请选择交付进度`);
+    err.status = 400;
+    throw err;
+  }
+  return progress;
+}
+
 async function assertRecordParticipantsWritable({ task_id, staff_id, product_managers }) {
   const [task, staff] = await Promise.all([
     CollectionTask.findByPk(task_id),
@@ -124,15 +135,16 @@ router.get('/', async (req, res, next) => {
 /* POST /api/records */
 router.post('/', async (req, res, next) => {
   try {
-    const { task_id, staff_id, requirement_title, version, product_managers, hours, link_id } = req.body;
+    const { task_id, staff_id, requirement_title, version, product_managers, hours, link_id, delivery_progress } = req.body;
     if (!task_id || !staff_id || !requirement_title || hours === undefined) {
       return res.status(400).json({ code: 1, message: '必填字段缺失' });
     }
     const normalizedPms = requireProductManagers(product_managers);
+    const progress = requireDeliveryProgress(delivery_progress);
     await assertRecordParticipantsWritable({ task_id, staff_id, product_managers: normalizedPms });
     const record = await WorkRecord.create({
       id: uuidv4(), link_id, task_id, staff_id,
-      requirement_title, version, product_managers: normalizedPms, hours
+      requirement_title, version, product_managers: normalizedPms, hours, delivery_progress: progress
     });
     res.json({ code: 0, data: record });
   } catch (err) { next(err); }
@@ -143,11 +155,12 @@ router.put('/:id', async (req, res, next) => {
   try {
     const rec = await WorkRecord.findByPk(req.params.id);
     if (!rec) return res.status(404).json({ code: 1, message: '记录不存在' });
-    const fields = ['requirement_title', 'version', 'hours'];
+    const fields = ['requirement_title', 'version', 'hours', 'delivery_progress'];
     fields.forEach(f => { if (req.body[f] !== undefined) rec[f] = req.body[f]; });
     if (req.body.product_managers !== undefined) {
       rec.product_managers = requireProductManagers(req.body.product_managers);
     }
+    if (req.body.delivery_progress !== undefined) rec.delivery_progress = requireDeliveryProgress(req.body.delivery_progress);
     const normalizedPms = req.body.product_managers !== undefined
       ? rec.product_managers
       : safeParseJsonArray(rec.product_managers);
@@ -185,6 +198,7 @@ router.post('/import', async (req, res, next) => {
       const staff = staffMap[row.staff_name];
       if (!staff) continue;
       const productManagers = requireProductManagers(row.product_managers, `第 ${rowIndex + 1} 条记录`);
+      const progress = requireDeliveryProgress(row.delivery_progress, `第 ${rowIndex + 1} 条记录`);
       await assertRecordParticipantsWritable({ task_id, staff_id: staff.id, product_managers: productManagers });
       const rec = await WorkRecord.create({
         id: uuidv4(),
@@ -194,6 +208,7 @@ router.post('/import', async (req, res, next) => {
         version: row.version || '',
         product_managers: productManagers,
         hours: parseFloat(row.hours) || 0,
+        delivery_progress: progress,
         submit_count: 1
       });
       created.push(rec);

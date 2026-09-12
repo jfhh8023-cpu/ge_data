@@ -554,7 +554,7 @@ async function updatePmStatus(pm, status) {
         </div>
         <div style="display:flex; gap:8px;">
           <el-button circle :icon="Refresh" @click="refreshCurrent" title="刷新数据" />
-          <el-button v-if="activeTab === 'staff' && authStore.hasPermission('btn:personnel:create', 'view')" type="primary" @click="openCreate">+ 新增研发人员</el-button>
+          <el-button v-if="activeTab === 'staff' && authStore.hasPermission('btn:personnel:create', 'view')" type="primary" @click="openCreate">+ 新增产研人员</el-button>
           <el-button v-if="activeTab === 'staff'" :icon="Setting" @click="openRoleConfig">配置</el-button>
           <el-button v-if="activeTab === 'pm'" type="primary" @click="openPmCreate">+ 新增AI产品经理</el-button>
         </div>
@@ -741,7 +741,7 @@ async function updatePmStatus(pm, status) {
       </el-tabs>
 
       <!-- 研发人员 新增/编辑弹窗 -->
-      <el-dialog v-model="dialogVisible" :title="isEditing ? '编辑研发人员' : '新增研发人员'" width="440px" :close-on-click-modal="false">
+      <el-dialog v-model="dialogVisible" :title="isEditing ? '编辑产研人员' : '新增产研人员'" width="440px" :close-on-click-modal="false">
         <el-form :model="form" label-width="70px">
           <el-form-item label="姓名">
             <el-input v-model="form.name" placeholder="请输入姓名（2-20字）" maxlength="20" />

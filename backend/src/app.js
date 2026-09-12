@@ -11,6 +11,7 @@ const errorHandler = require('./middleware/errorHandler');
 const { ensureAutoTaskTables, startAutoTaskScheduler } = require('./services/AutoTaskService');
 const { ensurePersonStatusTables } = require('./services/PersonStatusService');
 const { ensureStaffRoleSchema, ensureMatchGroupRoleSchema } = require('./services/RoleService');
+const ProductManagerWorkRecord = require('./models/ProductManagerWorkRecord');
 const { ensureDutyCalendarTables } = require('./services/DutyCalendarService');
 const { startOfficialHolidaySyncScheduler } = require('./services/OfficialHolidaySyncService');
 
@@ -60,6 +61,18 @@ async function start() {
     await sequelize.authenticate();
     console.log('[DB] MySQL 连接成功');
     await ensureStaffRoleSchema();
+    await ProductManagerWorkRecord.sync();
+    const productRecordColumns = await sequelize.getQueryInterface().describeTable('product_manager_work_records');
+    if (!productRecordColumns.demand_source_weights) {
+      await sequelize.getQueryInterface().addColumn('product_manager_work_records', 'demand_source_weights', {
+        type: require('sequelize').DataTypes.JSON,
+        allowNull: true
+      });
+    }
+    const workRecordColumns = await sequelize.getQueryInterface().describeTable('work_records');
+    if (!workRecordColumns.delivery_progress) {
+      await sequelize.getQueryInterface().addColumn('work_records', 'delivery_progress', { type: require('sequelize').DataTypes.INTEGER, allowNull: true });
+    }
     await ensureMatchGroupRoleSchema();
     await ensurePersonStatusTables();
     await ensureAutoTaskTables();

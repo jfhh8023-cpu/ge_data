@@ -24,6 +24,8 @@ export const useStatsStore = defineStore('stats', {
     roleSummary: emptyRoleSummary(),
     /* v1.1.0: 按 PM 分组的工时分布（REQ-13） */
     pmDistribution: [],
+    productManagerRecords: [],
+    productDemandDistribution: [],
     loading: false,
     /* 个人统计 */
     personalData: null,
@@ -53,6 +55,8 @@ export const useStatsStore = defineStore('stats', {
         this.summary = data.summary || {}
         this.roleSummary = data.roleSummary || emptyRoleSummary()
         this.pmDistribution = data.pmDistribution || []
+        this.productManagerRecords = data.productManagerRecords || []
+        this.productDemandDistribution = data.productDemandDistribution || []
       } finally { this.loading = false }
     },
     /** 个人统计 */

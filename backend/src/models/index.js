@@ -7,6 +7,7 @@ const CollectionTask = require('./CollectionTask');
 const Staff = require('./Staff');
 const FillLink = require('./FillLink');
 const WorkRecord = require('./WorkRecord');
+const ProductManagerWorkRecord = require('./ProductManagerWorkRecord');
 const MatchGroup = require('./MatchGroup');
 const AccessLink = require('./AccessLink');
 const LinkPermission = require('./LinkPermission');
@@ -42,9 +43,16 @@ FillLink.belongsTo(Staff, { foreignKey: 'staff_id', as: 'staff' });
 CollectionTask.hasMany(WorkRecord, { foreignKey: 'task_id', as: 'records' });
 WorkRecord.belongsTo(CollectionTask, { foreignKey: 'task_id', as: 'task' });
 
+// AI 产品经理工时独立表（REQ-048）
+CollectionTask.hasMany(ProductManagerWorkRecord, { foreignKey: 'task_id', as: 'productManagerRecords' });
+ProductManagerWorkRecord.belongsTo(CollectionTask, { foreignKey: 'task_id', as: 'task' });
+
 // Staff 1:N WorkRecord
 Staff.hasMany(WorkRecord, { foreignKey: 'staff_id', as: 'records' });
 WorkRecord.belongsTo(Staff, { foreignKey: 'staff_id', as: 'staff' });
+
+Staff.hasMany(ProductManagerWorkRecord, { foreignKey: 'staff_id', as: 'productManagerRecords' });
+ProductManagerWorkRecord.belongsTo(Staff, { foreignKey: 'staff_id', as: 'staff' });
 
 // Task 1:N MatchGroup
 CollectionTask.hasMany(MatchGroup, { foreignKey: 'task_id', as: 'matchGroups' });
@@ -92,6 +100,7 @@ module.exports = {
   Staff,
   FillLink,
   WorkRecord,
+  ProductManagerWorkRecord,
   MatchGroup,
   AccessLink,
   LinkPermission,

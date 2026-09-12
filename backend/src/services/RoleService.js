@@ -9,6 +9,7 @@ const ROLE_AI_DEV = 'ai_dev';
 const ROLE_VOIP = 'voip';
 const ROLE_AI_QUALITY = 'ai_quality';
 const ROLE_EMBEDDED = 'embedded';
+const ROLE_AI_PM = 'ai_pm';
 const ROLE_FRONTEND = 'frontend';
 const ROLE_BACKEND = 'backend';
 const ROLE_TEST = 'test';
@@ -23,7 +24,8 @@ const DEFAULT_ROLE_DEFINITIONS = [
   { key: ROLE_AI_DEV, name: 'AI开发工程师', short_name: 'AI开发', color: '#165DFF', sort_order: 10, is_system: true, is_active: true },
   { key: ROLE_VOIP, name: 'VOIP工程师', short_name: 'VOIP', color: '#00B42A', sort_order: 20, is_system: true, is_active: true },
   { key: ROLE_AI_QUALITY, name: 'AI质量工程师', short_name: 'AI质量', color: '#FF7D00', sort_order: 30, is_system: true, is_active: true },
-  { key: ROLE_EMBEDDED, name: '嵌入式软件工程师', short_name: '嵌入式', color: '#14B8A6', sort_order: 40, is_system: true, is_active: true }
+  { key: ROLE_EMBEDDED, name: '嵌入式工程师', short_name: '嵌入式', color: '#14B8A6', sort_order: 40, is_system: true, is_active: true },
+  { key: ROLE_AI_PM, name: 'AI产品经理', short_name: 'AI产品', color: '#722ED1', sort_order: 50, is_system: true, is_active: true }
 ];
 
 let roleCache = new Map(DEFAULT_ROLE_DEFINITIONS.map(item => [item.key, { ...item }]));
@@ -295,6 +297,12 @@ async function ensureStaffRoleSchema() {
       role.updated_at = new Date();
       await role.save();
     }
+    // 只迁移历史旧名称，不覆盖管理员在角色配置中做过的全局改名/配色。
+    if (definition.key === ROLE_EMBEDDED && role.name === '嵌入式软件工程师') {
+      role.name = definition.name;
+      role.updated_at = new Date();
+      await role.save();
+    }
   }
 
   const queryInterface = sequelize.getQueryInterface();
@@ -342,6 +350,7 @@ module.exports = {
   ROLE_VOIP,
   ROLE_AI_QUALITY,
   ROLE_EMBEDDED,
+  ROLE_AI_PM,
   ROLE_FRONTEND,
   ROLE_BACKEND,
   ROLE_TEST,

@@ -2,12 +2,14 @@ export const ROLE_AI_DEV = 'ai_dev'
 export const ROLE_VOIP = 'voip'
 export const ROLE_AI_QUALITY = 'ai_quality'
 export const ROLE_EMBEDDED = 'embedded'
+export const ROLE_AI_PM = 'ai_pm'
 
 export const DEFAULT_ROLE_DEFINITIONS = [
   { key: ROLE_AI_DEV, name: 'AI开发工程师', short_name: 'AI开发', color: '#165DFF', sort_order: 10, is_system: true, is_active: true },
   { key: ROLE_VOIP, name: 'VOIP工程师', short_name: 'VOIP', color: '#00B42A', sort_order: 20, is_system: true, is_active: true },
   { key: ROLE_AI_QUALITY, name: 'AI质量工程师', short_name: 'AI质量', color: '#FF7D00', sort_order: 30, is_system: true, is_active: true },
-  { key: ROLE_EMBEDDED, name: '嵌入式软件工程师', short_name: '嵌入式', color: '#14B8A6', sort_order: 40, is_system: true, is_active: true }
+  { key: ROLE_EMBEDDED, name: '嵌入式工程师', short_name: '嵌入式', color: '#14B8A6', sort_order: 40, is_system: true, is_active: true },
+  { key: ROLE_AI_PM, name: 'AI产品经理', short_name: 'AI产品', color: '#722ED1', sort_order: 50, is_system: true, is_active: true }
 ]
 
 export const ROLE_OPTIONS = []

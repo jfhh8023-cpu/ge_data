@@ -35,6 +35,10 @@ const editingHistoryTask = ref(null)
 
 /** 当前表单对应的任务 */
 const currentTask = computed(() => editingHistoryTask.value ?? fillData.value?.task ?? null)
+const isProductManager = computed(() => fillData.value?.staff?.role === 'ai_pm')
+const PROGRESS_OPTIONS = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+const DEMAND_SOURCE_OPTIONS = ['内部需求', '客户需求', '对外服务', '其他需求']
+const HISTORY_PROGRESS_DISPLAY = '100%'
 
 /** 是否有首选任务（用于显示"返回首选"按钮） */
 const hasPreferredTask = computed(() => !!fillData.value?.task)
@@ -55,7 +59,41 @@ const isEditable = computed(() => {
 
 /** 创建空行 */
 function createEmptyRow() {
-  return { requirement_title: '', version: '', product_managers: [], hours: null }
+  return { requirement_title: '', version: '', product_managers: [], demand_sources: [], demand_source_weights: {}, hours: null, delivery_progress: null }
+}
+
+function defaultDemandSourceWeights(sources = []) {
+  const list = [...new Set((Array.isArray(sources) ? sources : []).filter(source => DEMAND_SOURCE_OPTIONS.includes(source)))]
+  if (!list.length) return {}
+  const equal = Number((100 / list.length).toFixed(2))
+  const weights = Object.fromEntries(list.map(source => [source, equal]))
+  weights[list[list.length - 1]] = Number((equal + 100 - equal * list.length).toFixed(2))
+  return weights
+}
+
+function normalizedDemandSourceWeights(row) {
+  const sources = Array.isArray(row.demand_sources) ? row.demand_sources : []
+  const raw = row.demand_source_weights && typeof row.demand_source_weights === 'object' ? row.demand_source_weights : {}
+  const values = sources.map(source => Number(raw[source])).map(value => Number.isFinite(value) && value >= 0 ? value : 0)
+  const total = values.reduce((sum, value) => sum + value, 0)
+  if (total <= 0) return defaultDemandSourceWeights(sources)
+  const weights = {}
+  sources.forEach((source, index) => { weights[source] = Number((values[index] * 100 / total).toFixed(2)) })
+  const roundedTotal = Object.values(weights).reduce((sum, value) => sum + value, 0)
+  if (sources.length) weights[sources[sources.length - 1]] = Number((weights[sources[sources.length - 1]] + 100 - roundedTotal).toFixed(2))
+  return weights
+}
+
+function handleDemandSourcesChange(row) {
+  row.demand_source_weights = defaultDemandSourceWeights(row.demand_sources)
+}
+
+function resetDemandSourceWeights(row) {
+  row.demand_source_weights = defaultDemandSourceWeights(row.demand_sources)
+}
+
+function demandSourceWeightTotal(row) {
+  return Number(Object.values(row.demand_source_weights || {}).reduce((sum, value) => sum + Number(value || 0), 0).toFixed(2))
 }
 
 function pickPmValue(row) {
@@ -106,9 +144,15 @@ function normalizeRows(list) {
       if (!Array.isArray(pm)) pm = []
     }
     return {
+      existing_record_id: r.id || '',
       requirement_title: r.requirement_title || '',
       version: r.version || '',
       product_managers: pm,
+      demand_sources: Array.isArray(r.demand_sources) ? r.demand_sources : (() => { try { const x = JSON.parse(r.demand_sources || '[]'); return Array.isArray(x) ? x : [] } catch { return [] } })(),
+      demand_source_weights: r.demand_source_weights && typeof r.demand_source_weights === 'object'
+        ? { ...r.demand_source_weights }
+        : (() => { try { return JSON.parse(r.demand_source_weights || '{}') } catch { return {} } })(),
+      delivery_progress: r.delivery_progress === null || r.delivery_progress === undefined || r.delivery_progress === '' ? null : Number(r.delivery_progress),
       hours: (r.hours === null || r.hours === undefined || r.hours === '') ? null : parseFloat(r.hours)
     }
   })
@@ -180,15 +224,38 @@ async function handleSubmit() {
     ElMessage.warning('请至少填写一条完整的工时记录')
     return
   }
-  const missingPm = validRows.find(({ row }) => !hasSelectedProductManager(row))
+  const missingPm = !isProductManager.value && validRows.find(({ row }) => !hasSelectedProductManager(row))
   if (missingPm) {
     ElMessage.warning(`第 ${missingPm.index + 1} 行请选择AI产品经理`)
     return
   }
+  const missingDemandSource = isProductManager.value && validRows.find(({ row }) => !Array.isArray(row.demand_sources) || row.demand_sources.length === 0)
+  if (missingDemandSource) {
+    ElMessage.warning(`第 ${missingDemandSource.index + 1} 行请选择需求方`)
+    return
+  }
+  const invalidDemandWeights = isProductManager.value && validRows.find(({ row }) => {
+    if (!row.demand_sources?.length) return false
+    const total = demandSourceWeightTotal(row)
+    return Math.abs(total - 100) > 0.01
+  })
+  if (invalidDemandWeights) {
+    ElMessage.warning(`第 ${invalidDemandWeights.index + 1} 行需求方分配比例合计必须为100%`)
+    return
+  }
+  const missingProgress = validRows.find(({ row }) => !row.existing_record_id && (row.delivery_progress === null || row.delivery_progress === undefined || row.delivery_progress === ''))
+  if (missingProgress) {
+    ElMessage.warning(`第 ${missingProgress.index + 1} 行请选择交付进度`)
+    return
+  }
   const records = validRows.map(({ row }) => ({
+    existing_record_id: row.existing_record_id || undefined,
     requirement_title: String(row.requirement_title || '').trim(),
     version: row.version || '',
     product_managers: row.product_managers,
+    demand_sources: row.demand_sources,
+    demand_source_weights: isProductManager.value ? normalizedDemandSourceWeights(row) : undefined,
+    delivery_progress: Number(row.delivery_progress),
     hours: row.hours
   }))
 
@@ -319,6 +386,22 @@ function parseRecognizeText() {
   const parsed = []
   const VERSION_RE = /V?\d+\.\d+(?:\.\d+)?/i
   for (const rawLine of lines) {
+    if (isProductManager.value) {
+      let remaining = rawLine.trim()
+      const demand_sources = DEMAND_SOURCE_OPTIONS.filter(source => remaining.includes(source))
+      demand_sources.forEach(source => { remaining = remaining.replaceAll(source, ' ') })
+      const progressMatch = remaining.match(/(?:进度\s*)?(100|[0-9]0)\s*%/)
+      const delivery_progress = progressMatch ? Number(progressMatch[1]) : null
+      if (progressMatch) remaining = remaining.replace(progressMatch[0], ' ')
+      const { hours, remaining: afterHours } = parseHoursFromText(remaining)
+      remaining = afterHours
+      const versionMatch = remaining.match(VERSION_RE)
+      const version = versionMatch ? versionMatch[0] : ''
+      if (versionMatch) remaining = remaining.replace(versionMatch[0], ' ')
+      const requirement_title = remaining.replace(/[|\t]/g, ' ').replace(/\s{2,}/g, ' ').trim()
+      if (requirement_title || hours) parsed.push({ requirement_title, version, product_managers: [], demand_sources, demand_source_weights: defaultDemandSourceWeights(demand_sources), delivery_progress, hours })
+      continue
+    }
     let remaining = rawLine.trim()
     let version = ''; let hours = null; let pm = []
     let tokens = null
@@ -425,7 +508,9 @@ async function handleFillImport(event) {
 
   try {
     const { headers, rows: excelRows } = await parseExcelFile(file)
-    const expectedHeaders = ['需求标题', '版本号', 'AI产品经理', '工时(小时)']
+    const expectedHeaders = isProductManager.value
+      ? ['需求标题', '版本号', '需求方', '工时(小时)', '交付进度']
+      : ['需求标题', '版本号', 'AI产品经理', '工时(小时)', '交付进度']
     const legacyHeaders = ['需求标题', '版本号', '产品经理', '工时(小时)']
     if (!validateHeaders(headers, expectedHeaders) && !validateHeaders(headers, legacyHeaders)) {
       ElMessage.error('页面数据格式不匹配，请重新导入')
@@ -442,13 +527,30 @@ async function handleFillImport(event) {
       product_managers: String(pickPmValue(r) || '').trim()
         ? String(pickPmValue(r)).split(/[,，、\s]+/).filter(Boolean)
         : [],
+      demand_sources: isProductManager.value
+        ? String(r['需求方'] || '').split(/[,，、\s]+/).filter(source => DEMAND_SOURCE_OPTIONS.includes(source))
+        : [],
+      demand_source_weights: isProductManager.value
+        ? defaultDemandSourceWeights(String(r['需求方'] || '').split(/[,，、\s]+/).filter(source => DEMAND_SOURCE_OPTIONS.includes(source)))
+        : {},
+      delivery_progress: r['交付进度'] === '' || r['交付进度'] === undefined ? null : Number(String(r['交付进度']).replace('%', '')),
       hours: parseFloat(r['工时(小时)']) || 0
     }))
 
     // 追加到当前行（若当前仅一空行则替换）
-    const missingPmIndex = parsed.findIndex(r => r.requirement_title && r.hours > 0 && !hasSelectedProductManager(r))
-    if (missingPmIndex >= 0) {
+    const missingPmIndex = !isProductManager.value && parsed.findIndex(r => r.requirement_title && r.hours > 0 && !hasSelectedProductManager(r))
+    if (missingPmIndex !== false && missingPmIndex >= 0) {
       ElMessage.warning(`Excel 第 ${missingPmIndex + 2} 行未填写AI产品经理`)
+      return
+    }
+    const missingSourceIndex = isProductManager.value && parsed.findIndex(r => r.requirement_title && r.hours > 0 && !r.demand_sources?.length)
+    if (missingSourceIndex !== false && missingSourceIndex >= 0) {
+      ElMessage.warning(`Excel 第 ${missingSourceIndex + 2} 行未填写需求方`)
+      return
+    }
+    const missingProgressIndex = parsed.findIndex(r => r.requirement_title && r.hours > 0 && (r.delivery_progress === null || r.delivery_progress === undefined))
+    if (missingProgressIndex >= 0 && headers.includes('交付进度')) {
+      ElMessage.warning(`Excel 第 ${missingProgressIndex + 2} 行未填写交付进度`)
       return
     }
 
@@ -628,7 +730,8 @@ function exportHistory() {
               <!-- 一键识别（仅可编辑时显示） -->
               <div v-if="isEditable" style="background:var(--color-bg-2); border-radius:8px; padding:14px; margin-bottom:14px; border:1px solid var(--color-border-light);">
                 <p style="font-size:12px; color:var(--color-text-3); margin-bottom:6px;">
-                  粘贴文本，每行一条。格式：<code style="background:var(--color-bg-white); padding:2px 6px; border-radius:4px;">V4.633.0 用户中心改版 杨瑞 5h</code>
+                  <span v-if="isProductManager">粘贴文本，每行一条。格式：<code style="background:var(--color-bg-white); padding:2px 6px; border-radius:4px;">V4.633.0 | 用户中心改版 | 客户需求,内部需求 | 5h | 80%</code>；对外服务包含售前、运营、业务培训等服务事项。</span>
+                  <span v-else>粘贴文本，每行一条。格式：<code style="background:var(--color-bg-white); padding:2px 6px; border-radius:4px;">V4.633.0 用户中心改版 杨瑞 5h 80%</code></span>
                 </p>
                 <el-input v-model="recognizeText" type="textarea" :rows="2" placeholder="在此粘贴文本内容..." />
                 <div style="display:flex; justify-content:flex-end; margin-top:6px;">
@@ -650,7 +753,7 @@ function exportHistory() {
                       :disabled="!isEditable" @focus="handleInputFocus" />
                   </template>
                 </el-table-column>
-                <el-table-column label="AI产品经理" width="160">
+                <el-table-column v-if="!isProductManager" label="AI产品经理" width="160">
                   <template #header>
                     <span>AI产品经理 <span style="color:#F53F3F;">*</span></span>
                   </template>
@@ -661,10 +764,46 @@ function exportHistory() {
                     </el-select>
                   </template>
                 </el-table-column>
+                  <el-table-column v-else label="需求方" width="245">
+                  <template #header>
+                    <span>需求方 <span style="color:#F53F3F;">*</span></span>
+                  </template>
+                  <template #default="{ row }">
+                    <div style="display:flex; align-items:center; gap:4px;">
+                    <el-select v-model="row.demand_sources" multiple collapse-tags collapse-tags-tooltip
+                      placeholder="可多选" size="small" style="flex:1; min-width:0;" :disabled="!isEditable" @change="handleDemandSourcesChange(row)">
+                      <el-option v-for="source in DEMAND_SOURCE_OPTIONS" :key="source" :label="source" :value="source" />
+                    </el-select>
+                    <el-popover v-if="row.demand_sources?.length" placement="bottom" :width="260" trigger="click">
+                      <template #reference><el-button size="small" type="primary" class="fill-demand-allocation-button" title="需求方工时分配，默认均分" :disabled="!isEditable">分配</el-button></template>
+                      <div style="font-size:12px; color:var(--color-text-2); margin-bottom:8px;">需求方工时分配（合计100%）</div>
+                      <div v-for="source in row.demand_sources" :key="source" style="display:flex; align-items:center; gap:8px; margin:6px 0;">
+                        <span style="flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ source }}</span>
+                        <el-input-number v-model="row.demand_source_weights[source]" :min="0" :max="100" :precision="2" :step="5" size="small" controls-position="right" style="width:105px;" />
+                        <span>%</span>
+                      </div>
+                      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; border-top:1px solid var(--color-border-light); padding-top:8px;">
+                        <span :style="{ color: Math.abs(demandSourceWeightTotal(row) - 100) < 0.01 ? 'var(--color-success)' : 'var(--color-danger)' }">合计 {{ demandSourceWeightTotal(row) }}%</span>
+                        <el-button size="small" text type="primary" @click="resetDemandSourceWeights(row)">均分</el-button>
+                      </div>
+                    </el-popover>
+                    </div>
+                  </template>
+                </el-table-column>
                 <el-table-column label="工时/h" width="100">
                   <template #default="{ row }">
                     <el-input-number v-model="row.hours" :min="0.01" :max="200" :precision="2" :step="0.5"
                       controls-position="right" size="small" style="width:100%;" :disabled="!isEditable" />
+                  </template>
+                </el-table-column>
+                <el-table-column label="交付进度" width="120">
+                  <template #header>
+                    <span>交付进度 <span style="color:#F53F3F;">*</span></span>
+                  </template>
+                  <template #default="{ row }">
+                    <el-select v-model="row.delivery_progress" placeholder="请选择" size="small" style="width:100%;" :disabled="!isEditable">
+                      <el-option v-for="progress in PROGRESS_OPTIONS" :key="progress" :label="`${progress}%`" :value="progress" />
+                    </el-select>
                   </template>
                 </el-table-column>
                 <el-table-column v-if="isEditable" label="" width="45" align="center">
@@ -770,6 +909,7 @@ function exportHistory() {
                     </div>
                     <div v-for="(rec, ri) in task.records" :key="ri" class="fill-history-rec">
                       <span class="fill-rec-title">{{ rec.requirement_title || '-' }}</span>
+                      <span class="fill-rec-progress fill-rec-progress-complete">{{ HISTORY_PROGRESS_DISPLAY }}</span>
                       <span class="fill-rec-hours">{{ parseFloat(rec.hours || 0).toFixed(1) }}H</span>
                     </div>
                   </div>
@@ -912,7 +1052,26 @@ function exportHistory() {
 .fill-history-records { padding: 4px 12px 10px 28px; border-top: 1px solid var(--color-border-light); background: var(--color-bg-2); }
 .fill-history-rec { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; font-size: 12px; }
 .fill-rec-title { color: var(--color-text-2); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 8px; }
-.fill-rec-hours { font-weight: 600; color: var(--color-primary); flex-shrink: 0; }
+.fill-rec-hours { font-weight: 600; color: var(--color-primary); flex-shrink: 0; margin-left: 10px; white-space: nowrap; }
+.fill-rec-progress { color: var(--color-text-2); min-width: 48px; text-align: right; flex-shrink: 0; margin-left: 10px; white-space: nowrap; }
+.fill-rec-progress-complete { color: #00B42A; font-weight: 600; }
+
+.fill-demand-allocation-button {
+  min-width: 48px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 4px;
+  background: #C41D7F !important;
+  border-color: #C41D7F !important;
+  color: #fff !important;
+  font-weight: 600;
+}
+.fill-demand-allocation-button:hover,
+.fill-demand-allocation-button:focus {
+  background: #A61D68 !important;
+  border-color: #A61D68 !important;
+  color: #fff !important;
+}
 
 /* 状态标签 */
 .fill-status-tag { display: inline-block; padding: 1px 6px; border-radius: 9999px; font-size: 10px; font-weight: 500; }

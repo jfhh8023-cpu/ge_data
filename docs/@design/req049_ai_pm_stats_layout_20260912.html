@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>REQ-049 页面设计示例</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f4f6f8; color: #1d2129; font: 14px "Microsoft YaHei", sans-serif; }
+    .page { width: 1540px; margin: 0 auto; padding: 24px 28px 36px; }
+    .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+    h1 { font-size: 22px; margin: 0; }
+    .range { color: #86909c; }
+    .tabs { display: flex; gap: 4px; border-bottom: 1px solid #d9dfe8; margin-bottom: 16px; }
+    .tab { padding: 12px 22px; color: #4e5969; border: 1px solid transparent; border-bottom: 3px solid transparent; }
+    .tab.active { color: #165dff; border-color: #d9e5ff; border-bottom-color: #165dff; background: #fff; font-weight: 700; }
+    .filter { background: #fff; border: 1px solid #e5e6eb; border-radius: 8px; padding: 12px 16px; display: flex; gap: 12px; margin-bottom: 16px; }
+    .select { min-width: 130px; padding: 8px 12px; border: 1px solid #c9cdd4; border-radius: 4px; color: #4e5969; background: #fff; }
+    .cards { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 16px; }
+    .card { background: #fff; border: 1px solid #e5e6eb; border-radius: 8px; padding: 16px; min-height: 116px; }
+    .card .label { color: #86909c; font-size: 13px; white-space: nowrap; }
+    .card .num { font-size: 27px; font-weight: 700; margin-top: 11px; }
+    .card .sub { color: #86909c; font-size: 12px; margin-top: 6px; }
+    .red { color: #f53f3f; } .blue { color: #165dff; } .green { color: #00b42a; } .orange { color: #ff7d00; } .purple { color: #722ed1; } .teal { color: #00a6a6; }
+    .bar.red { background: #f53f3f; } .bar.blue { background: #165dff; } .bar.green { background: #00b42a; } .bar.orange { background: #ff7d00; } .bar.purple { background: #722ed1; } .bar.teal { background: #00a6a6; }
+    .panel { background: #fff; border: 1px solid #e5e6eb; border-radius: 8px; padding: 18px 20px; margin-bottom: 16px; }
+    .panel-title { display: flex; justify-content: space-between; align-items: center; font-size: 17px; font-weight: 700; margin-bottom: 14px; }
+    .hint { font-size: 12px; color: #86909c; font-weight: 400; }
+    .legend { display: flex; gap: 18px; font-size: 12px; color: #4e5969; }
+    .dot { display: inline-block; width: 10px; height: 10px; margin-right: 5px; }
+    .chart { height: 220px; display: flex; align-items: end; gap: 28px; border-bottom: 1px solid #c9cdd4; padding: 10px 24px 0; }
+    .group { flex: 1; height: 190px; display: flex; align-items: end; justify-content: center; gap: 5px; position: relative; }
+    .bar { width: 24px; min-height: 3px; border-radius: 3px 3px 0 0; position: relative; }
+    .bar span { position: absolute; top: -20px; width: 48px; left: -12px; text-align: center; font-size: 11px; color: #4e5969; }
+    .x { position: absolute; bottom: -26px; left: 0; right: 0; text-align: center; font-size: 12px; color: #4e5969; white-space: nowrap; }
+    .chart-note { background: #f7f8fa; padding: 9px 12px; margin-top: 30px; color: #4e5969; font-size: 12px; border-left: 3px solid #722ed1; }
+    .list-tabs { display: flex; gap: 22px; border-bottom: 1px solid #e5e6eb; margin-bottom: 0; }
+    .list-tab { padding: 10px 2px; color: #86909c; }
+    .list-tab.active { color: #165dff; border-bottom: 2px solid #165dff; font-weight: 700; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 11px 12px; border-bottom: 1px solid #f0f1f3; text-align: left; }
+    th { color: #86909c; font-weight: 400; background: #fafbfc; }
+    .progress { color: #722ed1; font-weight: 700; }
+    .section-label { color: #722ed1; font-weight: 700; margin: 25px 0 10px; }
+    .callout { display: inline-block; padding: 6px 10px; border: 1px solid #d9c2f5; color: #722ed1; background: #faf7ff; border-radius: 4px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="head">
+      <div><h1>周期统计（季度）</h1><span class="range">2026-06-29 至 2026-08-16 · 2026年 Q3</span></div>
+      <span class="callout">同一筛选范围 · 来源分开统计</span>
+    </header>
+    <nav class="tabs">
+      <div class="tab active">部门全观</div><div class="tab">AI产品经理工时</div><div class="tab">AI研发人员工时</div><div class="tab">AI产品经理聚焦</div>
+    </nav>
+    <div class="filter"><div class="select">2026年　⌄</div><div class="select">Q3　⌄</div><div class="select" style="width:260px">全部周期　⌄</div><span class="hint" style="padding:9px 0">部门全观：总览合并；图表按各自业务维度展示</span></div>
+
+    <section class="cards">
+      <div class="card"><div class="label">Q3 总工时</div><div class="num red">2,138.0 <small>小时</small></div><div class="sub">研发 2,103h + 产品 35h</div></div>
+      <div class="card"><div class="label">Q3 AI产品经理总工时</div><div class="num purple">35.0 <small>小时</small></div><div class="sub">独立产品来源</div></div>
+      <div class="card"><div class="label">Q3 AI开发工程师总工时</div><div class="num blue">724.0 <small>小时</small></div><div class="sub">研发来源</div></div>
+      <div class="card"><div class="label">Q3 VOIP工程师总工时</div><div class="num green">490.0 <small>小时</small></div><div class="sub">研发来源</div></div>
+      <div class="card"><div class="label">Q3 AI质量工程师总工时</div><div class="num orange">489.0 <small>小时</small></div><div class="sub">研发来源</div></div>
+      <div class="card"><div class="label">Q3 嵌入式工程师总工时</div><div class="num teal">400.0 <small>小时</small></div><div class="sub">研发来源</div></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-title"><span>研发工时分布 · 按 AI产品经理归属人</span><span class="legend"><span><i class="dot blue"></i>AI开发</span><span><i class="dot green"></i>VOIP</span><span><i class="dot orange"></i>AI质量</span><span><i class="dot red"></i>总计</span></span></div>
+      <div class="chart">
+        <div class="group"><div class="bar blue" style="height:110px"><span>268</span></div><div class="bar orange" style="height:28px"><span>44</span></div><div class="bar red" style="height:145px"><span>326</span></div><div class="x">钟冠</div></div>
+        <div class="group"><div class="bar blue" style="height:80px"><span>196</span></div><div class="bar orange" style="height:82px"><span>203</span></div><div class="bar red" style="height:172px"><span>399</span></div><div class="x">杨瑞</div></div>
+        <div class="group"><div class="bar blue" style="height:58px"><span>128</span></div><div class="bar green" style="height:10px"><span>15</span></div><div class="bar orange" style="height:12px"><span>20</span></div><div class="bar red" style="height:70px"><span>163</span></div><div class="x">罗晓璇</div></div>
+        <div class="group"><div class="bar green" style="height:80px"><span>182</span></div><div class="bar red" style="height:80px"><span>182</span></div><div class="x">其他-底层</div></div>
+        <div class="group"><div class="bar green" style="height:3px"><span>3</span></div><div class="bar orange" style="height:12px"><span>24</span></div><div class="bar red" style="height:14px"><span>27</span></div><div class="x">不在上述</div></div>
+      </div>
+      <div class="chart-note">这里不显示 AI产品经理工时。研发图表横轴是“归属人”；AI产品经理数据使用下方独立的“需求方”图表。</div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-title"><span>AI产品经理工时分布 · 按需求方</span><span class="legend"><span><i class="dot purple"></i>产品工时</span><span><i class="dot red"></i>总计</span></span></div>
+      <div class="chart">
+        <div class="group"><div class="bar purple" style="height:65px"><span>12.5</span></div><div class="bar red" style="height:65px"><span>12.5</span></div><div class="x">内部需求</div></div>
+        <div class="group"><div class="bar purple" style="height:100px"><span>18.0</span></div><div class="bar red" style="height:100px"><span>18.0</span></div><div class="x">客户需求</div></div>
+        <div class="group"><div class="bar purple" style="height:18px"><span>3.0</span></div><div class="bar red" style="height:18px"><span>3.0</span></div><div class="x">对外服务</div></div>
+        <div class="group"><div class="bar purple" style="height:9px"><span>1.5</span></div><div class="bar red" style="height:9px"><span>1.5</span></div><div class="x">其他需求</div></div>
+      </div>
+      <div class="chart-note">产品记录的需求方可多选。示例：10h 选择两个需求方，图表按 5h + 5h 均摊；顶部产品总工时仍只计 10h。</div>
+    </section>
+
+    <section class="panel">
+      <div class="list-tabs"><div class="list-tab active">研发数据</div><div class="list-tab">AI产品经理数据</div></div>
+      <table><thead><tr><th>人员</th><th>来源</th><th>需求/版本</th><th>维度</th><th>工时/h</th><th>交付进度</th></tr></thead><tbody>
+        <tr><td>杨瑞</td><td>研发</td><td>语音客户生命周期管理 / v4.864.0</td><td>AI开发工程师</td><td>196</td><td class="progress">30%</td></tr>
+        <tr><td>张三</td><td>AI产品经理</td><td>客户问题跟进 / -</td><td>客户需求</td><td>10</td><td class="progress">-</td></tr>
+      </tbody></table>
+    </section>
+
+    <div class="section-label">切换“AI产品经理工时”页签后的页面示意</div>
+    <section class="panel" style="border-left:4px solid #722ed1;">
+      <div class="panel-title"><span>AI产品经理工时 · 独立来源页</span><span class="hint">卡片、需求方图、列表、弹窗与当前筛选保持一致</span></div>
+      <div class="cards" style="margin-bottom:0; grid-template-columns:repeat(4,1fr)">
+        <div class="card"><div class="label">产品总工时</div><div class="num purple">35.0 <small>小时</small></div></div>
+        <div class="card"><div class="label">客户需求</div><div class="num purple">18.0 <small>小时</small></div></div>
+        <div class="card"><div class="label">内部需求</div><div class="num purple">12.5 <small>小时</small></div></div>
+        <div class="card"><div class="label">对外服务 / 其他需求</div><div class="num purple">4.5 <small>小时</small></div></div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
