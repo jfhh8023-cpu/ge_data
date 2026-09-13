@@ -1,0 +1,92 @@
+[
+  {
+    "id": "DATA-01",
+    "phase": 1,
+    "requirement": "048/055/057"
+  },
+  {
+    "id": "DATA-02",
+    "phase": 1,
+    "requirement": "048/055/057"
+  },
+  {
+    "id": "DATA-03",
+    "phase": 1,
+    "requirement": "048/055/057"
+  },
+  {
+    "id": "DATA-04",
+    "phase": 1,
+    "requirement": "048/055/057"
+  },
+  {
+    "id": "DATA-05",
+    "phase": 1,
+    "requirement": "048/055/057"
+  },
+  {
+    "id": "DATA-06",
+    "phase": 1,
+    "requirement": "048/055/057"
+  },
+  {
+    "id": "VER-01",
+    "phase": 1,
+    "requirement": "055"
+  },
+  {
+    "id": "HIST-01",
+    "phase": 1,
+    "requirement": "057"
+  },
+  {
+    "id": "CHART-01",
+    "phase": 2,
+    "requirement": "049/059"
+  },
+  {
+    "id": "CHART-02",
+    "phase": 2,
+    "requirement": "048/055/059"
+  },
+  {
+    "id": "SOURCE-01",
+    "phase": 3,
+    "requirement": "048/055/059"
+  },
+  {
+    "id": "SOURCE-02",
+    "phase": 3,
+    "requirement": "055"
+  },
+  {
+    "id": "UI-CONTRACT-01",
+    "phase": 3,
+    "requirement": "044/048/050/056"
+  },
+  {
+    "id": "API-REG-01",
+    "phase": 4,
+    "requirement": "048/055/057/059"
+  },
+  {
+    "id": "UI-REG-01",
+    "phase": 4,
+    "requirement": "049/059"
+  },
+  {
+    "id": "UI-REG-02",
+    "phase": 4,
+    "requirement": "049/059"
+  },
+  {
+    "id": "BUILD-01",
+    "phase": 4,
+    "requirement": "all completed requirements"
+  },
+  {
+    "id": "RUNTIME-01",
+    "phase": 4,
+    "requirement": "043/044/046/048/050/052/056/058"
+  }
+]

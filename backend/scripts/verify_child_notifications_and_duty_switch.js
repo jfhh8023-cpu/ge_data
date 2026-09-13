@@ -231,7 +231,8 @@ async function main() {
     );
     received.length = 0;
 
-    const schedulerTarget = new Date(Date.now() + 2000);
+    // Allow the isolated scheduler enough lead time for second-level precision and DB round trips.
+    const schedulerTarget = new Date(Date.now() + 10000);
     const schedulerParts = getBeijingParts(schedulerTarget);
     const scheduledRule = await AutoTaskRule.create({
       id: scheduledRuleId,
@@ -269,6 +270,7 @@ async function main() {
       updated_at: now
     });
     await sleep(Math.max(0, schedulerTarget.getTime() - Date.now()) + 350);
+    process.env.ALLOW_LOCAL_WEBHOOK_TEST = '1';
     await schedulerTick();
     let scheduledRunLog = null;
     for (let attempt = 0; attempt < 30; attempt += 1) {
@@ -352,7 +354,14 @@ async function main() {
     assert.ok(weeklyChild.activation_token);
     assert.strictEqual(weeklyChild.activation_token, monthlyChild.activation_token, 'one parent run must share one activation token');
 
-    const waitMs = Math.max(0, target.getTime() - Date.now()) + 1800;
+    // Rebase the child fixture after the slower parent lifecycle assertions so the
+    // due-time check cannot accidentally roll over to the next weekly occurrence.
+    const childTarget = new Date(Date.now() + 3000);
+    const childTargetParts = getBeijingParts(childTarget);
+    const childWeekday = getWeekdayNumber(childTargetParts.date);
+    await weeklyChild.update({ week_days: [childWeekday], execute_time: childTargetParts.time });
+    await failureChild.update({ week_days: [childWeekday], execute_time: childTargetParts.time });
+    const waitMs = Math.max(0, childTarget.getTime() - Date.now()) + 1800;
     await sleep(waitMs);
     await processDueChildNotifications(new Date());
     await sleep(500);

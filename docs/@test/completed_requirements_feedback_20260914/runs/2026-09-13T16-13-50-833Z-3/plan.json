@@ -1,0 +1,17 @@
+[
+  {
+    "id": "SOURCE-01",
+    "phase": 3,
+    "requirement": "048/055/059"
+  },
+  {
+    "id": "SOURCE-02",
+    "phase": 3,
+    "requirement": "055"
+  },
+  {
+    "id": "UI-CONTRACT-01",
+    "phase": 3,
+    "requirement": "044/048/050/056"
+  }
+]

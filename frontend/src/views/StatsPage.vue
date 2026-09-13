@@ -27,7 +27,7 @@ import { onDataChange, SYNC_EVENTS } from '../utils/sync'
 import { generateAndDownloadExcel, uploadExcelToServer } from '../utils/excel'
 import { useAuthStore } from '../stores/auth'
 import { ROLE_AI_DEV, ROLE_VOIP, ROLE_AI_QUALITY, normalizeRole, roleColor, roleLabel, roleTagStyle } from '../utils/roles'
-import { WEIGHTED_PROGRESS_TIP, weightedProgress } from '../utils/progress'
+import { WEIGHTED_PROGRESS_TIP, normalizeProgress, weightedProgress } from '../utils/progress'
 
 const statsStore = useStatsStore()
 const authStore = useAuthStore()
@@ -611,14 +611,16 @@ const productManagerChartRows = computed(() => {
   const grouped = new Map()
   for (const record of productRecords.value) {
     const staffName = record.staff?.name || record.staff_name || '-'
-    if (!grouped.has(staffName)) {
-      grouped.set(staffName, {
+    const staffId = record.staff?.id || record.staff_id || staffName
+    if (!grouped.has(staffId)) {
+      grouped.set(staffId, {
+        staffId,
         staffName,
         total: 0,
         sourceValues: Object.fromEntries(sourceList.map(source => [source.id, 0]))
       })
     }
-    const row = grouped.get(staffName)
+    const row = grouped.get(staffId)
     const hours = toNumber(record.hours)
     row.total += hours
     const names = (record.demand_sources || []).filter(name => sourceByName.has(name))
@@ -651,11 +653,15 @@ function productManagerChartBarStyle(value, color) {
 
 const filteredProductRecords = computed(() => {
   return productRecords.value.filter(record => {
-    const staffName = record.staff?.name || record.staff_name || '-'
-    const managerMatch = !productManagerFilter.value || staffName === productManagerFilter.value
+    const staffId = record.staff?.id || record.staff_id || record.staff?.name || record.staff_name || '-'
+    const managerMatch = !productManagerFilter.value || staffId === productManagerFilter.value
     const sourceMatch = !productSourceFilter.value || (record.demand_sources || []).includes(productSourceFilter.value)
     return managerMatch && sourceMatch
   })
+})
+const productManagerFilterLabel = computed(() => {
+  if (!productManagerFilter.value) return ''
+  return productManagerChartRows.value.find(row => row.staffId === productManagerFilter.value)?.staffName || productManagerFilter.value
 })
 const sortedProductRecords = computed(() => {
   const records = [...filteredProductRecords.value]
@@ -734,8 +740,8 @@ function selectProductDemandSource(source = '') {
   productSourceFilter.value = productSourceFilter.value === source ? '' : source
 }
 
-function selectProductManager(name = '') {
-  productManagerFilter.value = productManagerFilter.value === name ? '' : name
+function selectProductManager(staffId = '') {
+  productManagerFilter.value = productManagerFilter.value === staffId ? '' : staffId
   productSourceFilter.value = ''
 }
 
@@ -2201,7 +2207,7 @@ function exportStatsData() {
               <span><i style="background:#F53F3F"></i>总计</span>
             </div>
             <div class="dt-product-manager-chart-groups">
-              <div v-for="row in productManagerChartRows" :key="row.staffName" class="dt-product-manager-group" :class="{ 'is-selected': productManagerFilter === row.staffName }">
+              <div v-for="row in productManagerChartRows" :key="row.staffId" class="dt-product-manager-group" :class="{ 'is-selected': productManagerFilter === row.staffId }">
                 <div class="dt-product-manager-bars">
                   <template v-for="source in productChartSources" :key="source.id">
                     <div v-if="!hideZeroValueBars || row.sourceValues[source.id] > 0" class="dt-product-manager-bar" :style="productManagerChartBarStyle(row.sourceValues[source.id] || 0, source.color)">
@@ -2210,18 +2216,18 @@ function exportStatsData() {
                   </template>
                   <div v-if="!hideZeroValueBars || row.total > 0" class="dt-product-manager-bar dt-product-manager-total-bar" :style="productManagerChartBarStyle(row.total, '#F53F3F')"><span>{{ row.total.toFixed(1) }}</span></div>
                 </div>
-                <button type="button" class="dt-product-manager-label" @click="selectProductManager(row.staffName)">{{ row.staffName }}</button>
+                <button type="button" class="dt-product-manager-label" @click="selectProductManager(row.staffId)">{{ row.staffName }}</button>
               </div>
             </div>
           </div>
           <div v-else class="dt-empty" style="padding:28px;">当前范围暂无AI产品经理工时</div>
-          <el-tooltip content="多选需求方按保存权重均摊；每名AI产品经理的总计柱按原始记录只计一次；零值柱子由开关控制。" placement="top"><div class="dt-product-demand-tip">ⓘ 当前筛选：{{ productManagerFilter || productSourceFilter || '全部产品经理' }}</div></el-tooltip>
+          <el-tooltip content="多选需求方按保存权重均摊；每名AI产品经理的总计柱按原始记录只计一次；零值柱子由开关控制。" placement="top"><div class="dt-product-demand-tip">ⓘ 当前筛选：{{ productManagerFilterLabel || productSourceFilter || '全部产品经理' }}</div></el-tooltip>
         </div>
 
         <div class="dt-data-card">
           <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 16px; border-bottom:1px solid var(--color-border-light, #F2F3F5);">
             <strong>AI产品经理工时明细</strong>
-            <span class="dt-product-demand-note">独立存储 · {{ productManagerFilter || productSourceFilter || '全部产品经理' }}</span>
+            <span class="dt-product-demand-note">独立存储 · {{ productManagerFilterLabel || productSourceFilter || '全部产品经理' }}</span>
           </div>
           <div v-if="sortedProductRecords.length > 0" style="padding:10px 16px; border-bottom:1px solid var(--color-border-light, #F2F3F5); text-align:right;">
             <el-radio-group v-model="pmSortOrder" size="small">

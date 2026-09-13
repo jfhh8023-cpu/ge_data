@@ -1,0 +1,42 @@
+[
+  {
+    "id": "DATA-01",
+    "phase": 1,
+    "requirement": "048/055/057"
+  },
+  {
+    "id": "DATA-02",
+    "phase": 1,
+    "requirement": "048/055/057"
+  },
+  {
+    "id": "DATA-03",
+    "phase": 1,
+    "requirement": "048/055/057"
+  },
+  {
+    "id": "DATA-04",
+    "phase": 1,
+    "requirement": "048/055/057"
+  },
+  {
+    "id": "DATA-05",
+    "phase": 1,
+    "requirement": "048/055/057"
+  },
+  {
+    "id": "DATA-06",
+    "phase": 1,
+    "requirement": "048/055/057"
+  },
+  {
+    "id": "VER-01",
+    "phase": 1,
+    "requirement": "055"
+  },
+  {
+    "id": "HIST-01",
+    "phase": 1,
+    "requirement": "057"
+  }
+]

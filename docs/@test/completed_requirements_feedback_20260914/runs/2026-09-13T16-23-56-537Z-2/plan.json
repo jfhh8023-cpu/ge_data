@@ -1,0 +1,12 @@
+[
+  {
+    "id": "CHART-01",
+    "phase": 2,
+    "requirement": "049/059"
+  },
+  {
+    "id": "CHART-02",
+    "phase": 2,
+    "requirement": "048/055/059"
+  }
+]

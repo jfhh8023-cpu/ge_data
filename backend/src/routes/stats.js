@@ -87,7 +87,7 @@ function buildProductDemandDistribution(records, definitions = []) {
       rows[source].total += allocatedHours;
       rows[source].product += allocatedHours;
       rows[source].recordCount += 1;
-      rows[source].records.push({ id: plain.id, staffName: plain.staff?.name || '-', requirement_title: plain.requirement_title, version: plain.version || '-', hours: allocatedHours, originalHours: hours, delivery_progress: plain.delivery_progress });
+      rows[source].records.push({ id: plain.id, staffName: plain.staff?.name || '-', requirement_title: plain.requirement_title, version: plain.version || '-', hours: allocatedHours, originalHours: hours, delivery_progress: normalizeProgress(plain.delivery_progress) });
     }
   }
   return Object.values(rows).map(row => ({
@@ -101,6 +101,13 @@ function buildProductDemandDistribution(records, definitions = []) {
 function versionTypeOf(record) {
   const value = String(record?.version || '').trim();
   return value && value !== '-' ? 'versioned' : 'no_version';
+}
+
+function normalizeProgress(value) {
+  if (value === null || value === undefined || typeof value === 'boolean') return null;
+  if (typeof value === 'string' && value.trim() === '') return null;
+  const progress = Number(value);
+  return Number.isFinite(progress) && progress >= 0 && progress <= 100 ? progress : null;
 }
 
 function safeExcelText(value) {
@@ -163,6 +170,7 @@ async function loadScopedStatRecords({ scope = 'current', year, quarter, taskId 
   const records = [];
   for (const row of [...visibleEngineeringRows, ...visibleProductRows]) {
     const plain = applyHistoricalProgress(row.toJSON(), taskById.get(row.task_id));
+    plain.delivery_progress = normalizeProgress(plain.delivery_progress);
     const isProduct = row instanceof ProductManagerWorkRecord || Array.isArray(plain.demand_sources);
     plain.is_product_manager_record = isProduct;
     plain.source_type = isProduct ? 'product_manager' : 'engineering';
@@ -194,18 +202,21 @@ function filterScopedRecords(records, query, definitions) {
 }
 
 function buildProgressDetails(records) {
-  const valid = records.filter(record => Number(record.hours) > 0 && Number.isFinite(Number(record.delivery_progress)));
+  const valid = records
+    .map(record => ({ ...record, delivery_progress: normalizeProgress(record.delivery_progress) }))
+    .filter(record => Number(record.hours) > 0 && record.delivery_progress !== null);
   const totalHours = valid.reduce((sum, record) => sum + Number(record.hours), 0);
   const weightedHours = valid.reduce((sum, record) => sum + Number(record.hours) * Number(record.delivery_progress), 0);
   return {
     records: records.map(record => ({
       ...record,
-      progress_status: record.delivery_progress === null || record.delivery_progress === undefined || record.delivery_progress === ''
+      delivery_progress: normalizeProgress(record.delivery_progress),
+      progress_status: normalizeProgress(record.delivery_progress) === null
         ? '未填写' : Number(record.delivery_progress) >= 100 ? '已完成' : Number(record.delivery_progress) > 0 ? '部分完成' : '未开始'
     })),
     weightedProgress: totalHours > 0 ? Number((weightedHours / totalHours).toFixed(2)) : null,
     effectiveHours: Number(totalHours.toFixed(2)),
-    missingProgressCount: records.filter(record => record.delivery_progress === null || record.delivery_progress === undefined || record.delivery_progress === '').length,
+    missingProgressCount: records.filter(record => normalizeProgress(record.delivery_progress) === null).length,
     formula: 'Σ(有效工时×进度)÷Σ有效工时；有效工时必须大于0且进度为数值；历史空进度不进入分母。示例：10h×100%+2h×50%=91.67%'
   };
 }
@@ -405,6 +416,7 @@ router.get('/', async (req, res, next) => {
         tasks,
         records: await Promise.all(allStatRecords.map(async r => {
           const plain = applyHistoricalProgress(r.toJSON(), taskById.get(r.task_id));
+          plain.delivery_progress = normalizeProgress(plain.delivery_progress);
           plain.is_product_manager_record = r instanceof ProductManagerWorkRecord || Array.isArray(plain.demand_sources);
           if (plain.is_product_manager_record) {
             plain.demand_sources = safeParseJsonArray(plain.demand_sources);
@@ -417,6 +429,7 @@ router.get('/', async (req, res, next) => {
         demandSources,
         productManagerRecords: productManagerRecords.map(r => {
           const plain = applyHistoricalProgress(r.toJSON(), taskById.get(r.task_id));
+          plain.delivery_progress = normalizeProgress(plain.delivery_progress);
           const sources = safeParseJsonArray(plain.demand_sources);
           const sourceById = new Map(demandSources.map(item => [item.id, item.name]));
           const sourceIds = safeParseJsonArray(plain.demand_source_ids);

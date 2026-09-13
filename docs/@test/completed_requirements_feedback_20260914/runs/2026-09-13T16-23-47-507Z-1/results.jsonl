@@ -1,0 +1,8 @@
+{"id":"DATA-01","phase":1,"requirement":"048/055/057","status":"PASS","evidence":{"frontend":91.67,"backend":{"weightedProgress":91.67,"effectiveHours":12,"missingProgressCount":0},"expected":91.67},"time":"2026-09-13T16:23:48.359Z"}
+{"id":"DATA-02","phase":1,"requirement":"048/055/057","status":"PASS","evidence":{"frontend":100,"backend":{"weightedProgress":100,"effectiveHours":10,"missingProgressCount":1},"expected":100},"time":"2026-09-13T16:23:48.360Z"}
+{"id":"DATA-03","phase":1,"requirement":"048/055/057","status":"PASS","evidence":{"frontend":100,"backend":{"weightedProgress":100,"effectiveHours":10,"missingProgressCount":2},"expected":100},"time":"2026-09-13T16:23:48.361Z"}
+{"id":"DATA-04","phase":1,"requirement":"048/055/057","status":"PASS","evidence":{"frontend":50,"backend":{"weightedProgress":50,"effectiveHours":20,"missingProgressCount":0},"expected":50},"time":"2026-09-13T16:23:48.361Z"}
+{"id":"DATA-05","phase":1,"requirement":"048/055/057","status":"PASS","evidence":{"frontend":null,"backend":{"weightedProgress":null,"effectiveHours":0,"missingProgressCount":1},"expected":null},"time":"2026-09-13T16:23:48.362Z"}
+{"id":"DATA-06","phase":1,"requirement":"048/055/057","status":"PASS","evidence":{"frontend":100,"backend":{"weightedProgress":100,"effectiveHours":10,"missingProgressCount":3},"expected":100},"time":"2026-09-13T16:23:48.363Z"}
+{"id":"VER-01","phase":1,"requirement":"055","status":"PASS","evidence":{"types":["no_version","no_version","no_version","no_version","versioned"]},"time":"2026-09-13T16:23:48.364Z"}
+{"id":"HIST-01","phase":1,"requirement":"057","status":"PASS","evidence":{"values":[100,null,null],"original":null},"time":"2026-09-13T16:23:48.365Z"}

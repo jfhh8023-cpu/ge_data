@@ -1,0 +1,3 @@
+{"id":"SOURCE-01","phase":3,"requirement":"048/055/059","status":"PASS","evidence":{"distribution":[{"name":"内部需求","total":7,"original":10},{"name":"客户需求","total":3,"original":10}]},"time":"2026-09-13T16:13:51.675Z"}
+{"id":"SOURCE-02","phase":3,"requirement":"055","status":"PASS","evidence":{"names":["内部需求","客户需求","对外服务","其他需求"]},"time":"2026-09-13T16:13:51.693Z"}
+{"id":"UI-CONTRACT-01","phase":3,"requirement":"044/048/050/056","status":"PASS","evidence":{"settingsPageSizes":[10,20,50,100,200,300,500,1000],"progressOptions":[0,10,20,30,40,50,60,70,80,90,100]},"time":"2026-09-13T16:13:51.695Z"}

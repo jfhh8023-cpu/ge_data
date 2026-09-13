@@ -1,0 +1,2 @@
+{"id":"CHART-01","phase":2,"requirement":"049/059","status":"PASS","evidence":{"labels":["同名产品经理","同名产品经理"],"staffIds":["fixture-a","fixture-b"]},"time":"2026-09-13T16:24:01.937Z"}
+{"id":"CHART-02","phase":2,"requirement":"048/055/059","status":"PASS","evidence":{"values":["7.0","3.0","10.0"],"sourceNames":["内部需求","客户需求"]},"time":"2026-09-13T16:24:03.935Z"}

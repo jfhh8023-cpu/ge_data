@@ -1,0 +1,27 @@
+[
+  {
+    "id": "API-REG-01",
+    "phase": 4,
+    "requirement": "048/055/057/059"
+  },
+  {
+    "id": "UI-REG-01",
+    "phase": 4,
+    "requirement": "049/059"
+  },
+  {
+    "id": "UI-REG-02",
+    "phase": 4,
+    "requirement": "049/059"
+  },
+  {
+    "id": "BUILD-01",
+    "phase": 4,
+    "requirement": "all completed requirements"
+  },
+  {
+    "id": "RUNTIME-01",
+    "phase": 4,
+    "requirement": "043/044/046/048/050/052/056/058"
+  }
+]
