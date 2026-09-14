@@ -5,7 +5,7 @@
 - 目标：192.168.17.133，CentOS Stream 10。
 - 应用源码提交：f86bd4f。
 - 构建版本：frontend 3.2.0、backend 3.3.0（沿用现有版本，按提交标识本次部署）。
-- 当前状态：部署执行中，完成后补充验收结果。
+- 当前状态：已完成并验收。
 
 ## 部署决策
 
@@ -30,3 +30,15 @@
 - 页面、静态文件、直接刷新深链接可访问。
 - PM2 进程在线并配置开机启动。
 - 其他项目服务前后保持可用。
+
+## 实际发布结果
+
+- 发布提交：`d67521ca6e1357fc3a5142d92d05b4fcb7236dc6`。
+- 发布包与哈希清单：本机 `.codex-local/vm-deployment/20260914_181208/`。
+- 虚拟机备份与执行记录：`/opt/devtracker-deployment-backups/20260914_181208/`。
+- 初始数据库备份：`/opt/devtracker-deployment-backups/20260914_181208/devtracker-initial.sql`。
+- PM2：`devtracker` online，重启次数 0，已配置 `pm2-root` 开机启动。
+- 数据库初始化结果：`staff=0`、`work_records=0`、`product_manager_work_records=0`、`auto_task_rules=0`、`staff_roles=5`、`demand_sources=4`。
+- 外部验收：`/devtracker/`、`/devtracker/stats?admin=1`、`/devtracker/api/health`、`/devtracker/api/roles`、`/devtracker/api/demand-sources`、`/devtracker/api/stats?year=2026&quarter=Q3` 均 HTTP 200。
+- 既有服务验收：80 和 8020 前后均 HTTP 200，`yuyin` 容器和 MySQL/Nginx/Docker 服务保持 active。
+- 访问地址：`http://192.168.17.133:8088/devtracker/`。
