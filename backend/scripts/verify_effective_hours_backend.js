@@ -198,20 +198,24 @@ async function run() {
     const forged = await invoke(fill, 'post /:token/submit', { task_id: 'now', records: [{ existing_record_id: 'someone-else', requirement_title: '新需求', hours: 1, product_managers: ['PM'], delivery_progress: null }] });
     assert.equal(forged.status, 400);
   });
-  await check('actual fill ordinary inputs require positive10-step progress in engineering and product flows', async () => {
+  await check('REQ069 actual fill accepts1 and10-step progress, rejecting out-of-set values in engineering and product flows', async () => {
+    assert.deepEqual([...effective.VALID_PROGRESS], [100, 90, 80, 70, 60, 50, 40, 30, 20, 10, 1]);
     for (const role of ['ai_dev', 'ai_pm']) {
       person.role = role;
-      for (const progress of [null, 0, -10, 5, 110]) {
+      for (const progress of [null, 0, -10, 2, 5, 99, 110, 1.5, true]) {
         const response = await invoke(fill, 'post /:token/submit', { task_id: 'now', records: [
           { requirement_title: '新普通需求', version: 'v1', hours: 8, product_managers: ['PM'], demand_sources: ['需求方'], delivery_progress: progress }
         ] });
         assert.equal(response.status, 400, `${role} rejects ${progress}`);
-        assert.match(response.result.message, /10%–100%/);
+        assert.match(response.result.message, /1%或10%至100%/);
       }
-      const accepted = await invoke(fill, 'post /:token/submit', { task_id: 'now', records: [
-        { requirement_title: '新普通需求', version: 'v1', hours: 8, product_managers: ['PM'], demand_sources: ['需求方'], delivery_progress: 10 }
-      ] });
-      assert.ifError(accepted.error); assert.equal(accepted.status, 200);
+      for (const progress of [100, 10, 1]) {
+        const accepted = await invoke(fill, 'post /:token/submit', { task_id: 'now', records: [
+          { requirement_title: '新普通需求', version: 'v1', hours: 8, product_managers: ['PM'], demand_sources: ['需求方'], delivery_progress: progress }
+        ] });
+        assert.ifError(accepted.error); assert.equal(accepted.status, 200);
+        assert.equal(entries[role === 'ai_pm' ? 'product' : 'engineering'][0].delivery_progress, progress);
+      }
     }
     person.role = 'ai_dev';
   });
@@ -230,12 +234,25 @@ async function run() {
       { existing_record_id: 'half', requirement_title: '旧需求', hours: 8, version: 'v1', product_managers: ['PM'] }
     ] });
     assert.ifError(omitted.error); assert.equal(omitted.status, 200); assert.equal(entries.engineering[0].delivery_progress, 0);
+    entries.engineering[0].delivery_progress = 5;
+    const oldNonOption = await invoke(fill, 'post /:token/submit', { task_id: 'now', records: [
+      { existing_record_id: 'half', requirement_title: '旧需求', hours: 8, version: 'v1', product_managers: ['PM'] }
+    ] });
+    assert.ifError(oldNonOption.error); assert.equal(oldNonOption.status, 200); assert.equal(entries.engineering[0].delivery_progress, 5);
+    const resubmittedNonOption = await invoke(fill, 'post /:token/submit', { task_id: 'now', records: [
+      { existing_record_id: 'half', requirement_title: '旧需求', hours: 8, version: 'v1', product_managers: ['PM'], delivery_progress: 5 }
+    ] });
+    assert.equal(resubmittedNonOption.status, 400); assert.equal(entries.engineering[0].delivery_progress, 5);
   });
   await check('actual draft reuses server first version, ignores submitted date, and returns canonical rows', async () => {
     sfl.draft_task_id = 'now'; sfl.draft_data = [{ draft_row_id: 'd', requirement_title: '培训', version: 'v260901', hours: 2 }];
-    const response = await invoke(fill, 'put /:token/draft', { task_id: 'now', draft_records: [{ draft_row_id: 'd', requirement_title: '公司会议', version: 'v000000', automatic_version_date: '2000-01-01', hours: null, _ordinary_fields: { version: 'v2' } }] });
+    const response = await invoke(fill, 'put /:token/draft', { task_id: 'now', draft_records: [
+      { draft_row_id: 'd', requirement_title: '公司会议', version: 'v000000', automatic_version_date: '2000-01-01', hours: null, _ordinary_fields: { version: 'v2' } },
+      { draft_row_id: 'ordinary-one', requirement_title: '普通1%草稿', version: 'v1', hours: 8, delivery_progress: 1 }
+    ] });
     assert.ifError(response.error); assert.equal(response.result.data.draft_records[0].version, 'v260901');
     assert.equal(response.result.data.draft_records[0].hours, null); assert.equal(sfl.draft_data[0]._ordinary_fields.version, 'v2');
+    assert.equal(response.result.data.draft_records[1].delivery_progress, 1); assert.equal(sfl.draft_data[1].delivery_progress, 1);
     const submitted = await invoke(fill, 'post /:token/submit', { task_id: 'now', records: [{ draft_row_id: 'd', requirement_title: '公司会议', version: 'v000000', hours: 4 }] });
     assert.ifError(submitted.error); assert.equal(entries.engineering[0].version, 'v260901');
   });
@@ -257,7 +274,7 @@ async function run() {
     const missingPm = await invoke(crud, 'put /:id', { requirement_title: '普通需求' }, { id });
     assert.match(missingPm.error.message, /请选择AI产品经理/);
     const ordinaryNull = await invoke(crud, 'put /:id', { requirement_title: '普通需求', product_managers: ['PM'], delivery_progress: null }, { id });
-    assert.match(ordinaryNull.error.message, /10%–100%/);
+    assert.match(ordinaryNull.error.message, /1%或10%至100%/);
     const ordinary = await invoke(crud, 'put /:id', { requirement_title: '普通需求', product_managers: ['PM'], delivery_progress: 10 }, { id });
     assert.ifError(ordinary.error); assert.equal(ordinary.result.data.version, ''); assert.equal(ordinary.result.data.delivery_progress, 10);
     const previous = plain(entries.engineering);
@@ -266,28 +283,41 @@ async function run() {
     ] });
     assert.match(imported.error.message, /手动填写/); assert.deepEqual(entries.engineering, previous);
   });
-  await check('actual CRUD and import reject zero; editing cannot clear known progress while omitted progress preserves historical0', async () => {
+  await check('REQ069 CRUD/import accept1, reject out-of-set values and preserve original progress only when omitted', async () => {
     const input = { task_id: 'now', staff_id: 'a', requirement_title: '普通需求', version: 'v1', hours: 8, product_managers: ['PM'] };
-    for (const progress of [null, 0, -10, 5, 110]) {
+    for (const progress of [null, 0, -10, 2, 5, 99, 110, 1.5, true]) {
       const response = await invoke(crud, 'post /', { ...input, delivery_progress: progress });
-      assert.match(response.error.message, /10%–100%/);
+      assert.match(response.error.message, /1%或10%至100%/);
     }
+    const onePercent = await invoke(crud, 'post /', { ...input, delivery_progress: 1 });
+    assert.ifError(onePercent.error); assert.equal(onePercent.result.data.delivery_progress, 1);
     const saved = await invoke(crud, 'post /', { ...input, delivery_progress: 50 });
     assert.ifError(saved.error); const id = saved.result.data.id;
     const cleared = await invoke(crud, 'put /:id', { delivery_progress: null }, { id });
-    assert.match(cleared.error.message, /10%–100%/); assert.equal(entries.engineering.find(row => row.id === id).delivery_progress, 50);
+    assert.match(cleared.error.message, /1%或10%至100%/); assert.equal(entries.engineering.find(row => row.id === id).delivery_progress, 50);
     entries.engineering.find(row => row.id === id).delivery_progress = 0;
     const omitted = await invoke(crud, 'put /:id', { hours: 4 }, { id });
     assert.ifError(omitted.error); assert.equal(omitted.result.data.delivery_progress, 0);
     const explicit = await invoke(crud, 'put /:id', { delivery_progress: 0 }, { id });
-    assert.match(explicit.error.message, /10%–100%/);
+    assert.match(explicit.error.message, /1%或10%至100%/);
+    entries.engineering.find(row => row.id === id).delivery_progress = 99;
+    const oldNonOption = await invoke(crud, 'put /:id', { hours: 6 }, { id });
+    assert.ifError(oldNonOption.error); assert.equal(oldNonOption.result.data.delivery_progress, 99);
+    const invalidUpdate = await invoke(crud, 'put /:id', { delivery_progress: 99 }, { id });
+    assert.match(invalidUpdate.error.message, /1%或10%至100%/);
+    const updated = await invoke(crud, 'put /:id', { delivery_progress: 1 }, { id });
+    assert.ifError(updated.error); assert.equal(updated.result.data.delivery_progress, 1);
     const before = plain(entries.engineering);
     const imported = await invoke(crud, 'post /import', { task_id: 'now', rows: [
-      { staff_name: '甲', requirement_title: '第一条', version: 'v1', hours: 8, product_managers: ['PM'], delivery_progress: 10 },
+      { staff_name: '甲', requirement_title: '第一条', version: 'v1', hours: 8, product_managers: ['PM'], delivery_progress: 1 },
       { staff_name: '甲', requirement_title: '第二条', version: 'v2', hours: 8, product_managers: ['PM'], delivery_progress: 0 }
     ] });
-    assert.match(imported.error.message, /10%–100%/); assert.deepEqual(entries.engineering, before);
+    assert.match(imported.error.message, /1%或10%至100%/); assert.deepEqual(entries.engineering, before);
+    const importedOne = await invoke(crud, 'post /import', { task_id: 'now', rows: [
+      { staff_name: '甲', requirement_title: '导入1%', version: 'v1', hours: 8, product_managers: ['PM'], delivery_progress: 1 }
+    ] });
+    assert.ifError(importedOne.error); assert.equal(importedOne.result.data[0].delivery_progress, 1);
   });
-  console.log(`Verified ${checked} REQ-064/065 backend scenarios without external data writes.`);
+  console.log(`Verified ${checked} REQ-064/065/069 backend scenarios without external data writes.`);
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

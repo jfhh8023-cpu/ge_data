@@ -1,0 +1,38 @@
+WR4-E-003-API: PASS
+WR4-E-003-GROUP: FAIL locator.click: Timeout 10000ms exceeded.
+Call log:
+[2m  - waiting for locator('.dt-delivery-dialog').getByRole('combobox', { name: '记录周期范围' })[22m
+[2m    - locator resolved to <input readonly value="" type="text" tabindex="0" role="combobox" autocomplete="off" spellcheck="false" aria-label="记录周期范围" id="el-id-6078-164" aria-expanded="false" aria-haspopup="listbox" aria-activedescendant="" aria-autocomplete="none" aria-controls="el-id-6078-50" class="el-select__input is-small"/>[22m
+[2m  - attempting click action[22m
+[2m    2 × waiting for element to be visible, enabled and stable[22m
+[2m      - element is visible, enabled and stable[22m
+[2m      - scrolling into view if needed[22m
+[2m      - done scrolling[22m
+[2m      - <div role="dialog" aria-modal="true" aria-label="跨周期未完成需求" aria-describedby="el-id-6078-37" class="el-overlay-dialog is-closing">…</div> from <div class="el-overlay el-modal-dialog dialog-fade-leave-active dialog-fade-leave-to">…</div> subtree intercepts pointer events[22m
+[2m    - retrying click action[22m
+[2m    - waiting 20ms[22m
+[2m    - waiting for element to be visible, enabled and stable[22m
+[2m    - element is visible, enabled and stable[22m
+[2m    - scrolling into view if needed[22m
+[2m    - done scrolling[22m
+[2m    - <div role="dialog" aria-modal="true" aria-label="跨周期未完成需求" aria-describedby="el-id-6078-37" class="el-overlay-dialog is-closing">…</div> from <div class="el-overlay el-modal-dialog dialog-fade-leave-active dialog-fade-leave-to">…</div> subtree intercepts pointer events[22m
+[2m  2 × retrying click action[22m
+[2m      - waiting 100ms[22m
+[2m      - waiting for element to be visible, enabled and stable[22m
+[2m      - element is visible, enabled and stable[22m
+[2m      - scrolling into view if needed[22m
+[2m      - done scrolling[22m
+[2m      - <span>当前周期</span> from <div class="el-select__selected-item el-select__placeholder">…</div> subtree intercepts pointer events[22m
+[2m  17 × retrying click action[22m
+[2m       - waiting 500ms[22m
+[2m       - waiting for element to be visible, enabled and stable[22m
+[2m       - element is visible, enabled and stable[22m
+[2m       - scrolling into view if needed[22m
+[2m       - done scrolling[22m
+[2m       - <span>当前周期</span> from <div class="el-select__selected-item el-select__placeholder">…</div> subtree intercepts pointer events[22m
+[2m  - retrying click action[22m
+[2m    - waiting 500ms[22m
+
+WR4-E-003-LAYOUT: PASS
+WR4-E-002-FILL: PASS
+{"run":"2026-09-17T06-46-29-388Z","evidence":"D:\\PythonTEST\\My_Other_Tool_System\\get_data\\get_data_cursor\\docs\\@test\\delivery_status_notice_20260917\\evidence\\2026-09-17T06-46-29-388Z","results":[{"id":"WR4-E-003-API","status":"PASS"},{"id":"WR4-E-003-GROUP","status":"FAIL"},{"id":"WR4-E-003-LAYOUT","status":"PASS"},{"id":"WR4-E-002-FILL","status":"PASS"}],"interceptedWriteCount":5}

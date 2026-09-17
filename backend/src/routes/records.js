@@ -52,7 +52,7 @@ function requireDeliveryProgress(value, label = '记录', allowMissing = false) 
   const progress = normalizeProgress(value);
   if (allowMissing && (value == null || value === '')) return null;
   if (progress === null || !VALID_PROGRESS.has(progress)) {
-    const err = new Error(`${label}：请选择10%–100%的交付进度（每档10%）`);
+    const err = new Error(`${label}：交付进度请选择1%或10%至100%（每10%一档）`);
     err.status = 400;
     throw err;
   }

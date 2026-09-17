@@ -1,0 +1,18 @@
+PASS five exact trimmed titles retain manually entered decimal hours and ignore forged version/progress
+PASS China date boundary, special edit preservation and ordinary-to-special today conversion
+PASS 32 normal version hours + 8 special gives 100% effective, 70% weighted and 62.5% demand progress
+PASS latest selected period progress weights cumulative hours, not newest edit of an older period
+PASS all five special categories count once, unversioned ordinary hours stay raw, explicit zero stays known
+PASS current resignation hides all historical records; restore uses same records and full selected capacity
+PASS overlapping dates deduplicate capacity; both delivery rates are uncapped and require a valid calendar
+PASS actual status service hides resigned historical authors and read-filters old snapshots without rewriting
+PASS matching does not merge same-day categories or different authors into one requirement
+PASS actual fill: new special row bypasses normal PM/progress requirements, cannot forge version, and hours stay manual
+PASS actual fill: original special version survives edits and historical ordinary null remains null
+PASS REQ069 actual fill accepts1 and10-step progress, rejecting out-of-set values in engineering and product flows
+PASS actual fill cannot clear known progress to gain100; true historical null and omitted historical0 remain unchanged
+PASS actual draft reuses server first version, ignores submitted date, and returns canonical rows
+PASS actual fill replacement rolls back failures; legacy/product saving follows the same five-category rules
+PASS actual CRUD create/update/import enforce date versions, preserve null and rollback partially invalid imports
+PASS REQ069 CRUD/import accept1, reject out-of-set values and preserve original progress only when omitted
+Verified 17 REQ-064/065/069 backend scenarios without external data writes.

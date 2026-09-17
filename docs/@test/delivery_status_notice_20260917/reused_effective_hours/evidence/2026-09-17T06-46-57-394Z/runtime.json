@@ -1,0 +1,91 @@
+{
+  "errors": [],
+  "writes": [
+    {
+      "path": "/excel/upload",
+      "method": "POST",
+      "body": {
+        "nonJsonPayload": "intercepted without reading file content"
+      },
+      "intercepted": true
+    }
+  ],
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/index.js"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/tasks"
+    },
+    {
+      "method": "GET",
+      "path": "/pm"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/stats"
+    },
+    {
+      "method": "GET",
+      "path": "/index.js"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/tasks"
+    },
+    {
+      "method": "GET",
+      "path": "/pm"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/stats"
+    },
+    {
+      "method": "GET",
+      "path": "/index.js"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/tasks"
+    },
+    {
+      "method": "GET",
+      "path": "/pm"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/stats"
+    },
+    {
+      "method": "POST",
+      "path": "/excel/upload"
+    }
+  ]
+}

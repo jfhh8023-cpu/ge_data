@@ -1,4 +1,4 @@
-/* REQ-068: summary progress footers removed; period rates and person progress retained. */
+/* REQ-069: progress options, delivery status notices and scoped unfinished requirements. */
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -6,7 +6,7 @@ const { pathToFileURL } = require('node:url');
 const { chromium } = require('playwright');
 const XLSX = require('xlsx');
 const ROOT = path.resolve(__dirname, '../..');
-const OUT = path.join(ROOT, 'docs/@test/remove_progress_footer_20260917');
+const OUT = path.join(ROOT, 'docs/@test/delivery_status_notice_20260917');
 const RUN = new Date().toISOString().replace(/[:.]/g, '-');
 const DIR = path.join(OUT, 'evidence', RUN);
 const APP = 'http://localhost:5176', API = 'http://127.0.0.1:3001/api';
@@ -82,7 +82,7 @@ async function main() {
   });
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1920, height: 1080 }, acceptDownloads: true });
-  let f = fixture(), live = false, fillRow;
+  let f = fixture(), live = false, fillRow, remoteFixture;
   await context.route('**/api/**', async route => {
     const req = route.request(), suffix = new URL(req.url()).pathname.replace(/^.*\/api/, '');
     if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method())) {
@@ -95,7 +95,10 @@ async function main() {
     if (suffix === '/tasks') data = [f.task];
     else if (suffix === '/pm') data = [f.pm];
     else if (suffix === '/stats') data = f.stats;
-    else if (suffix === '/stats/progress-details') data = { records: f.records, tasks: [f.task], workHours: f.capacity, deliverySummary: f.summary, scopeMeta: { taskCount: 1 } };
+    else if (suffix === '/stats/progress-details') {
+      const current = remoteFixture || f;
+      data = { records: current.records, tasks: [current.task], workHours: current.capacity, deliverySummary: current.summary, scopeMeta: { taskCount: 1 } };
+    }
     else if (suffix === '/fill/WR65-fixture') data = { staff: f.staff[0], task: f.fillTask, records: [fillRow || f.records[0]], draft_records: [], demandSources: [] };
     else if (suffix === '/fill/WR65-fixture/history') data = { tasks: [] };
     if (data !== undefined) return route.fulfill({ status: 200, json: { code: 0, data } });
@@ -104,22 +107,48 @@ async function main() {
   page = await context.newPage(); page.setDefaultTimeout(10000); page.on('pageerror', e => errors.push(e.message));
   const card = () => page.locator('.dt-delivery-card').first();
   const dialog = () => page.locator('.dt-delivery-dialog');
+  const incompleteDialog = () => page.locator('.incomplete-requirements-dialog');
   const openStats = async () => { await page.goto(`${APP}/stats?admin=1`, { waitUntil: 'networkidle' }); await card().waitFor(); };
   try {
     await check('WR4-E-003-GROUP', async () => {
       await openStats(); assert.equal(num(await card().getByTestId('delivery-rate').innerText()), 50); assert.equal(num(await card().getByTestId('weighted-delivery-rate').innerText()), 30);
       await sameRow(card());
+      assert.match(await card().getByTestId('delivery-status-notice').innerText(), /部分需求需跨周期完成。/);
+      await card().getByTestId('view-incomplete').click(); await incompleteDialog().waitFor();
+      assert.equal(await dialog().isVisible(), false, 'view must not bubble to the card detail handler');
+      assert.equal(await incompleteDialog().locator('tbody tr').count(), 1);
+      for (const value of ['2026年第38周', '测试乙', '需求1', '50%']) assert.ok((await incompleteDialog().innerText()).includes(value), value);
+      await shot('unfinished-requirements-card');
+      await incompleteDialog().locator('.el-dialog__headerbtn').click();
       const tip = await card().getByTestId('weighted-delivery-rate').evaluate(el => el.parentElement.title);
       for (const text of ['应交付工时', '100%', '0%', '不平均个人百分比']) assert.ok(tip.includes(text), `weighted tip missing ${text}`);
-      await card().locator('button').click(); await dialog().waitFor();
+      await card().locator('.stats-hours-heading').click(); await dialog().waitFor();
       await sameRow(dialog().locator('.dt-delivery-dialog-summary'));
       assert.equal(num(await dialog().getByTestId('weighted-delivery-rate').innerText()), 30);
+      await dialog().getByTestId('view-incomplete').click(); await incompleteDialog().waitFor();
+      assert.equal(await incompleteDialog().locator('tbody tr').count(), 1);
+      assert.match(await incompleteDialog().innerText(), /测试乙/);
+      await incompleteDialog().locator('.el-dialog__headerbtn').click();
+      assert.equal(await dialog().isVisible(), true, 'closing the child must retain the parent detail');
       const people = dialog().locator('.staff-delivery-table tbody tr');
       assert.equal(await people.count(), 2);
       assert.equal(num(await people.nth(0).locator('td').nth(3).innerText()), 20);
       assert.equal(num(await people.nth(1).locator('td').nth(3).innerText()), 40);
       assert.equal(await dialog().getByRole('tab').first().innerText(), '总览');
       await shot('group-dialog');
+      remoteFixture = fixture([50, 100]);
+      await dialog().locator('.el-select:has(input[aria-label="记录周期范围"]) .el-select__wrapper').click();
+      const remoteLoaded = page.waitForResponse(response => response.url().includes('/stats/progress-details') && response.ok());
+      await page.getByRole('option', { name: '全部周期', exact: true }).click();
+      await remoteLoaded;
+      await page.waitForFunction(() => document.querySelector('.dt-delivery-dialog [data-testid="weighted-delivery-rate"]')?.textContent.includes('45%'));
+      await dialog().getByTestId('view-incomplete').click(); await incompleteDialog().waitFor();
+      assert.match(await incompleteDialog().innerText(), /全部可见历史|全部周期/);
+      assert.match(await incompleteDialog().innerText(), /测试甲/);
+      assert.doesNotMatch(await incompleteDialog().locator('tbody').innerText(), /测试乙/);
+      await shot('unfinished-requirements-remote-scope');
+      await incompleteDialog().locator('.el-dialog__headerbtn').click();
+      remoteFixture = undefined;
       await dialog().locator('.el-dialog__headerbtn').click();
       const download = page.waitForEvent('download'); await page.getByRole('button', { name: '📤 导出Excel', exact: true }).click();
       const target = path.join(DIR, 'fixture-export.xlsx'); await (await download).saveAs(target);
@@ -133,7 +162,7 @@ async function main() {
       assert.equal(f.records[1].delivery_progress, 0);
       await sameRow(card());
       await shot('historical-null-and-zero');
-      await card().locator('button').click(); await dialog().waitFor();
+      await card().locator('.stats-hours-heading').click(); await dialog().waitFor();
       await sameRow(dialog().locator('.dt-delivery-dialog-summary'));
       const actualPeople = dialog().locator('.staff-delivery-table tbody tr');
       assert.equal(await actualPeople.nth(0).locator('td').last().innerText(), '未填写');
@@ -158,6 +187,8 @@ async function main() {
       assert.equal(f.summary.requirementProgress, 100);
       assert.equal(f.summary.progressCoverage, 100);
       await sameRow(card());
+      assert.equal(await card().getByTestId('delivery-status-notice').innerText(), '周期内需求交付进度100%');
+      assert.equal(await card().getByTestId('view-incomplete').count(), 0);
       f.units = f.units.flatMap(unit => [unit, { ...unit, taskId: 'WR66-empty-week', startDate: '2026-09-21', endDate: '2026-09-27', workDates: ['2026-09-21', '2026-09-22', '2026-09-23', '2026-09-24', '2026-09-25'] }]);
       f.capacity = workHours.summarizeWorkHours(f.records, f.units);
       f.summary = delivery.summarizeDelivery(f.records, f.capacity);
@@ -170,12 +201,13 @@ async function main() {
       f.stats = { ...f.stats, records: f.records, deliverySummary: f.summary };
       await openStats(); assert.equal(await card().getByTestId('weighted-delivery-rate').innerText(), '0%');
       assert.equal(await card().locator('.delivery-progress-foot').count(), 0);
+      assert.equal(await card().getByTestId('delivery-status-notice').innerText(), '当前周期暂无有效交付工时');
       await shot('no-effective-hours-zero-rate');
       f = fixture(); f.records = f.records.map(row => ({ ...row, requirement_title: '培训', version: 'v260917', delivery_progress: null }));
       f.summary = delivery.summarizeDelivery(f.records, f.capacity);
       f.stats = { ...f.stats, records: f.records, deliverySummary: f.summary };
       await openStats(); assert.equal(await card().locator('.delivery-progress-foot').count(), 0);
-      await card().locator('button').click(); await dialog().waitFor();
+      await card().locator('.stats-hours-heading').click(); await dialog().waitFor();
       for (const row of await dialog().locator('.staff-delivery-table tbody tr').all()) assert.equal(await row.locator('td').last().innerText(), '不适用');
       await dialog().locator('.el-dialog__headerbtn').click();
       return { unequalPersonHoursRate: 30, personRates: [20, 40], historicalNullAndZero: 10, allProgressCompleteButHalfCapacity: 50, afterAddingUnfilledWeek: 25, noEffectiveHours: 0, effectiveRateUnchanged: 50, exportWeighted: 30, tip };
@@ -185,6 +217,8 @@ async function main() {
       for (const width of [1920, 1600, 1280, 390]) {
         await page.setViewportSize({ width, height: width === 390 ? 844 : 1080 }); await openStats();
         for (const c of await page.locator('.dt-delivery-card').all()) await sameRow(c);
+        assert.match(await card().getByTestId('delivery-status-notice').innerText(), /部分需求需跨周期完成。/);
+        for (let i = 1; i <= 4; i++) assert.equal(await page.locator('.dt-delivery-card').nth(i).getByTestId('delivery-status-notice').innerText(), '周期内需求交付进度100%');
         assert.equal(await card().getByTestId('historical-progress-note').count(), 0);
         const cardBox = await card().boundingBox(), countBox = await page.getByTestId('stats-counts-card').boundingBox();
         assert.ok(Math.abs(cardBox.height - countBox.height) < 2, 'counts card height differs');
@@ -192,12 +226,22 @@ async function main() {
         const chart = await page.getByTestId('department-engineering-chart').boundingBox(); if (width >= 1280) assert.ok(chart.y < 650, 'charts pushed away');
         assert.ok(await page.getByTestId('main-record-tabs').isVisible());
         await shot(`live-cards-${width}`);
-        await card().locator('button').click(); await dialog().waitFor();
+        await card().locator('.stats-hours-heading').click(); await dialog().waitFor();
         await sameRow(dialog().locator('.dt-delivery-dialog-summary'));
         const spotlight = await dialog().getByTestId('analysis-spotlight').boundingBox(), box = await dialog().boundingBox();
         assert.ok(spotlight.height < box.height * .45, 'spotlight takes too much room');
         assert.ok(await dialog().getByRole('tab', { name: '总览', exact: true }).isVisible());
         await shot(`live-dialog-${width}`); evidence.push({ width, cardBox, chart, spotlight, dialogBox: box, dims });
+        if (width === 390 || width === 1920) {
+          await dialog().getByTestId('view-incomplete').click(); await incompleteDialog().waitFor();
+          assert.equal(await incompleteDialog().locator('tbody tr').count(), 1);
+          assert.match(await incompleteDialog().locator('tbody').innerText(), /60%/);
+          const tableBounds = await incompleteDialog().locator('.el-table__body-wrapper').boundingBox();
+          const progressBounds = await incompleteDialog().locator('tbody tr').first().locator('td').last().boundingBox();
+          assert.ok(progressBounds.x + progressBounds.width <= tableBounds.x + tableBounds.width + 1, 'current progress must be visible without horizontal scrolling');
+          await shot(`live-unfinished-${width}`);
+          await incompleteDialog().locator('.el-dialog__headerbtn').click();
+        }
       }
       return evidence;
     });
@@ -217,10 +261,22 @@ async function main() {
       const options = page.locator('.el-select-dropdown:visible .el-select-dropdown__item');
       await options.filter({ hasText: /^100%$/ }).waitFor({ state: 'visible' });
       const available = await options.evaluateAll(els => els.filter(el => !el.classList.contains('is-disabled')).map(el => el.textContent.trim()));
-      assert.ok(!available.includes('0%')); assert.ok(available.includes('10%') && available.includes('100%'));
+      assert.deepEqual(available, ['100%', '90%', '80%', '70%', '60%', '50%', '40%', '30%', '20%', '10%', '1%']);
+      await options.filter({ hasText: /^100%$/ }).scrollIntoViewIfNeeded();
+      await page.locator('.el-select-dropdown:visible').screenshot({ path: path.join(DIR, 'fill-options-100-first.png'), animations: 'disabled' });
       await options.filter({ hasText: /^100%$/ }).click();
       assert.equal(num(await page.getByTestId('fill-preview-weighted').innerText()), 20);
       await shot('fill-positive-only');
+      await progressSelect.click();
+      await options.filter({ hasText: /^1%$/ }).click();
+      assert.equal(num(await page.getByTestId('fill-preview-weighted').innerText()), 0.2);
+      await progressSelect.click();
+      await options.filter({ hasText: /^1%$/ }).scrollIntoViewIfNeeded();
+      await page.locator('.el-select-dropdown:visible').screenshot({ path: path.join(DIR, 'fill-options-one-percent.png'), animations: 'disabled' });
+      await page.keyboard.press('Escape');
+      const minimumSave = page.waitForRequest(r => r.method() === 'POST' && r.url().endsWith('/fill/WR65-fixture/submit'));
+      await page.getByRole('button', { name: '🚀 提交', exact: true }).click();
+      assert.equal((await minimumSave).postDataJSON().records[0].delivery_progress, 1);
       await openFill({ ...f.records[0], id: undefined, delivery_progress: null });
       assert.match(await page.getByTestId('fill-preview-weighted').innerText(), /待补|待填/);
       return { historicalNullCapacityEstimate: 20, historicalRawNullPreserved: true, historicalZeroReads: 0, submitZeroBlocked: true, available, newBlankRemainsPending: true };

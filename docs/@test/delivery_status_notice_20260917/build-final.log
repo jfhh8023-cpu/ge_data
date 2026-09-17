@@ -1,0 +1,60 @@
+
+> frontend@3.2.0 build
+> vite build
+
+vite v8.0.8 building client environment for production...
+[2K
+transforming...✓ 1719 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                      1.58 kB │ gzip:   0.50 kB
+dist/assets/TaskDetail-DtHoH5rg.css                  0.37 kB │ gzip:   0.21 kB
+dist/assets/ReportPage-B_SCxiuA.css                  0.74 kB │ gzip:   0.33 kB
+dist/assets/TaskList-DOXs8ptz.css                    1.97 kB │ gzip:   0.70 kB
+dist/assets/HoursCompletion-BTbjTPGg.css             2.20 kB │ gzip:   0.67 kB
+dist/assets/PersonnelPage-CBsTpDny.css               3.53 kB │ gzip:   1.04 kB
+dist/assets/PermissionPage-TgSTh3KJ.css              3.93 kB │ gzip:   0.97 kB
+dist/assets/PmViewPage-DxIk86oi.css                  5.35 kB │ gzip:   1.42 kB
+dist/assets/FillPage-oNAHgvVK.css                    7.08 kB │ gzip:   1.71 kB
+dist/assets/index-DwxKtXK6.css                      11.81 kB │ gzip:   2.94 kB
+dist/assets/SettingsPage-DkV_RM3J.css               46.85 kB │ gzip:   7.67 kB
+dist/assets/StatsPage-lJ5CZoR_.css                  48.98 kB │ gzip:   8.31 kB
+dist/assets/vendor-ui-RRWAO0T1.css                 351.35 kB │ gzip:  47.05 kB
+dist/assets/auth-CT4_w2tU.js                         0.06 kB │ gzip:   0.08 kB
+dist/assets/_plugin-vue_export-helper-DAAOZMkq.js    0.08 kB │ gzip:   0.09 kB
+dist/assets/BackButton-DOipK2NN.js                   0.36 kB │ gzip:   0.28 kB
+dist/assets/sync-But8nSNI.js                         0.39 kB │ gzip:   0.27 kB
+dist/assets/rolldown-runtime-Dw2cE7zH.js             0.68 kB │ gzip:   0.41 kB
+dist/assets/pm-MSvDVVKh.js                           0.72 kB │ gzip:   0.43 kB
+dist/assets/ForbiddenPage-C-Q38Jjw.js                0.80 kB │ gzip:   0.58 kB
+dist/assets/roles-CC7xzyao.js                        0.88 kB │ gzip:   0.48 kB
+dist/assets/recordOrder-BWAIjl5s.js                  1.02 kB │ gzip:   0.53 kB
+dist/assets/staff-CseT3sx1.js                        1.07 kB │ gzip:   0.55 kB
+dist/assets/task-DZFTMsir.js                         1.28 kB │ gzip:   0.65 kB
+dist/assets/auth-DY5DvN0f.js                         1.65 kB │ gzip:   0.69 kB
+dist/assets/demandSources-DMdudQlg.js                1.86 kB │ gzip:   0.85 kB
+dist/assets/roles-DNRBM7ho.js                        1.99 kB │ gzip:   0.96 kB
+dist/assets/effectiveHours-D9k-EzPC.js               4.38 kB │ gzip:   2.37 kB
+dist/assets/HoursCompletion-dlASJb3i.js              6.17 kB │ gzip:   2.31 kB
+dist/assets/TaskList-D_9sWDx_.js                     8.19 kB │ gzip:   3.48 kB
+dist/assets/CreateTaskModal-BYQlukR8.js              9.42 kB │ gzip:   3.49 kB
+dist/assets/PmViewPage-C6BtdoBc.js                  10.60 kB │ gzip:   4.40 kB
+dist/assets/TaskDetail-BlEP9mMg.js                  10.76 kB │ gzip:   4.28 kB
+dist/assets/PermissionPage-B3UDR91i.js              11.01 kB │ gzip:   4.15 kB
+dist/assets/index-1ipOBQMP.js                       12.17 kB │ gzip:   4.62 kB
+dist/assets/ReportPage-CF27jasb.js                  22.41 kB │ gzip:   7.72 kB
+dist/assets/vendor-vue-CjIX-Fez.js                  30.75 kB │ gzip:  12.07 kB
+dist/assets/FillPage-23t0h825.js                    31.93 kB │ gzip:  10.97 kB
+dist/assets/api-CMq_w7kR.js                         37.64 kB │ gzip:  14.94 kB
+dist/assets/PersonnelPage-DCmrQTNw.js               66.15 kB │ gzip:  20.48 kB
+dist/assets/StatsPage-BMuCQCj9.js                  128.32 kB │ gzip:  36.42 kB
+dist/assets/SettingsPage-D_ZGCZmZ.js               134.58 kB │ gzip:  37.05 kB
+dist/assets/excel-DuNiX99q.js                      425.47 kB │ gzip: 142.29 kB
+dist/assets/vendor-ui-emdqOLpR.js                  952.63 kB │ gzip: 307.40 kB
+
+✓ built in 962ms
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.

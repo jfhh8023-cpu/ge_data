@@ -1,0 +1,8 @@
+PASS five exact trimmed titles; similar ordinary titles remain ordinary
+PASS China date version and historical special versions are stable
+PASS ordinary-special transitions never change manual hours or normal drafts
+PASS weighted estimate includes special once, excludes ordinary unversioned
+PASS unknown progress differs from 0, invalid capacity and overfill remain explicit
+PASS REQ065 historic null defaults to100 in preview while standard hours remain denominator and stored null stays unchanged
+PASS REQ069 ordinary options descend100..10,1; explicit invalid values are rejected and saved null/special exceptions remain
+7 checks passed

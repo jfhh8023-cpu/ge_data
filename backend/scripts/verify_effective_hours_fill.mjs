@@ -45,6 +45,8 @@ check('unknown progress differs from 0, invalid capacity and overfill remain exp
   const unknown = summarizeDraftWeightedHours([{ version: 'v1', hours: 8, delivery_progress: null }, { requirement_title: '培训', hours: 2 }], 40)
   assert.equal(unknown.weightedDeliveryRate, null); assert.equal(unknown.weightedDeliveredHours, null); assert.equal(unknown.knownWeightedDeliveredHours, 2)
   assert.equal(summarizeDraftWeightedHours([{ version: 'v1', hours: 8, delivery_progress: 0 }], 40).weightedDeliveryRate, 0)
+  const minimalProgress = summarizeDraftWeightedHours([{ version: 'v1', hours: 8, delivery_progress: 1 }], 40)
+  assert.equal(minimalProgress.weightedDeliveredHours, 0.08); assert.equal(minimalProgress.weightedDeliveryRate, 0.2)
   assert.equal(summarizeDraftWeightedHours([{ requirement_title: '请假', hours: 48 }], 40).weightedDeliveryRate, 120)
   assert.equal(summarizeDraftWeightedHours([{ requirement_title: '请假', hours: 48 }], 0).weightedDeliveryRate, null)
   assert.equal(summarizeDraftWeightedHours([{ version: 'v1', hours: 0, delivery_progress: null }], 40).missingProgressHours, 0)
@@ -61,10 +63,11 @@ check('REQ065 historic null defaults to100 in preview while standard hours remai
   assert.equal(summarizeDraftWeightedHours([{ ...historical, _original_progress_missing: false }], 40).weightedDeliveryRate, null)
   assert.equal(summarizeDraftWeightedHours([{ version: 'v1', hours: 8, delivery_progress: null, existing_record_id: 'fake-old-id' }], 40).weightedDeliveryRate, null)
 })
-check('REQ065 ordinary explicit submissions require10..100; saved null and special categories retain exceptions', () => {
-  assert.deepEqual([...POSITIVE_PROGRESS_OPTIONS], [10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
-  for (const value of [null, undefined, '', ' ', 0, -10, 5, 101, false, true]) assert.equal(isValidSubmittedProgress({ delivery_progress: value }), false)
+check('REQ069 ordinary options descend100..10,1; explicit invalid values are rejected and saved null/special exceptions remain', () => {
+  assert.deepEqual([...POSITIVE_PROGRESS_OPTIONS], [100, 90, 80, 70, 60, 50, 40, 30, 20, 10, 1])
+  for (const value of [null, undefined, '', ' ', 0, -10, 2, 5, 99, 101, 1.5, false, true]) assert.equal(isValidSubmittedProgress({ delivery_progress: value }), false)
   for (const value of POSITIVE_PROGRESS_OPTIONS) assert.equal(isValidSubmittedProgress({ delivery_progress: value }), true)
+  assert.equal(isValidSubmittedProgress({ delivery_progress: '1' }), true)
   assert.equal(isValidSubmittedProgress({ existing_record_id: 'old', _original_progress_missing: true, delivery_progress: null }), true)
   assert.equal(isValidSubmittedProgress({ existing_record_id: 'old', _original_progress_missing: false, delivery_progress: null }), false)
   assert.equal(isValidSubmittedProgress({ existing_record_id: 'fake-old-id', delivery_progress: null }), false)

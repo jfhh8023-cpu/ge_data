@@ -2,7 +2,7 @@ import { normalizeProgress } from './progress.js'
 
 export { normalizeProgress }
 export const FULL_CREDIT_TITLES = Object.freeze(['请假', '培训', '公司会议', '出差', '团建'])
-export const POSITIVE_PROGRESS_OPTIONS = Object.freeze([10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
+export const POSITIVE_PROGRESS_OPTIONS = Object.freeze([100, 90, 80, 70, 60, 50, 40, 30, 20, 10, 1])
 export const FULL_CREDIT_NOTE = `${FULL_CREDIT_TITLES.join('、')}：工时手填，版本自动锁定为 vYYMMDD，按完整工时计入有效交付及加权工时；普通无版本工时仅记录。`
 export const isFullCreditRecord = value => FULL_CREDIT_TITLES.includes(String(typeof value === 'object' ? value?.requirement_title ?? value?.title ?? '' : value ?? '').trim())
 const round = value => Number(value.toFixed(2))

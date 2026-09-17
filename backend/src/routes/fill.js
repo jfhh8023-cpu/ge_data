@@ -70,10 +70,10 @@ function validateDeliveryProgress(records) {
     // These flags are derived from this author's saved row, never trusted from the request.
     if (records[i]._preserveOriginalProgress) { records[i].delivery_progress = normalizeProgress(progress); continue; }
     if (!records[i]._allowMissingProgress && (normalizeProgress(progress) === null || !VALID_DELIVERY_PROGRESS.has(Number(progress)))) {
-      return `第 ${i + 1} 条记录请选择10%–100%的交付进度`;
+      return `第 ${i + 1} 条记录交付进度请选择1%或10%至100%（每10%一档）`;
     }
     if (progress !== null && progress !== undefined && progress !== '' && (normalizeProgress(progress) === null || !VALID_DELIVERY_PROGRESS.has(Number(progress)))) {
-      return `第 ${i + 1} 条记录请选择10%–100%的交付进度（每档10%）`;
+      return `第 ${i + 1} 条记录交付进度请选择1%或10%至100%（每10%一档）`;
     }
     records[i].delivery_progress = normalizeProgress(progress);
   }
@@ -88,12 +88,12 @@ async function validateProductManagerRecords(records) {
     if (sources.length === 0) return `第 ${i + 1} 条记录请选择需求方`;
     const progress = records[i]?.delivery_progress;
     if (!records[i]._preserveOriginalProgress && !records[i]._allowMissingProgress && (normalizeProgress(progress) === null || !VALID_DELIVERY_PROGRESS.has(Number(progress)))) {
-      return `第 ${i + 1} 条记录请选择10%–100%的交付进度`;
+      return `第 ${i + 1} 条记录交付进度请选择1%或10%至100%（每10%一档）`;
     }
     records[i].demand_sources = resolved.names;
     records[i].demand_source_ids = resolved.ids;
     records[i].demand_source_weights = normalizeDemandSourceWeights(records[i]?.demand_source_weights, sources);
-    if (!records[i]._preserveOriginalProgress && progress != null && progress !== '' && (normalizeProgress(progress) === null || !VALID_DELIVERY_PROGRESS.has(Number(progress)))) return `第 ${i + 1} 条记录请选择10%–100%的交付进度（每档10%）`;
+    if (!records[i]._preserveOriginalProgress && progress != null && progress !== '' && (normalizeProgress(progress) === null || !VALID_DELIVERY_PROGRESS.has(Number(progress)))) return `第 ${i + 1} 条记录交付进度请选择1%或10%至100%（每10%一档）`;
     records[i].delivery_progress = normalizeProgress(progress);
   }
   return '';

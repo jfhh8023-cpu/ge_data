@@ -32,6 +32,9 @@ import { sortRecordsByCreatedAt, latestCreatedAt } from '../utils/recordOrder'
 import ProductHoursChart from '../components/ProductHoursChart.vue'
 import DeliverySummary from '../components/DeliverySummary.vue'
 import StatsHoursCard from '../components/StatsHoursCard.vue'
+import DeliveryStatusNotice from '../components/DeliveryStatusNotice.vue'
+import IncompleteRequirementsDialog from '../components/IncompleteRequirementsDialog.vue'
+import { incompleteRequirementRows } from '../utils/deliveryStatus'
 import StaffDeliveryList from '../components/StaffDeliveryList.vue'
 import StatsCountsCard from '../components/StatsCountsCard.vue'
 import DepartmentPeopleDialog from '../components/DepartmentPeopleDialog.vue'
@@ -580,6 +583,27 @@ const deliveryDialogRecords = computed(() => analysisUsesRemoteScope.value
 const analysisScopeCapacity = computed(() => analysisUsesRemoteScope.value ? statsStore.progressDetails?.workHours : analysisWorkHours.value)
 const analysisScopeTasks = computed(() => analysisUsesRemoteScope.value ? statsStore.progressDetails?.tasks || [] : currentPeriodTasks.value)
 const deliveryDialogSummary = computed(() => summarizeDelivery(deliveryDialogRecords.value, analysisScopeCapacity.value))
+const incompleteDialogVisible = ref(false)
+const incompleteSource = ref({ kind: 'card', role: '' })
+const incompleteScope = computed(() => {
+  if (incompleteSource.value.kind === 'analysis') return {
+    records: deliveryDialogRecords.value, capacity: analysisScopeCapacity.value, tasks: analysisScopeTasks.value,
+    label: `${analysisPeriodRangeText.value} · ${analysisScopeLabel.value}`
+  }
+  const role = incompleteSource.value.role
+  return {
+    records: role ? periodRecords.value.filter(record => normalizeRole(record.staff?.role || record.role) === role) : periodRecords.value,
+    capacity: role ? roleWorkHours.value[role] : statsStore.workHours,
+    tasks: currentPeriodTasks.value,
+    label: `${selectedPeriodRangeText.value} · ${role ? roleDisplay(role) : '部门'}`
+  }
+})
+const incompleteRows = computed(() => incompleteRequirementRows(incompleteScope.value.records, incompleteScope.value.capacity, incompleteScope.value.tasks)
+  .map(row => ({ ...row, roleLabel: roleDisplay(row.role) })))
+function openIncompleteRequirements(role = '', fromAnalysis = false) {
+  incompleteSource.value = { kind: fromAnalysis ? 'analysis' : 'card', role }
+  incompleteDialogVisible.value = true
+}
 const deliveryDialogRows = computed(() => deliveryDialogRecords.value.filter(record => analysisVersionType.value === 'all' || hasDeliveryVersion(record) === (analysisVersionType.value === 'versioned')))
 const analysisShowsUnversioned = computed(() => analysisActiveTab.value === 'noVersion' || (analysisActiveTab.value === 'records' && analysisVersionType.value === 'noVersion'))
 function recordGroupDelivery(records) {
@@ -1645,8 +1669,8 @@ function exportStatsData() {
 
         <div class="dt-summary-strip" :style="{ '--delivery-card-count': roleStore.list.length + 1 }">
           <div class="dt-delivery-cards">
-            <StatsHoursCard :label="`${filterLabel} · 部门`" :hours="departmentDelivery?.recordedHours" :metric="departmentDelivery" color="#F53F3F" background-color="#effafa" hover-background-color="#e3f6f6" :class="{ 'is-selected-scope': mainDimension === 'total' && !mainStaffId }" @select="selectStatsCard('total')" />
-            <StatsHoursCard v-for="role in roleStore.list" :key="role.key" :label="role.name" :hours="roleTotals[role.key]" :metric="roleDelivery[role.key]" :color="role.color" :class="{ 'is-selected-scope': mainDimension === role.key && !mainStaffId }" @select="selectStatsCard(role.key)" />
+            <StatsHoursCard :label="`${filterLabel} · 部门`" :hours="departmentDelivery?.recordedHours" :metric="departmentDelivery" color="#F53F3F" background-color="#effafa" hover-background-color="#e3f6f6" :class="{ 'is-selected-scope': mainDimension === 'total' && !mainStaffId }" @select="selectStatsCard('total')" @view-incomplete="openIncompleteRequirements()" />
+            <StatsHoursCard v-for="role in roleStore.list" :key="role.key" :label="role.name" :hours="roleTotals[role.key]" :metric="roleDelivery[role.key]" :color="role.color" :class="{ 'is-selected-scope': mainDimension === role.key && !mainStaffId }" @select="selectStatsCard(role.key)" @view-incomplete="openIncompleteRequirements(role.key)" />
           </div>
           <StatsCountsCard :items="departmentCounts" :caption="`${filterLabel} · 部门统计`" @select="openDepartmentCount" />
         </div>
@@ -2180,11 +2204,13 @@ function exportStatsData() {
     </el-tabs>
 
     <DepartmentPeopleDialog v-model="departmentPeopleVisible" :people="departmentPeople" :scope-label="statsScopeTitle" />
+    <IncompleteRequirementsDialog v-model="incompleteDialogVisible" :scope-label="incompleteScope.label" :rows="incompleteRows" />
     <el-dialog v-model="analysisDialogVisible" :title="analysisDialogTitle" width="92%" top="4vh" class="dt-delivery-dialog" @opened="measureAnalysisTable">
       <div class="dt-analysis-spotlight" :class="{ 'is-custom-period': analysisRecordScope === 'custom' }" data-testid="analysis-spotlight" v-loading="analysisUsesRemoteScope && statsStore.progressDetailsLoading">
       <section class="dt-delivery-dialog-summary">
         <h3>{{ analysisScopeLabel }}<span>{{ analysisPeriodModeLabel }}</span></h3>
         <DeliverySummary :metric="deliveryDialogSummary" :unversioned="analysisShowsUnversioned" show-expected-hours show-weighted compact-labels :all-periods="analysisRecordScope === 'all'" :period-label="analysisRecordScope === 'custom' ? '所选周期' : ''" />
+        <DeliveryStatusNotice v-if="!analysisShowsUnversioned" :metric="deliveryDialogSummary" @view-incomplete="openIncompleteRequirements('', true)" />
         <div class="dt-analysis-inline-kpis">
           <button type="button" :title="deliveryMetricTip(deliveryDialogSummary, 'recordedHours')" @click="openProgressList()">总工时 <strong>{{ analysisData.total.toFixed(1) }}h</strong></button>
           <button type="button" title="当前范围已保存记录数，按来源和记录ID去重，包含五类和普通无版本记录。" @click="openProgressList()">记录 <strong>{{ analysisData.recordCount }}</strong></button>

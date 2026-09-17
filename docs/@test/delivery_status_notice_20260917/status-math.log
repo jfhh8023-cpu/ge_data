@@ -1,0 +1,6 @@
+PASS equal, lower and higher displayed rates have separate exact messages
+PASS empty hours or invalid rates never claim100; impossible higher rate still warns
+PASS unfinished list contains actual0/1/50 only, excluding defaults/full-credit/unversioned/resigned/zero-hours
+PASS same person/version/title uses latest selected week, not later editing timestamp in an old week
+PASS list honors exact person and task capacity, deduplicates source IDs and orders later weeks first
+5 passed; no API or database writes

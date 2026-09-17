@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import DeliverySummary from './DeliverySummary.vue'
+import DeliveryStatusNotice from './DeliveryStatusNotice.vue'
 import { deliveryMetricTip } from '../utils/deliverySummary'
 
 const props = defineProps({
@@ -11,7 +12,7 @@ const props = defineProps({
   backgroundColor: { type: String, default: '#fff' },
   hoverBackgroundColor: { type: String, default: '#fafcff' }
 })
-defineEmits(['select'])
+defineEmits(['select', 'view-incomplete'])
 const total = computed(() => Number(props.hours || 0).toLocaleString('zh-CN', { minimumFractionDigits: 1, maximumFractionDigits: 1 }))
 </script>
 
@@ -25,6 +26,7 @@ const total = computed(() => Number(props.hours || 0).toLocaleString('zh-CN', { 
       </span>
     </button>
     <DeliverySummary :metric="metric" show-expected-hours show-weighted compact-labels />
+    <DeliveryStatusNotice :metric="metric" @view-incomplete="$emit('view-incomplete')" />
   </section>
 </template>
 
