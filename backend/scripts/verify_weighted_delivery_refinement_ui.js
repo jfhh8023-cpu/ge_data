@@ -1,4 +1,4 @@
-/* REQ-067: actual reported progress plus period-capacity rates; read-only live GET + isolated fixtures. */
+/* REQ-068: summary progress footers removed; period rates and person progress retained. */
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -6,7 +6,7 @@ const { pathToFileURL } = require('node:url');
 const { chromium } = require('playwright');
 const XLSX = require('xlsx');
 const ROOT = path.resolve(__dirname, '../..');
-const OUT = path.join(ROOT, 'docs/@test/actual_progress_display_20260917');
+const OUT = path.join(ROOT, 'docs/@test/remove_progress_footer_20260917');
 const RUN = new Date().toISOString().replace(/[:.]/g, '-');
 const DIR = path.join(OUT, 'evidence', RUN);
 const APP = 'http://localhost:5176', API = 'http://127.0.0.1:3001/api';
@@ -37,6 +37,9 @@ function fixture(progress = [100, 50]) {
   return { staff, pm, task, fillTask, units, records, capacity, summary, stats };
 }
 async function sameRow(scope) {
+  assert.equal(await scope.locator('.delivery-progress-foot').count(), 0, 'summary progress footer must be absent');
+  assert.equal(await scope.getByTestId('requirement-progress').count(), 0);
+  assert.equal(await scope.getByTestId('progress-coverage').count(), 0);
   const ids = ['expected-hours', 'delivered-hours', 'delivery-rate', 'weighted-delivery-rate'];
   const boxes = await Promise.all(ids.map(id => scope.getByTestId(id).boundingBox()));
   assert.ok(boxes.every(Boolean), 'four values must be visible');
@@ -124,13 +127,14 @@ async function main() {
       assert.equal(num(rows[1][rows[0].indexOf('加权交付率')]), 30);
       f = fixture([null, 0]); await openStats(); assert.equal(num(await card().getByTestId('weighted-delivery-rate').innerText()), 10);
       assert.equal(await card().getByTestId('historical-progress-note').count(), 0);
-      assert.equal(await card().getByTestId('requirement-progress').innerText(), '0%');
-      assert.equal(await card().getByTestId('progress-coverage').innerText(), '80%');
-      assert.match(await card().getByTestId('progress-coverage').evaluate(el => el.parentElement.title), /真实|实际/);
+      assert.equal(f.summary.requirementProgress, 0);
+      assert.equal(f.summary.progressCoverage, 80);
+      assert.equal(f.records[0].delivery_progress, null);
+      assert.equal(f.records[1].delivery_progress, 0);
+      await sameRow(card());
       await shot('historical-null-and-zero');
       await card().locator('button').click(); await dialog().waitFor();
-      assert.equal(await dialog().getByTestId('requirement-progress').innerText(), '0%');
-      assert.equal(await dialog().getByTestId('progress-coverage').innerText(), '80%');
+      await sameRow(dialog().locator('.dt-delivery-dialog-summary'));
       const actualPeople = dialog().locator('.staff-delivery-table tbody tr');
       assert.equal(await actualPeople.nth(0).locator('td').last().innerText(), '未填写');
       assert.equal(await actualPeople.nth(1).locator('td').last().innerText(), '0%');
@@ -139,19 +143,21 @@ async function main() {
       await shot('actual-progress-personal-dialog');
       await dialog().locator('.el-dialog__headerbtn').click();
       for (const [progress, expectedProgress, expectedCoverage] of [
-        [[null, null], '未填写', '0%'], [[50, null], '50%', '20%'], [[0, 0], '0%', '100%']
+        [[null, null], null, 0], [[50, null], 50, 20], [[0, 0], 0, 100]
       ]) {
         f = fixture(progress); await openStats();
-        assert.equal(await card().getByTestId('requirement-progress').innerText(), expectedProgress);
-        assert.equal(await card().getByTestId('progress-coverage').innerText(), expectedCoverage);
+        assert.equal(f.summary.requirementProgress, expectedProgress);
+        assert.equal(f.summary.progressCoverage, expectedCoverage);
+        await sameRow(card());
         assert.equal(await card().getByTestId('historical-progress-note').count(), 0);
-        if (expectedProgress === '未填写') await shot('all-historical-progress-unfilled');
+        if (expectedProgress === null) await shot('all-historical-progress-unfilled');
       }
       f = fixture([100, 100]); await openStats(); assert.equal(num(await card().getByTestId('weighted-delivery-rate').innerText()), 50);
       assert.equal(num(await card().getByTestId('delivery-rate').innerText()), 50);
       assert.equal(await card().getByTestId('historical-progress-note').count(), 0);
-      assert.equal(num(await card().getByTestId('requirement-progress').innerText()), 100);
-      assert.equal(await card().getByTestId('progress-coverage').innerText(), '100%');
+      assert.equal(f.summary.requirementProgress, 100);
+      assert.equal(f.summary.progressCoverage, 100);
+      await sameRow(card());
       f.units = f.units.flatMap(unit => [unit, { ...unit, taskId: 'WR66-empty-week', startDate: '2026-09-21', endDate: '2026-09-27', workDates: ['2026-09-21', '2026-09-22', '2026-09-23', '2026-09-24', '2026-09-25'] }]);
       f.capacity = workHours.summarizeWorkHours(f.records, f.units);
       f.summary = delivery.summarizeDelivery(f.records, f.capacity);
@@ -180,15 +186,6 @@ async function main() {
         await page.setViewportSize({ width, height: width === 390 ? 844 : 1080 }); await openStats();
         for (const c of await page.locator('.dt-delivery-card').all()) await sameRow(c);
         assert.equal(await card().getByTestId('historical-progress-note').count(), 0);
-        assert.equal(await card().getByTestId('requirement-progress').innerText(), '85.64%');
-        assert.equal(await card().getByTestId('progress-coverage').innerText(), '1.49%');
-        const realCards = page.locator('.dt-delivery-card');
-        for (let i = 1; i <= 4; i++) {
-          assert.equal(await realCards.nth(i).getByTestId('requirement-progress').innerText(), '未填写');
-          assert.equal(await realCards.nth(i).getByTestId('progress-coverage').innerText(), '0%');
-        }
-        assert.equal(await realCards.nth(5).getByTestId('requirement-progress').innerText(), '85.64%');
-        assert.equal(await realCards.nth(5).getByTestId('progress-coverage').innerText(), '100%');
         const cardBox = await card().boundingBox(), countBox = await page.getByTestId('stats-counts-card').boundingBox();
         assert.ok(Math.abs(cardBox.height - countBox.height) < 2, 'counts card height differs');
         const dims = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: innerWidth })); assert.ok(dims.width <= dims.viewport, 'page overflow');
@@ -197,8 +194,6 @@ async function main() {
         await shot(`live-cards-${width}`);
         await card().locator('button').click(); await dialog().waitFor();
         await sameRow(dialog().locator('.dt-delivery-dialog-summary'));
-        assert.equal(await dialog().getByTestId('requirement-progress').innerText(), '85.64%');
-        assert.equal(await dialog().getByTestId('progress-coverage').innerText(), '1.49%');
         const spotlight = await dialog().getByTestId('analysis-spotlight').boundingBox(), box = await dialog().boundingBox();
         assert.ok(spotlight.height < box.height * .45, 'spotlight takes too much room');
         assert.ok(await dialog().getByRole('tab', { name: '总览', exact: true }).isVisible());

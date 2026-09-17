@@ -24,7 +24,7 @@ const total = computed(() => Number(props.hours || 0).toLocaleString('zh-CN', { 
         <strong data-testid="recorded-hours">{{ total }}<span>h</span></strong>
       </span>
     </button>
-    <DeliverySummary :metric="metric" show-expected-hours show-weighted show-progress compact-labels />
+    <DeliverySummary :metric="metric" show-expected-hours show-weighted compact-labels />
   </section>
 </template>
 

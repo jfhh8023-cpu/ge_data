@@ -2184,7 +2184,7 @@ function exportStatsData() {
       <div class="dt-analysis-spotlight" :class="{ 'is-custom-period': analysisRecordScope === 'custom' }" data-testid="analysis-spotlight" v-loading="analysisUsesRemoteScope && statsStore.progressDetailsLoading">
       <section class="dt-delivery-dialog-summary">
         <h3>{{ analysisScopeLabel }}<span>{{ analysisPeriodModeLabel }}</span></h3>
-        <DeliverySummary :metric="deliveryDialogSummary" :unversioned="analysisShowsUnversioned" show-expected-hours show-weighted show-progress compact-labels :all-periods="analysisRecordScope === 'all'" :period-label="analysisRecordScope === 'custom' ? '所选周期' : ''" />
+        <DeliverySummary :metric="deliveryDialogSummary" :unversioned="analysisShowsUnversioned" show-expected-hours show-weighted compact-labels :all-periods="analysisRecordScope === 'all'" :period-label="analysisRecordScope === 'custom' ? '所选周期' : ''" />
         <div class="dt-analysis-inline-kpis">
           <button type="button" :title="deliveryMetricTip(deliveryDialogSummary, 'recordedHours')" @click="openProgressList()">总工时 <strong>{{ analysisData.total.toFixed(1) }}h</strong></button>
           <button type="button" title="当前范围已保存记录数，按来源和记录ID去重，包含五类和普通无版本记录。" @click="openProgressList()">记录 <strong>{{ analysisData.recordCount }}</strong></button>

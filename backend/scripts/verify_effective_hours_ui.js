@@ -1,4 +1,4 @@
-/* REQ-064 regression cases with REQ-067 actual progress display; API writes intercepted. */
+/* REQ-064 regression cases with REQ-068 summary progress footers removed; API writes intercepted. */
 const fs = require('node:fs');
 const path = require('node:path');
 const assert = require('node:assert/strict');
@@ -7,7 +7,7 @@ const { chromium } = require('playwright');
 const XLSX = require('xlsx');
 const ROOT = path.resolve(__dirname, '../..');
 const outputArgument = process.argv.find(arg => arg.startsWith('--out='))?.slice(6);
-const OUT = path.resolve(ROOT, outputArgument || 'docs/@test/actual_progress_display_20260917/reused_effective_hours');
+const OUT = path.resolve(ROOT, outputArgument || 'docs/@test/remove_progress_footer_20260917/reused_effective_hours');
 const APP = process.env.APP_URL || 'http://localhost:5176';
 const API = process.env.API_URL || 'http://127.0.0.1:3001/api';
 const RUN = new Date().toISOString().replace(/[:.]/g, '-');
@@ -108,7 +108,7 @@ async function main() {
   if (!cases || cases.some(id => /UI|FILL/.test(id))) await browserChecks();
   const latest = new Map();
   for (const line of fs.readFileSync(path.join(OUT, 'results.jsonl'), 'utf8').trim().split('\n').filter(Boolean)) { const row = JSON.parse(line); latest.set(row.id, row); }
-  fs.writeFileSync(path.join(OUT, 'execution.md'), `# REQ-064 复用回归（REQ-066 周期口径）\n\n最新批次：${RUN}。复现：\`node backend/scripts/verify_effective_hours_ui.js --out=${JSON.stringify(path.relative(ROOT, OUT).replaceAll('\\', '/'))}${cases ? ' --case=' + cases.join(',') : ''}\`。\n\n## 每个用例最近结果（完整历史保留）\n\n| 用例 | 最近结果 | 证据批次 | 说明 |\n| --- | --- | --- | --- |\n${[...latest.values()].sort((a, b) => a.id.localeCompare(b.id)).map(row => `| ${row.id} | ${row.status} | [${row.run}](evidence/${row.run}/) | ${(row.message || '见 results.jsonl').replace(/\|/g, '/')} |`).join('\n')}\n\n证据：evidence/；本目录完整历史追加保留在 results.jsonl，旧 REQ-064 归档不修改。浏览器请求中所有非 GET API 均被拦截，不写业务、不发通知。未执行用例不据此标记通过。\n`, 'utf8');
+  fs.writeFileSync(path.join(OUT, 'execution.md'), `# REQ-064 复用回归（REQ-068 移除摘要脚注，周期口径保持）\n\n最新批次：${RUN}。复现：\`node backend/scripts/verify_effective_hours_ui.js --out=${JSON.stringify(path.relative(ROOT, OUT).replaceAll('\\', '/'))}${cases ? ' --case=' + cases.join(',') : ''}\`。\n\n## 每个用例最近结果（完整历史保留）\n\n| 用例 | 最近结果 | 证据批次 | 说明 |\n| --- | --- | --- | --- |\n${[...latest.values()].sort((a, b) => a.id.localeCompare(b.id)).map(row => `| ${row.id} | ${row.status} | [${row.run}](evidence/${row.run}/) | ${(row.message || '见 results.jsonl').replace(/\|/g, '/')} |`).join('\n')}\n\n证据：evidence/；本目录完整历史追加保留在 results.jsonl，旧 REQ-064 归档不修改。浏览器请求中所有非 GET API 均被拦截，不写业务、不发通知。未执行用例不据此标记通过。\n`, 'utf8');
   console.log(JSON.stringify({ run: RUN, evidence: DIR, results: results.map(({ id, status }) => ({ id, status })) }));
   process.exitCode = results.some(row => row.status === 'FAIL') ? 1 : 0;
 }
@@ -144,10 +144,13 @@ async function browserChecks() {
       assert.equal(number(await card().getByTestId('delivered-hours').innerText()), 40);
       assert.equal(number(await card().getByTestId('delivery-rate').innerText()), 100);
       assert.equal(number(await card().getByTestId('weighted-delivery-rate').innerText()), 70);
-      assert.equal(number(await card().getByTestId('requirement-progress').innerText()), 62.5);
-      assert.equal(number(await card().getByTestId('progress-coverage').innerText()), 100);
+      assert.equal(await card().locator('.delivery-progress-foot').count(), 0);
+      assert.equal(await card().getByTestId('requirement-progress').count(), 0);
+      assert.equal(await card().getByTestId('progress-coverage').count(), 0);
+      assert.equal(f.summary.requirementProgress, 62.5);
+      assert.equal(f.summary.progressCoverage, 100);
       const tips = {};
-      for (const id of ['expected-hours', 'delivered-hours', 'delivery-rate', 'weighted-delivery-rate', 'requirement-progress', 'progress-coverage']) {
+      for (const id of ['expected-hours', 'delivered-hours', 'delivery-rate', 'weighted-delivery-rate']) {
         tips[id] = await card().getByTestId(id).evaluate(el => el.closest('[title]')?.getAttribute('title') || '');
         assert.ok(tips[id].includes('＝'), `${id} has no individual formula`);
       }
@@ -157,18 +160,22 @@ async function browserChecks() {
       await snapshot('stats-desktop');
       await card().locator('.stats-hours-heading').click(); await dialog().waitFor();
       assert.equal(number(await dialog().getByTestId('weighted-delivery-rate').first().innerText()), 70);
-      assert.equal(number(await dialog().getByTestId('requirement-progress').first().innerText()), 62.5);
+      assert.equal(await dialog().locator('.dt-delivery-dialog-summary .delivery-progress-foot').count(), 0);
+      assert.equal(await dialog().locator('.dt-delivery-dialog-summary').getByTestId('requirement-progress').count(), 0);
+      assert.equal(await dialog().locator('.dt-delivery-dialog-summary').getByTestId('progress-coverage').count(), 0);
       assert.equal(await dialog().getByRole('tab').first().innerText(), '总览');
       const people = dialog().getByTestId('analysis-people'); assert.match(await people.innerText(), /REQ064测试甲/);
       assert.match(await people.innerText(), /加权交付率/);
+      assert.match(await people.innerText(), /62\.5%/);
       const spotlight = await dialog().getByTestId('analysis-spotlight').boundingBox();
       const dialogBox = await dialog().boundingBox(); assert.ok(spotlight.height < dialogBox.height * .42, 'desktop summary consumes too much dialog');
       await snapshot('stats-dialog-desktop');
       await dialog().locator('.el-dialog__headerbtn').click();
       await loadStats({ missing: true }); assert.equal(number(await card().getByTestId('weighted-delivery-rate').innerText()), 90);
       assert.equal(await card().getByTestId('historical-progress-note').count(), 0);
-      assert.equal(number(await card().getByTestId('requirement-progress').innerText()), 75);
-      assert.equal(number(await card().getByTestId('progress-coverage').innerText()), 50);
+      assert.equal(await card().locator('.delivery-progress-foot').count(), 0);
+      assert.equal(f.summary.requirementProgress, 75);
+      assert.equal(f.summary.progressCoverage, 50);
       return { text, chart, tips, spotlight, dialogBox, unknown: await card().innerText() };
     });
     await check('R4-E-001-FILL', async () => {
