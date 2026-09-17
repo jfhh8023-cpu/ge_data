@@ -1,0 +1,8 @@
+R4-E-002-MATH: PASS
+R4-P-001-MATH: PASS
+R4-E-002-UI: PASS
+R4-E-001-FILL: PASS
+R4-I-001-UI-EXPORT: PASS
+R4-E-001-FILL-SAVE: PASS
+R4-E-003-UI-LIVE: PASS
+{"run":"2026-09-17T05-42-25-461Z","evidence":"D:\\PythonTEST\\My_Other_Tool_System\\get_data\\get_data_cursor\\docs\\@test\\period_weighted_delivery_20260917\\reused_effective_hours\\evidence\\2026-09-17T05-42-25-461Z","results":[{"id":"R4-E-002-MATH","status":"PASS"},{"id":"R4-P-001-MATH","status":"PASS"},{"id":"R4-E-002-UI","status":"PASS"},{"id":"R4-E-001-FILL","status":"PASS"},{"id":"R4-I-001-UI-EXPORT","status":"PASS"},{"id":"R4-E-001-FILL-SAVE","status":"PASS"},{"id":"R4-E-003-UI-LIVE","status":"PASS"}]}

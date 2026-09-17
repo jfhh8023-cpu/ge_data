@@ -63,11 +63,11 @@ async function run() {
     const records = [row('r-old', 32, 20, { task_id: 'old', requirement_title: '需求', updated_at: '2030-01-01' }),
       row('r-new', 8, 50, { requirement_title: '需求', updated_at: '2026-09-17' })];
     const m = metric(records, { tasks });
-    assert.equal(m.standardHours, 80); assert.equal(m.weightedDeliveredHours, 20); assert.equal(m.requirementProgress, 50);
+    assert.equal(m.standardHours, 80); assert.equal(m.weightedDeliveredHours, 20); assert.equal(m.weightedDeliveryRate, 25); assert.equal(m.requirementProgress, 50);
     assert.equal(m.units.reduce((sum, unit) => sum + unit.weightedDeliveredHours, 0), 20);
     records[1].delivery_progress = null;
     const pending = metric(records, { tasks });
-    assert.equal(pending.weightedDeliveredHours, 40); assert.equal(pending.weightedDeliveryRate, 100);
+    assert.equal(pending.weightedDeliveredHours, 40); assert.equal(pending.weightedDeliveryRate, 50);
     assert.equal(pending.knownWeightedDeliveredHours, 0); assert.equal(records[1].delivery_progress, null);
     assert.equal(pending.missingProgressHours, 40); assert.equal(pending.missingProgressCount, 1); assert.equal(pending.progressCoverage, 0);
   });
@@ -88,11 +88,12 @@ async function run() {
     assert.equal(capacity([]).standardHours, 0);
     assert.equal(capacity([], { staff: [staff[0]], includeEmptyStaff: true }).standardHours, 40);
   });
-  await check('overlapping dates deduplicate capacity, effective excess rates are uncapped and weighted rate ignores invalid calendars', () => {
+  await check('overlapping dates deduplicate capacity; both delivery rates are uncapped and require a valid calendar', () => {
     const records = [row('a', 48, 100)];
     assert.equal(metric(records).deliveryRate, 120);
+    assert.equal(metric(records).weightedDeliveryRate, 120);
     assert.equal(metric(records, { tasks: [tasks[1], { ...tasks[1], id: 'duplicate' }] }).standardHours, 40);
-    assert.equal(metric(records, { tasks: [{ ...tasks[1], start_date: 'invalid' }] }).weightedDeliveryRate, 100);
+    assert.equal(metric(records, { tasks: [{ ...tasks[1], start_date: 'invalid' }] }).weightedDeliveryRate, null);
   });
   await check('actual status service hides resigned historical authors and read-filters old snapshots without rewriting', async () => {
     const currentPeople = staff.map(value => ({ ...value }));

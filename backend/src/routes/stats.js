@@ -525,7 +525,9 @@ router.get('/export.xlsx', async (req, res, next) => {
       ['有效交付率', recordsOnly ? '仅记录，不计交付率' : deliverySummary.deliveryRate == null
         ? (deliverySummary.calendarStatus === 'invalid_period' ? '基准不完整，暂不计算' : '无应填工时')
         : `${deliverySummary.deliveryRate}%`],
-      ['加权交付率', deliverySummary.weightedDeliveryRate == null ? '无有效工时' : `${deliverySummary.weightedDeliveryRate}%`],
+      ['加权交付率', deliverySummary.weightedDeliveryRate == null
+        ? (deliverySummary.calendarStatus === 'invalid_period' ? '基准不完整，暂不计算' : '无应填工时')
+        : `${deliverySummary.weightedDeliveryRate}%`],
       ['五类有效工时', deliverySummary.fullCreditHours],
       ['加权有效已交付', deliverySummary.weightedDeliveredHours],
       ['历史空进度兼容', '仅在加权交付计算中按100%；原始值仍为空，明确0%仍按0%，覆盖率仍反映真实填报'],
@@ -561,7 +563,8 @@ router.get('/export.xlsx', async (req, res, next) => {
       return { 人员: safeExcelText(unit.staffName), 岗位: safeExcelText(unit.role),
         周期: safeExcelText(unit.taskTitle || unit.taskId), 开始日期: unit.startDate, 结束日期: unit.endDate,
         工作日期: unit.workDates.join('、'), 有效已交付: unit.deliveredHours,
-        有效交付率: unit.deliveryRate, 加权交付率: unit.weightedDeliveryRate == null ? '无有效工时' : unit.weightedDeliveryRate,
+        有效交付率: unit.deliveryRate, 加权交付率: unit.weightedDeliveryRate == null
+          ? (unit.calendarStatus === 'invalid_period' ? '基准不完整，暂不计算' : '无应填工时') : unit.weightedDeliveryRate,
         已记录工时: unit.recordedHours, 无版本记录工时: unit.unversionedHours,
         周期应填工时: unit.standardHours, 计入汇总应填工时: uniqueDates.length * 8,
         日历口径: unit.calendarStatus === 'official' ? '官方节假日与调休'

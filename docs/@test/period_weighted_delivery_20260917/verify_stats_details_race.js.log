@@ -1,0 +1,4 @@
+PASS late older success cannot replace latest scope or capacity
+PASS older failure preserves latest in-flight loading and data state
+PASS latest failure clears cache, rejects original error, and closes loading
+PASS late stale success cannot resurrect data after latest failure

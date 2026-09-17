@@ -3,7 +3,7 @@ import { latestCreatedAt } from './recordOrder.js'
 import { requirementIdentity } from './statsTable.js'
 import { isFullCreditRecord, normalizeProgress, FULL_CREDIT_TITLES } from './effectiveHours.js'
 
-export const DELIVERY_NOTE = `有效已交付＝有版本号的普通工时＋${FULL_CREDIT_TITLES.join('、')}工时；五类全额计一次。有效交付率＝有效已交付÷应交付工时；加权交付率＝（普通版本工时×最新需求进度＋五类工时）÷有效已交付工时。历史空进度计算按100%，原值保留；明确0%仍按0%。部门、岗位合并工时加权，个人仅算本人；普通无版本只记录。应交付按所选周期工作日每天8小时、同人同日去重。`
+export const DELIVERY_NOTE = `有效已交付＝有版本号的普通工时＋${FULL_CREDIT_TITLES.join('、')}工时；五类全额计一次。有效交付率＝有效已交付÷应交付工时；加权交付率＝（普通版本工时×最新需求进度＋五类工时）÷当前范围应交付工时。历史空进度计算按100%，原值保留；明确0%仍按0%。部门、岗位合并加权工时及应交付工时计算，个人仅算本人；普通无版本只记录。应交付按所选周期工作日每天8小时、同人同日去重，缺填周仍计应交付且加权工时为0。应交付为0或日历无效显示“—”，有效容量下零加权工时显示0%，超过100%如实显示。`
 export const hasDeliveryVersion = record => isFullCreditRecord(record) || Boolean(String(record?.version ?? '').trim() && String(record?.version ?? '').trim() !== '-')
 const round = value => Number(value.toFixed(2))
 const unitKey = (staffId, taskId) => JSON.stringify([String(staffId || ''), String(taskId || '')])
@@ -40,20 +40,23 @@ export function deliveryMetricTip(metric, key) {
   const people = '仅纳入当前非离职且所选范围有记录的人员；纳入后按完整所选周期计算，同人同日去重。'
   const five = FULL_CREDIT_TITLES.join('、')
   const calendar = m.calendarNote || ''
+  const actualProgress = m.requirementProgress == null ? '未填写' : `${f(m.requirementProgress)}%`
+  const actualCoverage = m.progressCoverage == null ? '不适用（无普通版本工时）' : `${f(m.progressCoverage)}%`
   const texts = {
     recordedHours: `总工时＝全部已填原始工时，含有版本、普通无版本及${five}；当前${f(m.recordedHours)}h。`,
     standardHours: `应交付工时＝所选范围人员实际工作日×每天8小时＝${f(m.standardHours)}h。${people}${calendar}`,
     deliveredHours: `有效已交付＝有版本号的普通工时${f(m.versionedHours ?? (m.deliveredHours - (m.fullCreditHours || 0)))}h＋${five}工时${f(m.fullCreditHours)}h＝${f(m.deliveredHours)}h。五类不论历史是否有版本均全额计一次；普通无版本不计入。`,
     unversionedHours: `普通无版本工时合计${f(m.unversionedHours)}h，只记录，不计入有效交付率和加权交付率；五类工时除外。`,
     deliveryRate: `有效交付率＝有效已交付${f(m.deliveredHours)}h÷应交付${f(m.standardHours)}h×100%。超过100%如实显示；应交付为0或日历无效时显示“—”。${calendar}`,
-    weightedDeliveryRate: `加权交付率＝[Σ(普通有版本需求累计工时×范围内最新周期填写进度)＋${five}工时]÷有效已交付工时×100%。当前折算${f(m.weightedDeliveredHours)}h÷有效工时${f(m.deliveredHours)}h。${m.missingProgressHours > 0 ? `${f(m.missingProgressHours)}h历史空进度仅在本计算中按100%，原值仍为空；` : '历史空进度计算按100%；'}明确0%仍按0%。同人、同版本、同标题合并；五类全额计入且不要求进度。部门、岗位合并有效工时计算，不平均个人百分比；个人仅算本人。有效工时为0显示“—”，本指标不依赖工作日日历。`,
-    requirementProgress: `需求填报进度＝Σ(普通有版本需求累计工时×最新填写进度)÷已知进度的普通版本工时${f(m.progressKnownHours)}h。五类、普通无版本不参与；缺失进度保留未知，明确0%有效。`,
-    progressCoverage: `进度覆盖＝已有进度的普通版本工时${f(m.progressKnownHours)}h÷普通版本工时${f(m.versionedHours)}h；缺进度${f(m.missingProgressHours)}h。不包含${five}。`
+    weightedDeliveryRate: `加权交付率＝[Σ(普通有版本需求累计工时×范围内最新周期填写进度)＋${five}工时]÷当前范围应交付工时×100%。当前折算${f(m.weightedDeliveredHours)}h÷应交付${f(m.standardHours)}h。${m.missingProgressHours > 0 ? `${f(m.missingProgressHours)}h历史空进度仅在本计算中按100%，原值仍为空；` : '历史空进度计算按100%；'}明确0%仍按0%。同人、同版本、同标题合并；五类全额计入且不要求进度。部门、岗位合并加权工时及应交付工时计算，不平均个人百分比；个人仅算本人。${people}缺填周仍计应交付，该周加权工时为0。应交付大于0且日历有效时无加权工时显示0%；应交付为0或日历无效显示“—”；超过100%如实显示。实际进度填报覆盖${m.progressCoverage == null ? '不适用（无普通版本工时）' : `${f(m.progressCoverage)}%（已知进度${f(m.progressKnownHours)}h÷普通版本${f(m.versionedHours)}h）`}；兼容默认值不算实际填报。${calendar}`,
+    requirementProgress: `需求填报进度＝Σ(普通有版本需求累计工时×最新填写进度)÷已知进度的普通版本工时${f(m.progressKnownHours)}h；实际需求填报进度${actualProgress}。五类、普通无版本不参与；缺失进度保留未知，明确0%有效。`,
+    progressCoverage: `实际进度填报覆盖${actualCoverage}＝已有进度的普通版本工时${f(m.progressKnownHours)}h÷普通版本工时${f(m.versionedHours)}h；缺进度${f(m.missingProgressHours)}h。不包含${five}，历史兼容默认值不算实际填报。`
   }
+  texts.weightedDeliveryRate += `实际需求填报进度${actualProgress}，仅使用真实已知进度，历史兼容默认值不参与该进度平均。`
   return texts[key] || DELIVERY_NOTE
 }
 
-export const weightedRateText = metric => !metric || !(metric.deliveredHours > 0) || metric.weightedDeliveryRate == null
+export const weightedRateText = metric => !metric || metric.weightedDeliveryRate == null
   ? '—' : `${display(metric.weightedDeliveryRate)}%`
 
 /** Capacity comes from the working-day calendar; record progress never changes saved hours. */
@@ -95,7 +98,7 @@ export function summarizeDelivery(records = [], capacity = null) {
     fullCreditHours: round(fullCreditHours), versionedHours: round(versionedHours),
     weightedDeliveredHours: round(weightedDeliveredHours),
     knownWeightedDeliveredHours: round(weightedOrdinaryHours + fullCreditHours),
-    weightedDeliveryRate: deliveredHours > 0 ? round(weightedDeliveredHours * 100 / deliveredHours) : null,
+    weightedDeliveryRate: standardHours > 0 && capacity.calendarStatus !== 'invalid_period' ? round(weightedDeliveredHours * 100 / standardHours) : null,
     missingProgressHours: round(missingProgressHours), missingProgressCount: groups.filter(group => group.progress == null && group.hours > 0).length,
     progressKnownHours: round(progressKnownHours),
     requirementProgress: progressKnownHours > 0 ? round(weightedOrdinaryHours * 100 / progressKnownHours) : null,

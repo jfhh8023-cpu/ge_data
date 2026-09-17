@@ -1,0 +1,16 @@
+PASS 40h: effective100%, weighted70%, requirement62.5%, coverage100%
+PASS latest selected period null uses 100 only for weighted calculation; raw null and coverage remain unchanged
+PASS range eligibility preserves each included person entire selected weeks
+PASS duplicate source+ID counts once; separate sources may reuse ID
+PASS five categories empty/versioned count once, ordinary empty/dash excluded
+PASS both delivery rates require valid nonzero capacity and permit excess above100
+PASS department merges8h at100% and32h at50% over80h capacity to30%, with personal rates20% and40%
+PASS historical null defaults100, explicit0 stays0, special stays full and ordinary unversioned stays excluded
+PASS valid40h capacity with no effective hours returns0%, while an empty scope returns an em dash
+PASS missing second week keeps40h capacity and zero weighted work:40/80=50%,8/80=10%
+PASS frozen historical-null/zero/special case gives16/40=40% while true progress remains0 and coverage50%
+PASS selected latest progress uses8+8 over80=20%, while selecting only old8h at50% over40 gives10%
+PASS unequal person capacities use total weighted hours over total expected hours, never an average of rates
+PASS tooltips disclose the period denominator, missing-week rule, and true zero progress coverage
+PASS same-period latest timestamp compares instants, not date string spelling
+15 passed; 0 failed

@@ -1,5 +1,5 @@
 const { isFullCreditRecord, normalizeProgress, FULL_CREDIT_TITLES } = require('./EffectiveHoursService');
-const DELIVERY_FORMULA = `有效已交付＝普通含版本号工时＋${FULL_CREDIT_TITLES.join('、')}工时（只计一次）；有效交付率＝有效已交付÷应交付工时×100%。加权交付率＝[Σ(同一人员、版本、标题累计有效工时×所选范围最新周期填报进度)＋五类有效工时]÷有效已交付工时×100%。历史空进度仅在加权交付计算中按100%，原值仍为空；明确0%仍按0%。部门、岗位合并有效工时计算，不平均个人百分比；个人仅算本人。无版本普通记录不计交付；有效工时为0显示“—”。应交付按当前非离职且范围有记录的人员、完整所选周期工作日×8小时计算。`;
+const DELIVERY_FORMULA = `有效已交付＝普通含版本号工时＋${FULL_CREDIT_TITLES.join('、')}工时（只计一次）；有效交付率＝有效已交付÷应交付工时×100%。加权交付率＝[Σ(同一人员、版本、标题累计有效工时×所选范围最新周期填报进度)＋五类有效工时]÷当前范围应交付工时×100%。历史空进度仅在加权交付计算中按100%，原值仍为空；明确0%仍按0%，进度覆盖反映真实填报。部门、岗位合并加权工时及应交付工时计算，不平均个人百分比；个人仅算本人。无版本普通记录不计交付。应交付按当前非离职且范围有记录的人员、完整所选周期工作日×8小时计算；缺填周仍计应交付，该周加权工时为0。应交付大于0且日历有效时无加权工时显示0%；应交付为0或日历无效显示“—”；超过100%如实显示。`;
 
 function hasValidVersion(value) {
   const version = String(value ?? '').trim();
@@ -77,7 +77,7 @@ function buildDeliverySummary(records = [], workHours = {}) {
   function finish(values, standardHours, calendarStatus, missingCount) {
     return { ...roundedTotals(values), standardHours,
       deliveryRate: rate(values.deliveredHours, standardHours, calendarStatus),
-      weightedDeliveryRate: values.deliveredHours > 0 ? round(values.weightedDeliveredHours * 100 / values.deliveredHours) : null,
+      weightedDeliveryRate: rate(values.weightedDeliveredHours, standardHours, calendarStatus),
       missingProgressCount: missingCount,
       requirementProgress: values.progressKnownHours > 0 ? round((values.knownWeightedDeliveredHours - values.fullCreditHours) * 100 / values.progressKnownHours) : null,
       progressCoverage: values.versionedHours > 0 ? round(values.progressKnownHours * 100 / values.versionedHours) : null };

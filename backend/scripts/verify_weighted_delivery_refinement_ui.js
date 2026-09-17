@@ -1,4 +1,4 @@
-/* REQ-065: live GET checks and isolated browser fixtures. All API writes are intercepted. */
+/* REQ-066: period-capacity weighted rates; live GET + isolated browser fixtures. */
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -6,7 +6,7 @@ const { pathToFileURL } = require('node:url');
 const { chromium } = require('playwright');
 const XLSX = require('xlsx');
 const ROOT = path.resolve(__dirname, '../..');
-const OUT = path.join(ROOT, 'docs/@test/weighted_delivery_refinement_20260917');
+const OUT = path.join(ROOT, 'docs/@test/period_weighted_delivery_20260917');
 const RUN = new Date().toISOString().replace(/[:.]/g, '-');
 const DIR = path.join(OUT, 'evidence', RUN);
 const APP = 'http://localhost:5176', API = 'http://127.0.0.1:3001/api';
@@ -55,18 +55,27 @@ async function main() {
     for (const data of [stats, detail]) {
       const computed = delivery.summarizeDelivery(data.records, data.workHours);
       for (const key of ['recordedHours', 'deliveredHours', 'deliveryRate', 'weightedDeliveryRate', 'weightedDeliveredHours', 'progressCoverage']) assert.equal(data.deliverySummary[key], computed[key], `API.${key}`);
-      assert.equal(computed.weightedDeliveryRate, Number((computed.weightedDeliveredHours / computed.deliveredHours * 100).toFixed(2)));
+      assert.equal(computed.weightedDeliveryRate, Number((computed.weightedDeliveredHours / computed.standardHours * 100).toFixed(2)));
     }
     const pm = stats.records.filter(row => row.staff?.role === 'ai_pm');
     const pmCapacity = workHours.summarizeWorkHours(pm, stats.workHours.units.filter(unit => pm.some(row => row.staff_id === unit.staffId)));
     const pmSummary = delivery.summarizeDelivery(pm, pmCapacity);
-    assert.equal(pmSummary.deliveredHours, 39); assert.equal(pmSummary.weightedDeliveryRate, 85.64);
+    assert.equal(pmSummary.deliveredHours, 39); assert.equal(pmSummary.weightedDeliveryRate, 7.59);
+    const roleRates = {};
+    for (const [role, expected] of Object.entries({ ai_dev: 87.78, voip: 3.3, ai_quality: 68.48, embedded: 11.36 })) {
+      const records = stats.records.filter(row => row.staff?.role === role);
+      const capacity = workHours.summarizeWorkHours(records, stats.workHours.units.filter(unit => unit.role === role));
+      const summary = delivery.summarizeDelivery(records, capacity);
+      assert.equal(summary.weightedDeliveryRate, expected, role);
+      assert.equal(summary.progressCoverage, 0); assert.equal(summary.requirementProgress, null);
+      roleRates[role] = summary.weightedDeliveryRate;
+    }
     const response = await fetch(`${API}/stats/export.xlsx?year=2026&quarter=Q3&scope=current`); assert.ok(response.ok);
     const workbook = XLSX.read(Buffer.from(await response.arrayBuffer()));
     const rows = workbook.SheetNames.flatMap(name => XLSX.utils.sheet_to_json(workbook.Sheets[name], { header: 1 }));
     const weighted = rows.find(row => row[0] === '加权交付率'); assert.ok(weighted); assert.equal(num(weighted[1]), stats.deliverySummary.weightedDeliveryRate);
     assert.ok(!rows.flat().includes('待补进度'), 'export still hides historical-null weighted rates');
-    return { departmentWeighted: stats.deliverySummary.weightedDeliveryRate, productWeighted: pmSummary.weightedDeliveryRate, effective: stats.deliverySummary.deliveredHours, rawNullCount: stats.records.filter(r => r.delivery_progress == null).length, sheets: workbook.SheetNames };
+    return { departmentWeighted: stats.deliverySummary.weightedDeliveryRate, productWeighted: pmSummary.weightedDeliveryRate, roleRates, effective: stats.deliverySummary.deliveredHours, rawNullCount: stats.records.filter(r => r.delivery_progress == null).length, sheets: workbook.SheetNames };
   });
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1920, height: 1080 }, acceptDownloads: true });
@@ -95,35 +104,56 @@ async function main() {
   const openStats = async () => { await page.goto(`${APP}/stats?admin=1`, { waitUntil: 'networkidle' }); await card().waitFor(); };
   try {
     await check('WR4-E-003-GROUP', async () => {
-      await openStats(); assert.equal(num(await card().getByTestId('delivery-rate').innerText()), 50); assert.equal(num(await card().getByTestId('weighted-delivery-rate').innerText()), 60);
+      await openStats(); assert.equal(num(await card().getByTestId('delivery-rate').innerText()), 50); assert.equal(num(await card().getByTestId('weighted-delivery-rate').innerText()), 30);
       await sameRow(card());
       const tip = await card().getByTestId('weighted-delivery-rate').evaluate(el => el.parentElement.title);
-      for (const text of ['有效已交付工时', '100%', '0%', '不平均个人百分比']) assert.ok(tip.includes(text), `weighted tip missing ${text}`);
+      for (const text of ['应交付工时', '100%', '0%', '不平均个人百分比']) assert.ok(tip.includes(text), `weighted tip missing ${text}`);
       await card().locator('button').click(); await dialog().waitFor();
       await sameRow(dialog().locator('.dt-delivery-dialog-summary'));
-      assert.equal(num(await dialog().getByTestId('weighted-delivery-rate').innerText()), 60);
+      assert.equal(num(await dialog().getByTestId('weighted-delivery-rate').innerText()), 30);
       const people = dialog().locator('.staff-delivery-table tbody tr');
       assert.equal(await people.count(), 2);
-      assert.equal(num(await people.nth(0).locator('td').nth(3).innerText()), 100);
-      assert.equal(num(await people.nth(1).locator('td').nth(3).innerText()), 50);
+      assert.equal(num(await people.nth(0).locator('td').nth(3).innerText()), 20);
+      assert.equal(num(await people.nth(1).locator('td').nth(3).innerText()), 40);
       assert.equal(await dialog().getByRole('tab').first().innerText(), '总览');
       await shot('group-dialog');
       await dialog().locator('.el-dialog__headerbtn').click();
       const download = page.waitForEvent('download'); await page.getByRole('button', { name: '📤 导出Excel', exact: true }).click();
       const target = path.join(DIR, 'fixture-export.xlsx'); await (await download).saveAs(target);
       const book = XLSX.readFile(target), rows = XLSX.utils.sheet_to_json(book.Sheets['交付汇总'], { header: 1 });
-      assert.equal(num(rows[1][rows[0].indexOf('加权交付率')]), 60);
-      f = fixture([null, 0]); await openStats(); assert.equal(num(await card().getByTestId('weighted-delivery-rate').innerText()), 20);
+      assert.equal(num(rows[1][rows[0].indexOf('加权交付率')]), 30);
+      f = fixture([null, 0]); await openStats(); assert.equal(num(await card().getByTestId('weighted-delivery-rate').innerText()), 10);
+      assert.equal(await card().getByTestId('historical-progress-note').innerText(), '历史未填进度按100%计');
+      assert.equal(await card().getByTestId('requirement-progress').count(), 0);
+      assert.equal(await card().getByTestId('progress-coverage').count(), 0);
+      assert.match(await card().getByTestId('historical-progress-note').getAttribute('title'), /覆盖/);
       await shot('historical-null-and-zero');
-      f = fixture([100, 100]); await openStats(); assert.equal(num(await card().getByTestId('weighted-delivery-rate').innerText()), 100);
+      f = fixture([100, 100]); await openStats(); assert.equal(num(await card().getByTestId('weighted-delivery-rate').innerText()), 50);
       assert.equal(num(await card().getByTestId('delivery-rate').innerText()), 50);
-      return { unequalPersonHoursRate: 60, personRates: [100, 50], historicalNullAndZero: 20, allComplete: 100, effectiveRateUnchanged: 50, exportWeighted: 60, tip };
+      assert.equal(await card().getByTestId('historical-progress-note').count(), 0);
+      assert.equal(num(await card().getByTestId('requirement-progress').innerText()), 100);
+      f.units = f.units.flatMap(unit => [unit, { ...unit, taskId: 'WR66-empty-week', startDate: '2026-09-21', endDate: '2026-09-27', workDates: ['2026-09-21', '2026-09-22', '2026-09-23', '2026-09-24', '2026-09-25'] }]);
+      f.capacity = workHours.summarizeWorkHours(f.records, f.units);
+      f.summary = delivery.summarizeDelivery(f.records, f.capacity);
+      f.stats = { ...f.stats, workHours: f.capacity, deliverySummary: f.summary, tasks: [f.task, { ...f.task, id: 'WR66-empty-week', title: '第39周', start_date: '2026-09-21', end_date: '2026-09-27', week_number: 39, record_count: 0 }] };
+      await openStats(); assert.equal(num(await card().getByTestId('expected-hours').innerText()), 160);
+      assert.equal(num(await card().getByTestId('weighted-delivery-rate').innerText()), 25);
+      await shot('unfilled-week-keeps-capacity');
+      f = fixture(); f.records = f.records.map(row => ({ ...row, version: '' }));
+      f.summary = delivery.summarizeDelivery(f.records, f.capacity);
+      f.stats = { ...f.stats, records: f.records, deliverySummary: f.summary };
+      await openStats(); assert.equal(await card().getByTestId('weighted-delivery-rate').innerText(), '0%');
+      assert.equal(await card().locator('.delivery-progress-foot').count(), 0);
+      await shot('no-effective-hours-zero-rate');
+      return { unequalPersonHoursRate: 30, personRates: [20, 40], historicalNullAndZero: 10, allProgressCompleteButHalfCapacity: 50, afterAddingUnfilledWeek: 25, noEffectiveHours: 0, effectiveRateUnchanged: 50, exportWeighted: 30, tip };
     });
     await check('WR4-E-003-LAYOUT', async () => {
       live = true; const evidence = [];
       for (const width of [1920, 1600, 1280, 390]) {
         await page.setViewportSize({ width, height: width === 390 ? 844 : 1080 }); await openStats();
         for (const c of await page.locator('.dt-delivery-card').all()) await sameRow(c);
+        assert.equal(await card().getByTestId('historical-progress-note').innerText(), '历史未填进度按100%计');
+        assert.equal(await page.getByTestId('progress-coverage').count(), 0);
         const cardBox = await card().boundingBox(), countBox = await page.getByTestId('stats-counts-card').boundingBox();
         assert.ok(Math.abs(cardBox.height - countBox.height) < 2, 'counts card height differs');
         const dims = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: innerWidth })); assert.ok(dims.width <= dims.viewport, 'page overflow');
@@ -132,6 +162,7 @@ async function main() {
         await shot(`live-cards-${width}`);
         await card().locator('button').click(); await dialog().waitFor();
         await sameRow(dialog().locator('.dt-delivery-dialog-summary'));
+        assert.equal(await dialog().getByTestId('historical-progress-note').innerText(), '历史未填进度按100%计');
         const spotlight = await dialog().getByTestId('analysis-spotlight').boundingBox(), box = await dialog().boundingBox();
         assert.ok(spotlight.height < box.height * .45, 'spotlight takes too much room');
         assert.ok(await dialog().getByRole('tab', { name: '总览', exact: true }).isVisible());

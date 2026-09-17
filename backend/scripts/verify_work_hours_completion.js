@@ -339,6 +339,7 @@ async function verifyReadRoutes() {
     const meta = XLSX.utils.sheet_to_json(unversionedExport.Sheets['导出说明'], { header: 1 });
     const rows = XLSX.utils.sheet_to_json(unversionedExport.Sheets['进度明细']);
     assert.equal(meta.find(row => row[0] === '有效交付率')[1], '仅记录，不计交付率');
+    assert.equal(meta.find(row => row[0] === '加权交付率')[1], '0%');
     assert.equal(meta.find(row => row[0] === '无版本记录工时（不计交付）')[1], 16);
     assert.equal(meta.find(row => row[0] === '应填工时（人员工作日去重）')[1], 40);
     assert.equal(rows.length, 1);
@@ -354,18 +355,49 @@ async function verifyReadRoutes() {
   ].map(value => new EngineeringRow({ ...record(8, value), staff: people[0] })));
   const weightedDetails = await invoke('/progress-details', { ...sortQuery, role: 'ai_dev' });
   const weightedExport = XLSX.read(await invoke('/export.xlsx', { ...sortQuery, role: 'ai_dev' }), { type: 'buffer' });
-  check('export and actual detail share effective-hour weighted denominator with read-only historical-null fallback', () => {
+  check('export and actual detail share40h period-capacity denominator with read-only historical-null fallback', () => {
     const meta = XLSX.utils.sheet_to_json(weightedExport.Sheets['导出说明'], { header: 1 });
     const rows = XLSX.utils.sheet_to_json(weightedExport.Sheets['进度明细']);
-    assert.equal(weightedDetails.data.deliverySummary.weightedDeliveryRate, 62.5);
-    assert.equal(meta.find(row => row[0] === '加权交付率')[1], '62.5%');
+    assert.equal(weightedDetails.data.deliverySummary.standardHours, 40);
+    assert.equal(weightedDetails.data.deliverySummary.weightedDeliveryRate, 50);
+    assert.equal(meta.find(row => row[0] === '加权交付率')[1], '50%');
     assert.equal(meta.find(row => row[0] === '加权有效已交付')[1], 20);
     assert.match(meta.find(row => row[0] === '历史空进度兼容')[1], /按100%/);
     assert.equal(rows.find(row => row.需求名称 === '历史未知').需求填报进度, '未填写');
     assert.equal(rows.find(row => row.需求名称 === '历史零值').需求填报进度, '0%');
     assert.equal(engineering[0].delivery_progress, null);
-    assert.equal(XLSX.utils.sheet_to_json(weightedExport.Sheets['人员周期容量'])[0].加权交付率, 62.5);
+    assert.equal(XLSX.utils.sheet_to_json(weightedExport.Sheets['人员周期容量'])[0].加权交付率, 50);
   });
+  const fullRangeDetails = await invoke('/progress-details', { scope: 'all', role: 'ai_dev' });
+  const fullRangeExport = XLSX.read(await invoke('/export.xlsx', { scope: 'all', role: 'ai_dev' }), { type: 'buffer' });
+  check('whole-range details and Excel keep the missing week at40h capacity and0%, yielding20/80=25%', () => {
+    const m = fullRangeDetails.data.deliverySummary;
+    assert.equal(m.standardHours, 80); assert.equal(m.weightedDeliveredHours, 20); assert.equal(m.weightedDeliveryRate, 25);
+    assert.equal(m.units.find(unit => unit.taskId === 't2').weightedDeliveryRate, 0);
+    const meta = XLSX.utils.sheet_to_json(fullRangeExport.Sheets['导出说明'], { header: 1 });
+    assert.equal(meta.find(row => row[0] === '加权交付率')[1], '25%');
+    assert.match(meta.find(row => row[0] === '交付率公式')[1], /÷当前范围应交付工时/);
+    const missing = XLSX.utils.sheet_to_json(fullRangeExport.Sheets['人员周期容量']).find(row => row.开始日期 === '2026-08-31');
+    assert.equal(missing.周期应填工时, 40); assert.equal(missing.加权交付率, 0);
+  });
+  const originalRange = { start_date: tasks[0].start_date, end_date: tasks[0].end_date };
+  try {
+    for (const [range, expectedReason] of [
+      [{ start_date: '2026-02-16', end_date: '2026-02-22' }, '无应填工时'],
+      [{ start_date: 'invalid', end_date: '2026-09-13' }, '基准不完整，暂不计算']
+    ]) {
+      Object.assign(tasks[0], range);
+      const details = await invoke('/progress-details', { ...sortQuery, role: 'ai_dev' });
+      const workbook = XLSX.read(await invoke('/export.xlsx', { ...sortQuery, role: 'ai_dev' }), { type: 'buffer' });
+      check(`Excel describes unavailable weighted rates as ${expectedReason} while preserving20 weighted hours`, () => {
+        assert.equal(details.data.deliverySummary.weightedDeliveredHours, 20);
+        assert.equal(details.data.deliverySummary.weightedDeliveryRate, null);
+        const meta = XLSX.utils.sheet_to_json(workbook.Sheets['导出说明'], { header: 1 });
+        assert.equal(meta.find(row => row[0] === '加权交付率')[1], expectedReason);
+        assert.equal(XLSX.utils.sheet_to_json(workbook.Sheets['人员周期容量'])[0].加权交付率, expectedReason);
+      });
+    }
+  } finally { Object.assign(tasks[0], originalRange); }
   const emptyPersonal = await invoke('/personal/:staffId', { year: '1900' }, { staffId: 's1' });
   const emptyPm = await invoke('/pm/:pmId', { year: '1900' }, { pmId: 'pm-owner' });
   check('empty filter ranges return no person or PM identity and no capacity', () => {

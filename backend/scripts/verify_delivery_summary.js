@@ -47,6 +47,7 @@ check('unversioned rows preserve recorded hours and the same capacity while cont
   assert.equal(result.unversionedHours, 48);
   assert.equal(result.standardHours, 40);
   assert.equal(result.deliveryRate, 0);
+  assert.equal(result.weightedDeliveryRate, 0);
 });
 check('people without records in the selected scope do not enter the denominator', () => {
   const records = [row('a', 32, 'v1')];
@@ -57,11 +58,14 @@ check('people without records in the selected scope do not enter the denominator
 });
 check('different calendar capacities weight by person-workdays rather than averaging percentages', () => {
   const selected = [...tasks, { ...tasks[0], id: 't2', start_date: '2026-10-05', end_date: '2026-10-11' }];
-  const records = [row('a', 32, 'v1'), row('b', 16, 'v2', { task_id: 't2' }), row('c', 48, '', { task_id: 't2' })];
+  const records = [row('a', 32, 'v1', { delivery_progress: 100 }), row('b', 16, 'v2', { task_id: 't2', delivery_progress: 50 }), row('c', 48, '', { task_id: 't2' })];
   const result = buildDeliverySummary(records, capacity(records, { tasks: selected }));
   assert.equal(result.standardHours, 64);
   assert.equal(result.deliveredHours, 48);
   assert.equal(result.deliveryRate, 75);
+  assert.equal(result.weightedDeliveredHours, 40);
+  assert.equal(result.weightedDeliveryRate, 62.5);
+  assert.notEqual(result.weightedDeliveryRate, result.units.reduce((sum, unit) => sum + unit.weightedDeliveryRate, 0) / 2);
 });
 check('duplicate records and overlapping periods do not duplicate delivered hours or capacity', () => {
   const records = [row('a', 32, 'v1'), row('a', 32, 'v1'), row('b', 8, 'v2', { task_id: 't2' })];
@@ -81,6 +85,7 @@ check('zero-workday holiday week preserves delivered hours and returns a null ra
   assert.equal(result.deliveredHours, 8);
   assert.equal(result.standardHours, 0);
   assert.equal(result.deliveryRate, null);
+  assert.equal(result.weightedDeliveryRate, null);
 });
 check('an invalid mixed period cannot claim a definitive rate', () => {
   const records = [row('a', 32, 'v1'), row('b', 8, 'v1', { task_id: 'invalid' })];
@@ -89,6 +94,7 @@ check('an invalid mixed period cannot claim a definitive rate', () => {
   assert.equal(result.deliveredHours, 40);
   assert.equal(result.deliveryRate, null);
   assert.equal(result.calendarStatus, 'invalid_period');
+  assert.equal(result.weightedDeliveryRate, null);
 });
 check('missing calendars stay explicitly estimated and empty scopes have no capacity', () => {
   const result = buildDeliverySummary([], capacity([], { snapshots: new Map() }));
