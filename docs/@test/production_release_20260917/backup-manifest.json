@@ -1,0 +1,38 @@
+{
+  "capturedAt": "2026-09-17T09:45:33Z",
+  "remoteDirectory": "/opt/devtracker/.release-backups/20260917_094527",
+  "localDirectory": "D:\\PythonTEST\\My_Other_Tool_System\\get_data\\get_data_cursor\\deploy\\backups\\release_20260917_094527",
+  "dump": {
+    "sqlBytes": 1975108,
+    "completed": true,
+    "createTableCount": 24
+  },
+  "files": {
+    "database.sql.gz": {
+      "sha256": "56252e7effd5e11cf84355fe800d3f81327783b7b9ccca9288afa49511829416",
+      "bytes": 342683
+    },
+    "application.tar.gz": {
+      "sha256": "a949aeae8c86e6c17da788793b7f24e91f56b930435245480e0a7dccbdb9b519",
+      "bytes": 14030522
+    }
+  },
+  "codeRollbackPreservesDatabase": true,
+  "archive": {
+    "memberCount": 5171,
+    "allFilesExtractedAndHashed": true,
+    "requiredFiles": [
+      "backend/src/app.js",
+      "backend/.env",
+      "backend/package.json",
+      "backend/package-lock.json",
+      "frontend/dist/index.html",
+      "ecosystem.config.js"
+    ],
+    "includesDependencies": true
+  },
+  "nginxHashes": [
+    "e4738898934192107ef7131c72a3910bd785b6f275ab685d2ab51808fa79db63  /etc/nginx/conf.d/unified.conf",
+    "1136d1b94ea7c0a0fd226fc2bdd8a9216d67045ee09f751b6f7795311183f7b4  /etc/nginx/conf.d/sandilizi-ssl.conf"
+  ]
+}

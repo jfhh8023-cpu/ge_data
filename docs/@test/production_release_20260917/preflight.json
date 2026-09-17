@@ -1,0 +1,266 @@
+{
+  "capturedAt": "2026-09-17T09:43:07Z",
+  "runtime": "v16.20.2",
+  "processes": [
+    {
+      "name": "tianji-zeji",
+      "pid": 12205,
+      "pm_id": 0,
+      "status": "online",
+      "version": "1.0.0",
+      "restart_time": 24,
+      "pm_uptime": 1775840670093,
+      "cwd": "/opt/tianji-zeji/server",
+      "script": "/opt/tianji-zeji/server/src/app.js"
+    },
+    {
+      "name": "devtracker",
+      "pid": 28261,
+      "pm_id": 64,
+      "status": "online",
+      "version": "3.3.0",
+      "restart_time": 1,
+      "pm_uptime": 1788832143197,
+      "cwd": "/opt/devtracker/backend",
+      "script": "/opt/devtracker/backend/src/app.js"
+    }
+  ],
+  "disk": "Filesystem     1024-blocks     Used Available Capacity Mounted on\n/dev/vda1         41152716 11391372  27983520      29% /",
+  "sizes": "61696\t/opt/devtracker/backend\n6480\t/opt/devtracker/frontend",
+  "health": {
+    "code": 0,
+    "message": "DevTracker API is running",
+    "version": "3.0.2"
+  },
+  "backend": {
+    "src/app.js": {
+      "sha256": "7b48162467701bc749e5aa8a99fcd2a51199da5af6606a98b8d9232e00f14a47"
+    },
+    "package.json": {
+      "sha256": "419d899defaa33e1d5307319044a9b507fb5a594a29d06499dac7a3d42ab34fb"
+    },
+    "package-lock.json": {
+      "sha256": "8a696bf5b9be3c3b5f7eb6014689698d4b430d5382107bd6cdb39df280f090cf"
+    },
+    "package": {
+      "name": "backend",
+      "version": "3.3.0",
+      "description": "",
+      "main": "index.js",
+      "scripts": {
+        "dev": "node src/app.js",
+        "start": "node src/app.js",
+        "test": "echo \"Error: no test specified\" && exit 1"
+      },
+      "keywords": [],
+      "author": "",
+      "license": "ISC",
+      "type": "commonjs",
+      "dependencies": {
+        "cors": "^2.8.6",
+        "dotenv": "^17.4.2",
+        "express": "^5.2.1",
+        "multer": "^2.1.1",
+        "mysql2": "^3.22.0",
+        "playwright": "^1.59.1",
+        "sequelize": "^6.37.8",
+        "uuid": "^9.0.1",
+        "xlsx": "^0.18.5"
+      }
+    }
+  },
+  "database": {
+    "tables": [
+      {
+        "name": "access_links",
+        "engine": "InnoDB",
+        "estimatedRows": 1
+      },
+      {
+        "name": "auto_task_child_notifications",
+        "engine": "InnoDB",
+        "estimatedRows": 2
+      },
+      {
+        "name": "auto_task_messages",
+        "engine": "InnoDB",
+        "estimatedRows": 369
+      },
+      {
+        "name": "auto_task_rules",
+        "engine": "InnoDB",
+        "estimatedRows": 3
+      },
+      {
+        "name": "auto_task_run_logs",
+        "engine": "InnoDB",
+        "estimatedRows": 159
+      },
+      {
+        "name": "collection_tasks",
+        "engine": "InnoDB",
+        "estimatedRows": 34
+      },
+      {
+        "name": "duty_calendar_revisions",
+        "engine": "InnoDB",
+        "estimatedRows": 1
+      },
+      {
+        "name": "duty_holiday_snapshots",
+        "engine": "InnoDB",
+        "estimatedRows": 2
+      },
+      {
+        "name": "duty_schedule_exceptions",
+        "engine": "InnoDB",
+        "estimatedRows": 0
+      },
+      {
+        "name": "duty_schedule_swaps",
+        "engine": "InnoDB",
+        "estimatedRows": 2
+      },
+      {
+        "name": "duty_special_notification_logs",
+        "engine": "InnoDB",
+        "estimatedRows": 0
+      },
+      {
+        "name": "excel_files",
+        "engine": "InnoDB",
+        "estimatedRows": 27
+      },
+      {
+        "name": "fill_links",
+        "engine": "InnoDB",
+        "estimatedRows": 0
+      },
+      {
+        "name": "link_permissions",
+        "engine": "InnoDB",
+        "estimatedRows": 78
+      },
+      {
+        "name": "match_groups",
+        "engine": "InnoDB",
+        "estimatedRows": 574
+      },
+      {
+        "name": "product_manager_status_history",
+        "engine": "InnoDB",
+        "estimatedRows": 14
+      },
+      {
+        "name": "product_managers",
+        "engine": "InnoDB",
+        "estimatedRows": 13
+      },
+      {
+        "name": "quote_configs",
+        "engine": "InnoDB",
+        "estimatedRows": 0
+      },
+      {
+        "name": "quotes",
+        "engine": "InnoDB",
+        "estimatedRows": 387
+      },
+      {
+        "name": "staff",
+        "engine": "InnoDB",
+        "estimatedRows": 12
+      },
+      {
+        "name": "staff_fill_links",
+        "engine": "InnoDB",
+        "estimatedRows": 13
+      },
+      {
+        "name": "staff_roles",
+        "engine": "InnoDB",
+        "estimatedRows": 4
+      },
+      {
+        "name": "staff_status_history",
+        "engine": "InnoDB",
+        "estimatedRows": 15
+      },
+      {
+        "name": "work_records",
+        "engine": "InnoDB",
+        "estimatedRows": 869
+      }
+    ],
+    "columns": [
+      {
+        "TABLE_NAME": "work_records",
+        "COLUMN_NAME": "id",
+        "COLUMN_TYPE": "char(36)"
+      },
+      {
+        "TABLE_NAME": "work_records",
+        "COLUMN_NAME": "link_id",
+        "COLUMN_TYPE": "char(36)"
+      },
+      {
+        "TABLE_NAME": "work_records",
+        "COLUMN_NAME": "task_id",
+        "COLUMN_TYPE": "char(36)"
+      },
+      {
+        "TABLE_NAME": "work_records",
+        "COLUMN_NAME": "staff_id",
+        "COLUMN_TYPE": "char(36)"
+      },
+      {
+        "TABLE_NAME": "work_records",
+        "COLUMN_NAME": "requirement_title",
+        "COLUMN_TYPE": "varchar(200)"
+      },
+      {
+        "TABLE_NAME": "work_records",
+        "COLUMN_NAME": "version",
+        "COLUMN_TYPE": "varchar(50)"
+      },
+      {
+        "TABLE_NAME": "work_records",
+        "COLUMN_NAME": "product_managers",
+        "COLUMN_TYPE": "longtext"
+      },
+      {
+        "TABLE_NAME": "work_records",
+        "COLUMN_NAME": "hours",
+        "COLUMN_TYPE": "decimal(6,2)"
+      },
+      {
+        "TABLE_NAME": "work_records",
+        "COLUMN_NAME": "created_at",
+        "COLUMN_TYPE": "datetime"
+      },
+      {
+        "TABLE_NAME": "work_records",
+        "COLUMN_NAME": "updated_at",
+        "COLUMN_TYPE": "datetime"
+      },
+      {
+        "TABLE_NAME": "work_records",
+        "COLUMN_NAME": "edit_count",
+        "COLUMN_TYPE": "int(11)"
+      },
+      {
+        "TABLE_NAME": "work_records",
+        "COLUMN_NAME": "submit_count",
+        "COLUMN_TYPE": "int(11)"
+      },
+      {
+        "TABLE_NAME": "work_records",
+        "COLUMN_NAME": "is_active",
+        "COLUMN_TYPE": "tinyint(1)"
+      }
+    ]
+  },
+  "missingFiles": [
+    "src/services/DemandSourceService.js"
+  ]
+}

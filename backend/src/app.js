@@ -1,5 +1,5 @@
 /**
- * DevTracker v3.0.0 — Express 入口
+ * DevTracker v3.4.0 — Express 入口
  * 端口: 3001 | 路由前缀: /api
  */
 require('dotenv').config();
@@ -51,7 +51,7 @@ app.use('/api/local-reports', localReportsStatic);
 
 /* 健康检查 */
 app.get('/api/health', (req, res) => {
-  res.json({ code: 0, message: 'DevTracker API is running', version: '3.0.2' });
+  res.json({ code: 0, message: 'DevTracker API is running', version: require('../package.json').version });
 });
 
 /* ========== 错误处理 ========== */
@@ -87,7 +87,7 @@ async function start() {
     await ensureAutoTaskTables();
     await ensureDutyCalendarTables();
     app.listen(PORT, () => {
-      console.log(`[API] DevTracker v3.0.0 运行在 http://localhost:${PORT}`);
+      console.log(`[API] DevTracker v${require('../package.json').version} 运行在 http://localhost:${PORT}`);
       console.log('[API] 路由: /api/staff | /api/roles | /api/tasks | /api/records | /api/report | /api/fill | /api/stats | /api/permissions | /api/excel | /api/settings');
       startAutoTaskScheduler();
       startOfficialHolidaySyncScheduler();

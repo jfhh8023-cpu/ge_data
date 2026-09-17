@@ -1,0 +1,12 @@
+{
+  "database": "devtracker_verify_20260917_094527",
+  "oldApplicationHealth": {
+    "code": 0,
+    "message": "DevTracker API is running",
+    "version": "3.0.2"
+  },
+  "oldApplicationBootFromBackup": "PASS",
+  "notificationsDisabledForRehearsal": true,
+  "restorePath": "/opt/devtracker/.release-backups/20260917_094527/restore-app",
+  "restored": true
+}
