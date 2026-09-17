@@ -130,3 +130,16 @@ function handleTaskCreated() {
     @created="handleTaskCreated"
   />
 </template>
+
+<style scoped>
+@media (max-width: 900px) {
+  .dt-header { height: auto; }
+  .dt-header-inner { height: auto; min-width: 0; padding: 8px 12px 0; flex-wrap: wrap; gap: 8px 12px; }
+  .dt-logo { flex: 0 0 auto; max-width: 100%; white-space: nowrap; }
+  .dt-user-actions { min-width: 0; max-width: 100%; margin-left: auto; gap: 8px; flex-wrap: wrap; }
+  .dt-user-actions > * { flex-shrink: 0; }
+  .dt-avatar { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dt-nav { order: 3; flex: 1 1 100%; min-width: 0; max-width: 100%; height: 40px; gap: 20px; overflow-x: auto; }
+  .dt-nav-item { flex: 0 0 auto; height: 40px; white-space: nowrap; }
+}
+</style>

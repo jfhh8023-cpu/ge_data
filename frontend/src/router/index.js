@@ -6,6 +6,7 @@ const ROUTE_RESOURCE_MAP = {
   TaskDetail: 'page:task_detail',
   Report: 'page:report',
   Stats: 'page:stats',
+  ProductManagerHours: 'page:stats',
   Personnel: 'page:personnel',
   Permissions: 'page:permissions',
   Settings: 'page:settings'
@@ -52,6 +53,12 @@ const routes = [
     name: 'Stats',
     component: () => import('../views/StatsPage.vue'),
     meta: { title: '周期统计（季度）' }
+  },
+  {
+    path: '/stats/product-manager/:staffId',
+    name: 'ProductManagerHours',
+    component: () => import('../views/PmViewPage.vue'),
+    meta: { title: 'AI产品经理工时明细', layout: 'pm-view' }
   },
   {
     path: '/personnel',

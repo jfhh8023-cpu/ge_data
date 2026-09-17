@@ -10,6 +10,7 @@
  */
 const { v4: uuidv4 } = require('uuid');
 const { safeParseJsonArray } = require('../utils/parseJson');
+const { isFullCreditRecord } = require('./EffectiveHoursService');
 const {
   ROLE_AI_DEV,
   ROLE_AI_QUALITY,
@@ -150,9 +151,12 @@ function matchRecords(records) {
 
   for (const r of records) {
     const ver = normalizeVersion(r.version);
-    if (ver) {
-      if (!versionMap.has(ver)) versionMap.set(ver, []);
-      versionMap.get(ver).push(r);
+    if (ver || isFullCreditRecord(r)) {
+      // A date version identifies a fill day, not a shared requirement.
+      const key = isFullCreditRecord(r)
+        ? JSON.stringify(['full_credit', r.staff_id || r.staff?.id || r.staff?.name || r.id, String(r.requirement_title).trim(), ver]) : ver;
+      if (!versionMap.has(key)) versionMap.set(key, []);
+      versionMap.get(key).push(r);
     } else {
       noVersionRecords.push(r);
     }

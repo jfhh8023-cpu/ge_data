@@ -1,0 +1,6 @@
+PASS five exact trimmed titles; similar ordinary titles remain ordinary
+PASS China date version and historical special versions are stable
+PASS ordinary-special transitions never change manual hours or normal drafts
+PASS weighted estimate includes special once, excludes ordinary unversioned
+PASS unknown progress differs from 0, invalid capacity and overfill remain explicit
+5 checks passed

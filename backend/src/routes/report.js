@@ -23,6 +23,7 @@ const {
   collectPmNamesFromRecords,
   filterPmNamesForRecord,
   filterRecordsByStaffStatus,
+  filterMatchGroupsByStaffStatus,
   getPmStatusContextByName
 } = require('../services/PersonStatusService');
 
@@ -132,7 +133,7 @@ router.get('/', async (req, res, next) => {
   try {
     const where = {};
     if (req.query.taskId) where.task_id = req.query.taskId;
-    const list = await MatchGroup.findAll({ where, order: [['created_at', 'ASC']] });
+    const list = await filterMatchGroupsByStaffStatus(await MatchGroup.findAll({ where, order: [['created_at', 'ASC']] }));
     const task = req.query.taskId ? await CollectionTask.findByPk(req.query.taskId) : null;
     const pmNames = new Set();
     for (const group of list) {
@@ -141,7 +142,7 @@ router.get('/', async (req, res, next) => {
     const pmContextByName = await getPmStatusContextByName([...pmNames]);
     // 解析 JSON 字段
     const parsed = await Promise.all(list.map(async g => {
-      const plain = g.toJSON();
+      const plain = { ...g };
       plain.frontend = safeParseJsonArray(plain.frontend);
       plain.backend = safeParseJsonArray(plain.backend);
       plain.voip = safeParseJsonArray(plain.voip);

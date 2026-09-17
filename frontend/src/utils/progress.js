@@ -1,5 +1,5 @@
 /** 统一的工时加权进度口径，所有展示位置复用同一公式与说明。 */
-export const WEIGHTED_PROGRESS_TIP = '工时加权进度 = Σ(有效工时 × 任务进度) ÷ Σ(有效工时)。历史无进度记录不进入分母；示例：10小时×100% + 2小时×50% ÷ 12小时 = 91.67%。'
+export const WEIGHTED_PROGRESS_TIP = '需求进度按本人真实填写的0%–100%计算，缺失保持未知，不因历史周期已结束而置为100%。周期统计按同人、同版本、同标题累计普通工时与范围内最新进度加权，另显示进度覆盖；请假、培训、公司会议、出差、团建不参与需求进度平均。有效交付率与加权交付率分别以所属周期工作日每天8小时为基准。'
 
 export function normalizeProgress(value) {
   if (value === null || value === undefined || typeof value === 'boolean') return null

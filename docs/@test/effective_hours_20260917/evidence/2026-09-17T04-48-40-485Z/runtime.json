@@ -1,0 +1,415 @@
+{
+  "errors": [],
+  "writes": [
+    {
+      "path": "/fill/REQ064-fixture/editing",
+      "method": "PUT",
+      "body": {
+        "task_id": "REQ064-week"
+      },
+      "intercepted": true
+    },
+    {
+      "path": "/fill/REQ064-fixture/editing",
+      "method": "PUT",
+      "body": {
+        "task_id": "REQ064-week"
+      },
+      "intercepted": true
+    },
+    {
+      "path": "/excel/upload",
+      "method": "POST",
+      "body": {
+        "nonJsonPayload": "intercepted without reading file content"
+      },
+      "intercepted": true
+    },
+    {
+      "path": "/fill/REQ064-fixture/editing",
+      "method": "PUT",
+      "body": {
+        "task_id": "REQ064-week"
+      },
+      "intercepted": true
+    },
+    {
+      "path": "/fill/REQ064-fixture/submit",
+      "method": "POST",
+      "body": {
+        "records": [
+          {
+            "draft_row_id": "ab62d652-2d94-44ed-9fc6-55137452656d",
+            "automatic_version_date": "2026-09-17",
+            "requirement_title": "公司会议",
+            "version": "v260917",
+            "product_managers": [],
+            "demand_sources": [],
+            "delivery_progress": null,
+            "hours": 3.5
+          }
+        ]
+      },
+      "intercepted": true
+    },
+    {
+      "path": "/fill/REQ064-fixture/editing",
+      "method": "PUT",
+      "body": {
+        "task_id": "REQ064-week"
+      },
+      "intercepted": true
+    },
+    {
+      "path": "/fill/REQ064-fixture/submit",
+      "method": "POST",
+      "body": {
+        "records": [
+          {
+            "draft_row_id": "8c997a9b-d521-49d5-ad24-53c349a97748",
+            "automatic_version_date": "2026-09-17",
+            "requirement_title": "公司会议",
+            "version": "v260917",
+            "product_managers": [],
+            "demand_sources": [],
+            "demand_source_weights": {},
+            "delivery_progress": null,
+            "hours": 3.5
+          }
+        ]
+      },
+      "intercepted": true
+    },
+    {
+      "path": "/fill/REQ064-fixture/editing",
+      "method": "PUT",
+      "body": {
+        "task_id": "REQ064-week"
+      },
+      "intercepted": true
+    },
+    {
+      "path": "/fill/REQ064-fixture/submit",
+      "method": "POST",
+      "body": {
+        "records": [
+          {
+            "existing_record_id": "REQ064-1",
+            "draft_row_id": "092a4e62-185f-417d-8691-c6801cd87d71",
+            "requirement_title": "普通需求甲",
+            "version": "v4.1.0",
+            "product_managers": [
+              "REQ064归属产品"
+            ],
+            "demand_sources": [],
+            "delivery_progress": null,
+            "hours": 16
+          }
+        ]
+      },
+      "intercepted": true
+    },
+    {
+      "path": "/fill/REQ064-fixture/editing",
+      "method": "PUT",
+      "body": {
+        "task_id": "REQ064-week"
+      },
+      "intercepted": true
+    },
+    {
+      "path": "/fill/REQ064-fixture/editing",
+      "method": "PUT",
+      "body": {
+        "task_id": "REQ064-week"
+      },
+      "intercepted": true
+    }
+  ],
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/index.js"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/tasks"
+    },
+    {
+      "method": "GET",
+      "path": "/pm"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/stats"
+    },
+    {
+      "method": "GET",
+      "path": "/index.js"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/tasks"
+    },
+    {
+      "method": "GET",
+      "path": "/pm"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/stats"
+    },
+    {
+      "method": "GET",
+      "path": "/index.js"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture"
+    },
+    {
+      "method": "GET",
+      "path": "/pm"
+    },
+    {
+      "method": "PUT",
+      "path": "/fill/REQ064-fixture/editing"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture/history"
+    },
+    {
+      "method": "PUT",
+      "path": "/fill/REQ064-fixture/editing"
+    },
+    {
+      "method": "GET",
+      "path": "/index.js"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/tasks"
+    },
+    {
+      "method": "GET",
+      "path": "/pm"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/stats"
+    },
+    {
+      "method": "POST",
+      "path": "/excel/upload"
+    },
+    {
+      "method": "GET",
+      "path": "/index.js"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture"
+    },
+    {
+      "method": "GET",
+      "path": "/pm"
+    },
+    {
+      "method": "PUT",
+      "path": "/fill/REQ064-fixture/editing"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture/history"
+    },
+    {
+      "method": "POST",
+      "path": "/fill/REQ064-fixture/submit"
+    },
+    {
+      "method": "GET",
+      "path": "/index.js"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture"
+    },
+    {
+      "method": "GET",
+      "path": "/pm"
+    },
+    {
+      "method": "PUT",
+      "path": "/fill/REQ064-fixture/editing"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture/history"
+    },
+    {
+      "method": "POST",
+      "path": "/fill/REQ064-fixture/submit"
+    },
+    {
+      "method": "GET",
+      "path": "/index.js"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture"
+    },
+    {
+      "method": "GET",
+      "path": "/pm"
+    },
+    {
+      "method": "PUT",
+      "path": "/fill/REQ064-fixture/editing"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture/history"
+    },
+    {
+      "method": "POST",
+      "path": "/fill/REQ064-fixture/submit"
+    },
+    {
+      "method": "GET",
+      "path": "/index.js"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture"
+    },
+    {
+      "method": "GET",
+      "path": "/pm"
+    },
+    {
+      "method": "PUT",
+      "path": "/fill/REQ064-fixture/editing"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture/history"
+    },
+    {
+      "method": "GET",
+      "path": "/index.js"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture"
+    },
+    {
+      "method": "GET",
+      "path": "/pm"
+    },
+    {
+      "method": "PUT",
+      "path": "/fill/REQ064-fixture/editing"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture/history"
+    },
+    {
+      "method": "GET",
+      "path": "/index.js"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/tasks"
+    },
+    {
+      "method": "GET",
+      "path": "/pm"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/stats"
+    },
+    {
+      "method": "GET",
+      "path": "/index.js"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/tasks"
+    },
+    {
+      "method": "GET",
+      "path": "/pm"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/stats"
+    }
+  ]
+}

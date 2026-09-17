@@ -1,0 +1,219 @@
+{
+  "errors": [],
+  "writes": [
+    {
+      "path": "/fill/REQ064-fixture/editing",
+      "method": "PUT",
+      "body": {
+        "task_id": "REQ064-week"
+      },
+      "intercepted": true
+    },
+    {
+      "path": "/fill/REQ064-fixture/submit",
+      "method": "POST",
+      "body": {
+        "records": [
+          {
+            "draft_row_id": "7fb88df7-4525-4739-838f-ec4fb60173f0",
+            "automatic_version_date": "2026-09-17",
+            "requirement_title": "公司会议",
+            "version": "v260917",
+            "product_managers": [],
+            "demand_sources": [],
+            "delivery_progress": null,
+            "hours": 3.5
+          }
+        ]
+      },
+      "intercepted": true
+    },
+    {
+      "path": "/fill/REQ064-fixture/editing",
+      "method": "PUT",
+      "body": {
+        "task_id": "REQ064-week"
+      },
+      "intercepted": true
+    },
+    {
+      "path": "/fill/REQ064-fixture/submit",
+      "method": "POST",
+      "body": {
+        "records": [
+          {
+            "draft_row_id": "35169d56-de18-49aa-9ba0-c906b24d737d",
+            "automatic_version_date": "2026-09-17",
+            "requirement_title": "公司会议",
+            "version": "v260917",
+            "product_managers": [],
+            "demand_sources": [],
+            "demand_source_weights": {},
+            "delivery_progress": null,
+            "hours": 3.5
+          }
+        ]
+      },
+      "intercepted": true
+    },
+    {
+      "path": "/fill/REQ064-fixture/editing",
+      "method": "PUT",
+      "body": {
+        "task_id": "REQ064-week"
+      },
+      "intercepted": true
+    },
+    {
+      "path": "/fill/REQ064-fixture/submit",
+      "method": "POST",
+      "body": {
+        "records": [
+          {
+            "existing_record_id": "REQ064-1",
+            "draft_row_id": "c7a7e6da-1a12-45a0-947f-f49d9f0b8582",
+            "requirement_title": "普通需求甲",
+            "version": "v4.1.0",
+            "product_managers": [
+              "REQ064归属产品"
+            ],
+            "demand_sources": [],
+            "delivery_progress": null,
+            "hours": 16
+          }
+        ]
+      },
+      "intercepted": true
+    },
+    {
+      "path": "/fill/REQ064-fixture/editing",
+      "method": "PUT",
+      "body": {
+        "task_id": "REQ064-week"
+      },
+      "intercepted": true
+    }
+  ],
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/index.js"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture"
+    },
+    {
+      "method": "GET",
+      "path": "/pm"
+    },
+    {
+      "method": "PUT",
+      "path": "/fill/REQ064-fixture/editing"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture/history"
+    },
+    {
+      "method": "POST",
+      "path": "/fill/REQ064-fixture/submit"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture/history"
+    },
+    {
+      "method": "GET",
+      "path": "/index.js"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture"
+    },
+    {
+      "method": "GET",
+      "path": "/pm"
+    },
+    {
+      "method": "PUT",
+      "path": "/fill/REQ064-fixture/editing"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture/history"
+    },
+    {
+      "method": "POST",
+      "path": "/fill/REQ064-fixture/submit"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture/history"
+    },
+    {
+      "method": "GET",
+      "path": "/index.js"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture"
+    },
+    {
+      "method": "GET",
+      "path": "/pm"
+    },
+    {
+      "method": "PUT",
+      "path": "/fill/REQ064-fixture/editing"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture/history"
+    },
+    {
+      "method": "POST",
+      "path": "/fill/REQ064-fixture/submit"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture/history"
+    },
+    {
+      "method": "GET",
+      "path": "/index.js"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture"
+    },
+    {
+      "method": "GET",
+      "path": "/pm"
+    },
+    {
+      "method": "PUT",
+      "path": "/fill/REQ064-fixture/editing"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture/history"
+    }
+  ]
+}

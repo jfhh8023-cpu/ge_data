@@ -1,0 +1,51 @@
+{
+  "errors": [],
+  "writes": [
+    {
+      "path": "/fill/REQ064-fixture/editing",
+      "method": "PUT",
+      "body": {
+        "task_id": "REQ064-week"
+      },
+      "intercepted": true
+    },
+    {
+      "path": "/fill/REQ064-fixture/editing",
+      "method": "PUT",
+      "body": {
+        "task_id": "REQ064-week"
+      },
+      "intercepted": true
+    }
+  ],
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/index.js"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture"
+    },
+    {
+      "method": "GET",
+      "path": "/pm"
+    },
+    {
+      "method": "PUT",
+      "path": "/fill/REQ064-fixture/editing"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture/history"
+    },
+    {
+      "method": "PUT",
+      "path": "/fill/REQ064-fixture/editing"
+    }
+  ]
+}

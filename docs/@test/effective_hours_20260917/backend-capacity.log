@@ -1,0 +1,32 @@
+PASS 32/40=80%, 40/40=100%, 48/40=120% and excess 20%
+PASS different workday counts weight by expected capacity, not record hours or simple average
+PASS multiple requirements do not duplicate person-week capacity
+PASS identical JOIN record is not added twice
+PASS overlapping collection tasks share the same capacity
+PASS people need a scoped record but their unfilled selected weeks remain in denominator
+PASS zero-workday holiday week returns null rates and preserves recorded hours
+PASS missing holiday calendar explicitly reports weekday estimate
+PASS weekly ranges normalize to Monday-Sunday and include weekend makeup days
+PASS legacy Sunday-Saturday week 9 belongs to February 23 rather than the Spring Festival week
+PASS legacy Sunday-Saturday week 15 includes the Qingming holiday in the correct week
+PASS legacy cross-year week follows end-date ISO week, not calendar start year
+PASS role and source filters constrain people, partial record filters retain capacity
+PASS current resigned status excludes historical records even if historical status was active
+PASS delivery progress cannot force work-hour completion to 100%
+PASS empty scope and invalid dates do not produce Infinity
+PASS mixed valid and invalid periods preserve hours without claiming a complete denominator
+PASS actual stats handler allocates 40h by 75/25 source weights and preserves person-week capacity
+PASS actual stats handler ALL scope ignores time/task filters and retains role plus unfilled weeks
+PASS actual export contains delivery hours/rate and matching allocated hours/capacity without old percentage or status
+PASS demand-source rename preserves 75/25 weights consistently in main stats, detail, distribution and export
+PASS main and progress records globally interleave both tables by creation time, with stable ties and missing dates last
+PASS PM and demand-source cards preserve creation timestamps, newest-first order and latest record metadata
+PASS explicit PM hours sorting remains available without changing default record chronology
+PASS personal and PM focus projections keep created_at and newest-first records without changing period dates
+PASS progress spreadsheet follows the same creation-time order as the visible detail rows
+PASS all stats endpoints expose saved versioned hours rather than manual or historical completion
+PASS unversioned detail preserves hours and staffing capacity while contributing zero delivery
+PASS delivery export clearly separates versioned and unversioned hours with 32h/40h=80%
+PASS unversioned-only export labels the rate as records-only instead of displaying 0%
+PASS empty filter ranges return no person or PM identity and no capacity
+Verified 31 work-hours completion scenarios.

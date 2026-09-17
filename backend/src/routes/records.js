@@ -11,16 +11,14 @@ const { v4: uuidv4 } = require('uuid');
 const { Op } = require('sequelize');
 const { WorkRecord, Staff, CollectionTask } = require('../models');
 const { safeParseJsonArray } = require('../utils/parseJson');
+const { isFullCreditRecord, normalizeFullCreditRecord, normalizeProgress, validateManualHours } = require('../services/EffectiveHoursService');
 const {
   STAFF_RESIGNED_MESSAGE,
   collectPmNamesFromRecords,
   filterPmNamesForRecord,
   filterRecordsByStaffStatus,
   getPmStatusContextByName,
-  getStaffHistoryMap,
-  getTaskBusinessDate,
-  isResignedAt,
-  normalizeEmploymentStatus
+  isNonResigned
 } = require('../services/PersonStatusService');
 
 function normalizeProductManagers(value) {
@@ -51,9 +49,10 @@ function requireProductManagers(value, label = '记录') {
 }
 
 const VALID_PROGRESS = new Set([0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]);
-function requireDeliveryProgress(value, label = '记录') {
-  const progress = Number(value);
-  if (!VALID_PROGRESS.has(progress)) {
+function requireDeliveryProgress(value, label = '记录', allowMissing = false) {
+  const progress = normalizeProgress(value);
+  if (allowMissing && (value == null || value === '')) return null;
+  if (progress === null || !VALID_PROGRESS.has(progress)) {
     const err = new Error(`${label}：请选择交付进度`);
     err.status = 400;
     throw err;
@@ -77,13 +76,7 @@ async function assertRecordParticipantsWritable({ task_id, staff_id, product_man
     throw err;
   }
 
-  const businessDate = getTaskBusinessDate(task);
-  const staffHistoryMap = await getStaffHistoryMap([staff_id]);
-  if (isResignedAt(
-    staffHistoryMap.get(staff_id) || [],
-    businessDate,
-    normalizeEmploymentStatus(staff.employment_status, staff.is_active !== false)
-  )) {
+  if (!isNonResigned(staff)) {
     const err = new Error(STAFF_RESIGNED_MESSAGE);
     err.status = 403;
     throw err;
@@ -93,11 +86,7 @@ async function assertRecordParticipantsWritable({ task_id, staff_id, product_man
   for (const pmName of product_managers) {
     const ctx = pmContext.get(pmName);
     if (!ctx) continue;
-    if (isResignedAt(
-      ctx.histories,
-      businessDate,
-      normalizeEmploymentStatus(ctx.pm.employment_status, ctx.pm.is_active !== false)
-    )) {
+    if (!isNonResigned(ctx.pm)) {
       const err = new Error(STAFF_RESIGNED_MESSAGE);
       err.status = 403;
       throw err;
@@ -135,12 +124,14 @@ router.get('/', async (req, res, next) => {
 /* POST /api/records */
 router.post('/', async (req, res, next) => {
   try {
-    const { task_id, staff_id, requirement_title, version, product_managers, hours, link_id, delivery_progress } = req.body;
+    const normalized = normalizeFullCreditRecord(req.body);
+    const { task_id, staff_id, requirement_title, version, product_managers, hours, link_id, delivery_progress } = normalized;
     if (!task_id || !staff_id || !requirement_title || hours === undefined) {
       return res.status(400).json({ code: 1, message: '必填字段缺失' });
     }
-    const normalizedPms = requireProductManagers(product_managers);
-    const progress = requireDeliveryProgress(delivery_progress);
+    validateManualHours(normalized);
+    const normalizedPms = isFullCreditRecord(normalized) ? [] : requireProductManagers(product_managers);
+    const progress = isFullCreditRecord(normalized) ? null : requireDeliveryProgress(delivery_progress);
     await assertRecordParticipantsWritable({ task_id, staff_id, product_managers: normalizedPms });
     const record = await WorkRecord.create({
       id: uuidv4(), link_id, task_id, staff_id,
@@ -155,15 +146,21 @@ router.put('/:id', async (req, res, next) => {
   try {
     const rec = await WorkRecord.findByPk(req.params.id);
     if (!rec) return res.status(404).json({ code: 1, message: '记录不存在' });
-    const fields = ['requirement_title', 'version', 'hours', 'delivery_progress'];
-    fields.forEach(f => { if (req.body[f] !== undefined) rec[f] = req.body[f]; });
-    if (req.body.product_managers !== undefined) {
-      rec.product_managers = requireProductManagers(req.body.product_managers);
+    const previous = rec.toJSON();
+    const input = normalizeFullCreditRecord({ ...previous, ...req.body }, previous);
+    if (isFullCreditRecord(previous) && !isFullCreditRecord(input)) {
+      if (req.body.version === undefined || String(req.body.version).trim() === String(previous.version).trim()) input.version = '';
+      input.product_managers = requireProductManagers(input.product_managers);
     }
-    if (req.body.delivery_progress !== undefined) rec.delivery_progress = requireDeliveryProgress(req.body.delivery_progress);
-    const normalizedPms = req.body.product_managers !== undefined
-      ? rec.product_managers
-      : safeParseJsonArray(rec.product_managers);
+    validateManualHours(input);
+    const fields = ['requirement_title', 'version', 'hours', 'delivery_progress'];
+    fields.forEach(f => { if (input[f] !== undefined) rec[f] = input[f]; });
+    if (isFullCreditRecord(input)) rec.product_managers = [];
+    else if (req.body.product_managers !== undefined || isFullCreditRecord(previous)) {
+      rec.product_managers = requireProductManagers(input.product_managers);
+    }
+    if (!isFullCreditRecord(input) && req.body.delivery_progress !== undefined) rec.delivery_progress = requireDeliveryProgress(input.delivery_progress, '记录', true);
+    const normalizedPms = safeParseJsonArray(rec.product_managers);
     await assertRecordParticipantsWritable({
       task_id: rec.task_id,
       staff_id: rec.staff_id,
@@ -192,27 +189,26 @@ router.post('/import', async (req, res, next) => {
       return res.status(400).json({ code: 1, message: `以下人员不在系统中：${missing.join(', ')}` });
     }
 
-    const created = [];
-    for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
-      const row = rows[rowIndex];
-      const staff = staffMap[row.staff_name];
-      if (!staff) continue;
-      const productManagers = requireProductManagers(row.product_managers, `第 ${rowIndex + 1} 条记录`);
-      const progress = requireDeliveryProgress(row.delivery_progress, `第 ${rowIndex + 1} 条记录`);
-      await assertRecordParticipantsWritable({ task_id, staff_id: staff.id, product_managers: productManagers });
-      const rec = await WorkRecord.create({
-        id: uuidv4(),
-        task_id,
-        staff_id: staff.id,
-        requirement_title: row.requirement_title || '',
-        version: row.version || '',
-        product_managers: productManagers,
-        hours: parseFloat(row.hours) || 0,
-        delivery_progress: progress,
-        submit_count: 1
-      });
-      created.push(rec);
-    }
+    const created = await WorkRecord.sequelize.transaction(async transaction => {
+      const batch = [];
+      for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+        const row = normalizeFullCreditRecord(rows[rowIndex]);
+        const staff = staffMap[row.staff_name];
+        if (!staff) continue;
+        validateManualHours(row, `第 ${rowIndex + 1} 条记录`);
+        const productManagers = isFullCreditRecord(row) ? [] : requireProductManagers(row.product_managers, `第 ${rowIndex + 1} 条记录`);
+        const progress = isFullCreditRecord(row) ? null : requireDeliveryProgress(row.delivery_progress, `第 ${rowIndex + 1} 条记录`);
+        await assertRecordParticipantsWritable({ task_id, staff_id: staff.id, product_managers: productManagers });
+        const rec = await WorkRecord.create({
+          id: uuidv4(), task_id, staff_id: staff.id,
+          requirement_title: row.requirement_title || '', version: row.version || '',
+          product_managers: productManagers, hours: Number(row.hours),
+          delivery_progress: progress, submit_count: 1
+        }, { transaction });
+        batch.push(rec);
+      }
+      return batch;
+    });
 
     // 自动触发智能匹配
     try {

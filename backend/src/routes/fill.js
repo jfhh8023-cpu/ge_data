@@ -15,15 +15,14 @@ const { v4: uuidv4 } = require('uuid');
 const { FillLink, CollectionTask, Staff, WorkRecord, ProductManagerWorkRecord, MatchGroup, StaffFillLink } = require('../models');
 const { matchRecords } = require('../services/MatchService');
 const { getDemandSourceDefinitions, resolveDemandSources } = require('../services/DemandSourceService');
+const { buildWorkHours, getWorkHours, loadWorkHoursContext } = require('../services/WorkHoursCompletionService');
+const { isFullCreditRecord, normalizeFullCreditRecord, normalizeProgress, validateManualHours } = require('../services/EffectiveHoursService');
 const { Op } = require('sequelize');
 const {
   STAFF_RESIGNED_MESSAGE,
   assertStaffCanWrite,
   buildCurrentStatusPayload,
   getPmStatusContextByName,
-  getTaskBusinessDate,
-  isResignedAt,
-  normalizeEmploymentStatus,
   isNonResigned
 } = require('../services/PersonStatusService');
 
@@ -67,34 +66,37 @@ function normalizeDemandSourceWeights(value, sources) {
 
 function validateDeliveryProgress(records) {
   for (let i = 0; i < records.length; i += 1) {
+    if (isFullCreditRecord(records[i])) { records[i].delivery_progress = null; continue; }
     const progress = records[i]?.delivery_progress;
     // 带 existing_record_id 的历史记录允许保留空值；新行必须填写。
     const isHistory = Boolean(records[i]?.existing_record_id);
-    if (!isHistory && (progress === null || progress === undefined || progress === '' || !VALID_DELIVERY_PROGRESS.has(Number(progress)))) {
+    if (!isHistory && (normalizeProgress(progress) === null || !VALID_DELIVERY_PROGRESS.has(Number(progress)))) {
       return `第 ${i + 1} 条记录请选择交付进度`;
     }
-    if (progress !== null && progress !== undefined && progress !== '' && !VALID_DELIVERY_PROGRESS.has(Number(progress))) {
+    if (progress !== null && progress !== undefined && progress !== '' && (normalizeProgress(progress) === null || !VALID_DELIVERY_PROGRESS.has(Number(progress)))) {
       return `第 ${i + 1} 条记录的交付进度无效`;
     }
-    records[i].delivery_progress = progress === '' || progress === undefined ? null : Number(progress);
+    records[i].delivery_progress = normalizeProgress(progress);
   }
   return '';
 }
 
 async function validateProductManagerRecords(records) {
   for (let i = 0; i < records.length; i += 1) {
+    if (isFullCreditRecord(records[i])) continue;
     const resolved = await resolveDemandSources(records[i]?.demand_sources);
     const sources = resolved.names;
     if (sources.length === 0) return `第 ${i + 1} 条记录请选择需求方`;
     const progress = records[i]?.delivery_progress;
     const isHistory = Boolean(records[i]?.existing_record_id);
-    if (!isHistory && (progress === null || progress === undefined || progress === '' || !VALID_DELIVERY_PROGRESS.has(Number(progress)))) {
+    if (!isHistory && (normalizeProgress(progress) === null || !VALID_DELIVERY_PROGRESS.has(Number(progress)))) {
       return `第 ${i + 1} 条记录请选择交付进度`;
     }
     records[i].demand_sources = resolved.names;
     records[i].demand_source_ids = resolved.ids;
     records[i].demand_source_weights = normalizeDemandSourceWeights(records[i]?.demand_source_weights, sources);
-    records[i].delivery_progress = progress === '' || progress === undefined ? null : Number(progress);
+    if (progress != null && progress !== '' && (normalizeProgress(progress) === null || !VALID_DELIVERY_PROGRESS.has(Number(progress)))) return `第 ${i + 1} 条记录的交付进度无效`;
+    records[i].delivery_progress = normalizeProgress(progress);
   }
   return '';
 }
@@ -117,6 +119,7 @@ function normalizeProductManagers(value) {
 
 function validateRequiredProductManagers(records) {
   for (let i = 0; i < records.length; i++) {
+    if (isFullCreditRecord(records[i])) continue;
     const normalizedPms = normalizeProductManagers(records[i]?.product_managers);
     if (normalizedPms.length === 0) {
       return `第 ${i + 1} 条记录请选择AI产品经理`;
@@ -129,20 +132,40 @@ function validateRequiredProductManagers(records) {
 async function assertProductManagersCanWrite(records, task) {
   const names = [...new Set(records.flatMap(record => normalizeProductManagers(record.product_managers)))];
   const context = await getPmStatusContextByName(names);
-  const businessDate = getTaskBusinessDate(task);
   for (const name of names) {
     const ctx = context.get(name);
     if (!ctx) continue;
-    if (isResignedAt(
-      ctx.histories,
-      businessDate,
-      normalizeEmploymentStatus(ctx.pm.employment_status, ctx.pm.is_active !== false)
-    )) {
+    if (!isNonResigned(ctx.pm)) {
       const err = new Error(STAFF_RESIGNED_MESSAGE);
       err.status = 403;
       throw err;
     }
   }
+}
+
+function normalizeSavedRows(rows, existingRecords = [], savedDrafts = []) {
+  const originals = new Map(existingRecords.map(record => [record.id, record]));
+  const drafts = new Map((Array.isArray(savedDrafts) ? savedDrafts : []).filter(row => row.draft_row_id).map(row => [row.draft_row_id, row]));
+  return rows.map(row => {
+    const original = originals.get(row.existing_record_id);
+    const draft = drafts.get(row.draft_row_id);
+    const previous = original && isFullCreditRecord(original) ? original : draft;
+    return { ...normalizeFullCreditRecord(row, previous), existing_record_id: original?.id || '',
+      _savedCreatedAt: original?.created_at || null };
+  });
+}
+
+async function replaceSavedRecords(Model, where, rows, baseFields, product = false) {
+  return Model.sequelize.transaction(async transaction => {
+    await Model.destroy({ where, transaction });
+    return Model.bulkCreate(rows.map(row => ({ ...baseFields,
+      id: row.existing_record_id || uuidv4(), requirement_title: row.requirement_title, version: row.version,
+      hours: row.hours, delivery_progress: row.delivery_progress, submit_count: 1,
+      ...(row._savedCreatedAt ? { created_at: row._savedCreatedAt } : {}),
+      ...(product ? { demand_sources: row.demand_sources, demand_source_ids: row.demand_source_ids, demand_source_weights: row.demand_source_weights }
+        : { product_managers: row.product_managers })
+    })), { transaction });
+  });
 }
 
 /* ======================================================
@@ -229,12 +252,14 @@ router.get('/:token', async (req, res, next) => {
         is_submitted = records.length > 0;
       }
 
+      const workHours = await getWorkHours({ tasks: currentTask ? [currentTask] : [], records, staff: [sfl.staff], includeEmptyStaff: true });
       return res.json({
         code: 0,
         data: {
           linkType: 'system',
           staff: sfl.staff,
-          task: currentTask || null,
+          task: currentTask ? { ...currentTask.toJSON(), workHours } : null,
+          workHours,
           records,
           draft_records,
           draft_saved_at,
@@ -266,13 +291,15 @@ router.get('/:token', async (req, res, next) => {
     }
     const Model = isProductManagerStaff(link.staff) ? ProductManagerWorkRecord : WorkRecord;
     const records = await Model.findAll({ where: { link_id: link.id } });
+    const workHours = await getWorkHours({ tasks: [link.task], records, staff: [link.staff], includeEmptyStaff: true });
     return res.json({
       code: 0,
       data: {
         linkType: 'legacy',
         link,
-        task: link.task,
+        task: { ...link.task.toJSON(), workHours },
         staff: link.staff,
+        workHours,
         records,
         draft_records: link.draft_data || null,
         draft_saved_at: link.draft_saved_at || null,
@@ -302,6 +329,7 @@ router.put('/:token/draft', async (req, res, next) => {
       const { sfl } = resolved;
       // 验证任务状态
       const taskId = task_id || (await CollectionTask.findOne({ where: { is_preferred: true } }))?.id;
+      const previousDrafts = sfl.draft_task_id === taskId ? sfl.draft_data : [];
       if (taskId) {
         const task = await CollectionTask.findByPk(taskId);
         if (task?.status === 'closed') {
@@ -309,12 +337,14 @@ router.put('/:token/draft', async (req, res, next) => {
         }
         sfl.draft_task_id = taskId;
       }
-      sfl.draft_data = draft_records;
+      const Model = isProductManagerStaff(writeStaff) ? ProductManagerWorkRecord : WorkRecord;
+      const originals = taskId ? await Model.findAll({ where: { task_id: taskId, staff_id: sfl.staff_id } }) : [];
+      sfl.draft_data = normalizeSavedRows(draft_records, originals, previousDrafts);
       sfl.draft_saved_at = new Date();
       sfl.last_action = 'drafted';
       sfl.last_action_at = new Date();
       await sfl.save();
-      return res.json({ code: 0, message: '草稿已保存', data: { draft_saved_at: sfl.draft_saved_at } });
+      return res.json({ code: 0, message: '草稿已保存', data: { draft_saved_at: sfl.draft_saved_at, draft_records: sfl.draft_data } });
     }
 
     // 旧体系
@@ -322,12 +352,14 @@ router.put('/:token/draft', async (req, res, next) => {
     if (link.task?.status === 'closed') {
       return res.status(403).json({ code: 1, message: '该任务已停止收集，请联系管理员重新开启任务收集！' });
     }
-    link.draft_data = draft_records;
+    const Model = isProductManagerStaff(writeStaff) ? ProductManagerWorkRecord : WorkRecord;
+    const originals = await Model.findAll({ where: { link_id: link.id } });
+    link.draft_data = normalizeSavedRows(draft_records, originals, link.draft_data);
     link.draft_saved_at = new Date();
     link.last_action = 'drafted';
     link.last_action_at = new Date();
     await link.save();
-    return res.json({ code: 0, message: '草稿已保存', data: { draft_saved_at: link.draft_saved_at } });
+    return res.json({ code: 0, message: '草稿已保存', data: { draft_saved_at: link.draft_saved_at, draft_records: link.draft_data } });
   } catch (err) { next(err); }
 });
 
@@ -340,7 +372,7 @@ router.post('/:token/submit', async (req, res, next) => {
     const resolved = await resolveToken(req.params.token);
     if (!resolved) return res.status(404).json({ code: 1, message: '链接无效' });
 
-    const { records, task_id } = req.body || {};
+    let { records, task_id } = req.body || {};
     if (!Array.isArray(records)) return res.status(400).json({ code: 1, message: 'records 须为数组' });
     const writeStaff = resolved.type === 'system' ? resolved.sfl.staff : resolved.link.staff;
     assertStaffCanWrite(writeStaff);
@@ -351,11 +383,14 @@ router.post('/:token/submit', async (req, res, next) => {
       : { link_id: resolved.link.id };
     const existingRecords = resolved.type === 'system' && !task_id
       ? []
-      : await existingModel.findAll({ where: existingWhere, attributes: ['id'] });
-    const existingIds = new Set(existingRecords.map(record => record.id));
-    records.forEach(record => {
-      if (!existingIds.has(record.existing_record_id)) record.existing_record_id = '';
-    });
+      : await existingModel.findAll({ where: existingWhere });
+    const savedDrafts = resolved.type === 'system'
+      ? (resolved.sfl.draft_task_id === task_id ? resolved.sfl.draft_data : []) : resolved.link.draft_data;
+    records = normalizeSavedRows(records, existingRecords, savedDrafts);
+    for (let index = 0; index < records.length; index += 1) {
+      validateManualHours(records[index], `第 ${index + 1} 条记录`);
+      if (!String(records[index].requirement_title || '').trim()) return res.status(400).json({ code: 1, message: `第 ${index + 1} 条记录请填写需求标题` });
+    }
     const validationError = isProductManagerStaff(writeStaff)
       ? await validateProductManagerRecords(records)
       : validateRequiredProductManagers(records) || validateDeliveryProgress(records);
@@ -371,16 +406,8 @@ router.post('/:token/submit', async (req, res, next) => {
         return res.status(403).json({ code: 1, message: '该任务已停止收集，无法提交' });
       }
       if (isProductManagerStaff(writeStaff)) {
-        await ProductManagerWorkRecord.destroy({ where: { task_id, staff_id: sfl.staff_id } });
-        const created = [];
-        for (const r of records) {
-          created.push(await ProductManagerWorkRecord.create({
-            id: uuidv4(), link_id: null, task_id, staff_id: sfl.staff_id,
-            requirement_title: r.requirement_title, version: r.version,
-            demand_sources: r.demand_sources, demand_source_ids: r.demand_source_ids, demand_source_weights: r.demand_source_weights, hours: r.hours,
-            delivery_progress: r.delivery_progress, submit_count: 1
-          }));
-        }
+        const created = await replaceSavedRecords(ProductManagerWorkRecord, { task_id, staff_id: sfl.staff_id }, records,
+          { link_id: null, task_id, staff_id: sfl.staff_id }, true);
         sfl.editing_at = null;
         sfl.last_action = 'submitted';
         sfl.last_action_at = new Date();
@@ -393,23 +420,8 @@ router.post('/:token/submit', async (req, res, next) => {
       await assertProductManagersCanWrite(records, task);
 
       // 删除该成员该任务的旧记录后重新插入
-      await WorkRecord.destroy({ where: { task_id, staff_id: sfl.staff_id } });
-      const created = [];
-      for (const r of records) {
-        const rec = await WorkRecord.create({
-          id: uuidv4(),
-          link_id: null,
-          task_id,
-          staff_id: sfl.staff_id,
-          requirement_title: r.requirement_title,
-          version: r.version,
-          product_managers: r.product_managers,
-          hours: r.hours,
-          delivery_progress: r.delivery_progress,
-          submit_count: 1
-        });
-        created.push(rec);
-      }
+      const created = await replaceSavedRecords(WorkRecord, { task_id, staff_id: sfl.staff_id }, records,
+        { link_id: null, task_id, staff_id: sfl.staff_id });
       // 更新活动状态
       // v1.6.2: 保留 editing_task_id（不清空），使 activity 查询能找到此记录
       // 前端 keep-alive 停止后，30s 内 editing_at 超时，editing 标签自然消失
@@ -463,33 +475,16 @@ router.post('/:token/submit', async (req, res, next) => {
       return res.status(403).json({ code: 1, message: '该任务已停止收集，请联系管理员重新开启任务收集！' });
     }
     if (isProductManagerStaff(writeStaff)) {
-      await ProductManagerWorkRecord.destroy({ where: { link_id: link.id } });
-      const created = [];
-      for (const r of records) {
-        created.push(await ProductManagerWorkRecord.create({
-          id: uuidv4(), link_id: link.id, task_id: link.task_id, staff_id: link.staff_id,
-          requirement_title: r.requirement_title, version: r.version,
-          demand_sources: r.demand_sources, demand_source_ids: r.demand_source_ids, demand_source_weights: r.demand_source_weights, hours: r.hours,
-          delivery_progress: r.delivery_progress, submit_count: 1
-        }));
-      }
+      const created = await replaceSavedRecords(ProductManagerWorkRecord, { link_id: link.id }, records,
+        { link_id: link.id, task_id: link.task_id, staff_id: link.staff_id }, true);
       link.is_submitted = true; link.last_action = 'submitted'; link.last_action_at = new Date();
       link.editing_at = null; link.draft_data = null; link.draft_saved_at = null;
       await link.save();
       return res.json({ code: 0, data: created, message: `提交了 ${created.length} 条产品工时记录` });
     }
     await assertProductManagersCanWrite(records, link.task);
-    await WorkRecord.destroy({ where: { link_id: link.id } });
-    const created = [];
-    for (const r of records) {
-      const rec = await WorkRecord.create({
-        id: uuidv4(), link_id: link.id, task_id: link.task_id, staff_id: link.staff_id,
-        requirement_title: r.requirement_title, version: r.version,
-        product_managers: r.product_managers, hours: r.hours,
-        delivery_progress: r.delivery_progress, submit_count: 1
-      });
-      created.push(rec);
-    }
+    const created = await replaceSavedRecords(WorkRecord, { link_id: link.id }, records,
+      { link_id: link.id, task_id: link.task_id, staff_id: link.staff_id });
     link.is_submitted = true;
     link.last_action = 'submitted';
     link.last_action_at = new Date();
@@ -565,6 +560,7 @@ router.get('/:token/history', async (req, res, next) => {
   try {
     const resolved = await resolveToken(req.params.token);
     if (!resolved) return res.status(404).json({ code: 1, message: '链接无效' });
+    assertStaffCanWrite(resolved.type === 'system' ? resolved.sfl.staff : resolved.link.staff);
 
     const staffId = resolved.type === 'system'
       ? resolved.sfl.staff_id
@@ -585,7 +581,7 @@ router.get('/:token/history', async (req, res, next) => {
     const recordTaskIds = workRecordTaskIds.map(r => r.task_id).filter(Boolean);
 
     const allTaskIds = [...new Set([...linkTaskIds, ...recordTaskIds])];
-    if (allTaskIds.length === 0) return res.json({ code: 0, data: { tasks: [] } });
+    if (allTaskIds.length === 0) return res.json({ code: 0, data: { tasks: [], workHours: buildWorkHours() } });
 
     const tasks = await CollectionTask.findAll({
       where: { id: { [Op.in]: allTaskIds } },
@@ -594,6 +590,9 @@ router.get('/:token/history', async (req, res, next) => {
     const records = await WorkModel.findAll({
       where: { staff_id: staffId, task_id: { [Op.in]: allTaskIds } }
     });
+    const person = resolved.type === 'system' ? resolved.sfl.staff : resolved.link.staff;
+    const workHoursContext = await loadWorkHoursContext({ tasks, staff: [person], includeEmptyStaff: true });
+    const workHours = buildWorkHours({ ...workHoursContext, records });
 
     const taskList = tasks.map(t => {
       const taskRecords = records.filter(r => r.task_id === t.id);
@@ -601,11 +600,12 @@ router.get('/:token/history', async (req, res, next) => {
         id: t.id, title: t.title, start_date: t.start_date, end_date: t.end_date,
         year: t.year, status: t.status, time_dimension: t.time_dimension,
         totalHours: taskRecords.reduce((s, r) => s + parseFloat(r.hours || 0), 0),
+        workHours: buildWorkHours({ ...workHoursContext, tasks: [t], records: taskRecords }),
         records: taskRecords
       };
     });
 
-    res.json({ code: 0, data: { tasks: taskList } });
+    res.json({ code: 0, data: { tasks: taskList, workHours } });
   } catch (err) { next(err); }
 });
 
@@ -617,6 +617,7 @@ router.get('/:token/task/:taskId/records', async (req, res, next) => {
   try {
     const resolved = await resolveToken(req.params.token);
     if (!resolved) return res.status(404).json({ code: 1, message: '链接无效' });
+    assertStaffCanWrite(resolved.type === 'system' ? resolved.sfl.staff : resolved.link.staff);
 
     const staffId = resolved.type === 'system'
       ? resolved.sfl.staff_id
@@ -631,7 +632,9 @@ router.get('/:token/task/:taskId/records', async (req, res, next) => {
       where: { staff_id: staffId, task_id: req.params.taskId }
     });
 
-    res.json({ code: 0, data: { task, records } });
+    const person = resolved.type === 'system' ? resolved.sfl.staff : resolved.link.staff;
+    const workHours = await getWorkHours({ tasks: [task], records, staff: [person], includeEmptyStaff: true });
+    res.json({ code: 0, data: { task: { ...task.toJSON(), workHours }, records, workHours } });
   } catch (err) { next(err); }
 });
 

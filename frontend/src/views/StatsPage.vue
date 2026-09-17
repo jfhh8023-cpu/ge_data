@@ -27,7 +27,20 @@ import { onDataChange, SYNC_EVENTS } from '../utils/sync'
 import { generateAndDownloadExcel, uploadExcelToServer } from '../utils/excel'
 import { useAuthStore } from '../stores/auth'
 import { ROLE_AI_DEV, ROLE_VOIP, ROLE_AI_QUALITY, normalizeRole, roleColor, roleLabel, roleTagStyle } from '../utils/roles'
-import { WEIGHTED_PROGRESS_TIP, normalizeProgress, weightedProgress } from '../utils/progress'
+import { summarizeWorkHours } from '../utils/workHours'
+import { sortRecordsByCreatedAt, latestCreatedAt } from '../utils/recordOrder'
+import ProductHoursChart from '../components/ProductHoursChart.vue'
+import DeliverySummary from '../components/DeliverySummary.vue'
+import StatsHoursCard from '../components/StatsHoursCard.vue'
+import StaffDeliveryList from '../components/StaffDeliveryList.vue'
+import StatsCountsCard from '../components/StatsCountsCard.vue'
+import DepartmentPeopleDialog from '../components/DepartmentPeopleDialog.vue'
+import StatsGroupedRecordTable from '../components/StatsGroupedRecordTable.vue'
+import StatsRecordTable from '../components/StatsRecordTable.vue'
+import StatsProgressTable from '../components/StatsProgressTable.vue'
+import { DELIVERY_NOTE, hasDeliveryVersion, summarizeDelivery, summarizeStaffDelivery, deliveryMetricTip, weightedRateText } from '../utils/deliverySummary'
+import { isFullCreditRecord } from '../utils/effectiveHours'
+import { sortStatsRows, recordSource, recordStaffId, requirementIdentity, uniqueStatsRecords, recordTableRows } from '../utils/statsTable'
 
 const statsStore = useStatsStore()
 const authStore = useAuthStore()
@@ -38,8 +51,7 @@ const router = useRouter()
 
 /* ========== 常量 ========== */
 const CURRENT_YEAR = new Date().getFullYear()
-const CANVAS_HEIGHT = 360
-const STANDARD_BAR_SLOT_COUNT = 4
+const CHART_BAR_WIDTH = 18
 const barMeta = computed(() => [
   ...roleStore.list.filter(role => role.key !== 'ai_pm').map(role => ({ key: role.key, label: role.short_name, color: role.color })),
   { key: 'total', label: '总计', color: '#F53F3F' }
@@ -52,22 +64,6 @@ const WEEK_CHIP_SLOT_WIDTH = 54
 const WEEK_NAV_SLOT_WIDTH = 72
 
 const PM_THEME_COLOR = '#722ED1'
-const PRODUCT_CARD_COLORS = {
-  total: '#722ED1',
-  records: '#165DFF',
-  requirements: '#F77234',
-  tasks: '#0E9384',
-  staff: '#7A5AF8'
-}
-const PRODUCT_SOURCE_COLORS = {
-  '内部需求': '#165DFF',
-  '客户需求': '#00B42A',
-  '对外服务': '#F77234',
-  '其他需求': '#0E9384'
-}
-function productSourceColor(name) {
-  return statsStore.demandSources?.find(source => source.name === name)?.color || PRODUCT_SOURCE_COLORS[name] || PM_THEME_COLOR
-}
 const analysisRoleMeta = computed(() => roleStore.list.map(role => ({
   key: role.key,
   label: role.short_name,
@@ -103,23 +99,59 @@ function getMedalRank(records, currentHours) {
 /* ========== Tab 切换 ========== */
 const activeTab = ref('department')
 const pageLoading = ref(true)  // v1.4.3: 页面初始加载状态
-const pmSortOrder = ref('desc')  // v3.2.1: 默认工时降序（'' | 'asc' | 'desc'）
+const pmSortOrder = ref('') // 默认按记录创建时间倒序；支持手动按工时排序
 const showBackTop = ref(false)
 const hideZeroValueBars = ref(true)
-const departmentListTab = ref('engineering')
-const productSourceFilter = ref('')
-const productManagerFilter = ref('')
 
 /* ========== 弹窗状态 ========== */
-const reqStatsDialogVisible = ref(false)
-const staffDialogVisible = ref(false)
 const analysisDialogVisible = ref(false)
+const departmentPeopleVisible = ref(false)
+const analysisActiveTab = ref('staff')
+const analysisDetailsRef = ref(null)
+const analysisTableHeight = ref(300)
+let analysisResizeObserver = null
+
+function measureAnalysisTable() {
+  const pane = analysisDetailsRef.value?.querySelector('.el-tab-pane:not([style*="display: none"])')
+  if (!pane || !pane.querySelector(':scope > .el-table')) return
+  const reserved = Array.from(pane.children).filter(el => !el.classList.contains('el-table')).reduce((sum, el) => {
+    const style = getComputedStyle(el)
+    return sum + el.getBoundingClientRect().height + (parseFloat(style.marginTop) || 0) + (parseFloat(style.marginBottom) || 0)
+  }, 0)
+  analysisTableHeight.value = Math.max(100, Math.floor(pane.clientHeight - reserved - 2))
+}
+
+watch([analysisDialogVisible, analysisActiveTab, analysisDetailsRef], async () => {
+  await nextTick()
+  analysisResizeObserver?.disconnect()
+  const content = analysisDetailsRef.value?.querySelector('.el-tabs__content')
+  if (analysisDialogVisible.value && content) {
+    analysisResizeObserver = new ResizeObserver(measureAnalysisTable)
+    analysisResizeObserver.observe(content)
+    measureAnalysisTable()
+  }
+}, { flush: 'post' })
 const progressListDialogVisible = ref(false)
 const progressListTitle = ref('')
 const progressListRows = ref([])
 const analysisDimension = ref('total')
 const analysisSourceType = ref('')
 const analysisDemandSourceId = ref('')
+const analysisStaffId = ref('')
+const mainDimension = ref('total')
+const mainStaffId = ref('')
+const mainRecordTabs = [
+  { key: 'engineering', label: '研发及其他人员' },
+  { key: 'product_manager', label: 'AI产品经理' }
+]
+const mainRecordTab = computed({
+  get: () => ['productOnly', 'ai_pm'].includes(mainDimension.value) ? 'product_manager' : 'engineering',
+  set: sourceType => {
+    mainDimension.value = sourceType === 'product_manager' ? 'productOnly' : 'total'
+    mainStaffId.value = ''
+  }
+})
+const mainRecordRoles = computed(() => roleStore.list.filter(role => role.key !== 'ai_pm'))
 
 /* ========== 筛选状态（共享） ========== */
 const selectedYear = ref(CURRENT_YEAR)
@@ -405,12 +437,6 @@ function scrollToStatsTop() {
   })
 }
 
-function redrawStatsCharts() {
-  drawChart()
-  drawEngineeringChart()
-  drawProductDepartmentChart()
-}
-
 onMounted(async () => {
   pageLoading.value = true
   await Promise.all([taskStore.fetchAll(), pmStore.fetchAll(), roleStore.fetchAll({ force: true })])
@@ -423,7 +449,6 @@ onMounted(async () => {
     weekSelectorResizeObserver.observe(weekSelectorRef.value)
   }
   window.addEventListener('resize', updateWeekWindowSize)
-  window.addEventListener('resize', redrawStatsCharts)
   window.addEventListener('scroll', updateBackTopVisibility, { passive: true })
   updateBackTopVisibility()
   // 监听工时变更广播，自动刷新统计
@@ -431,16 +456,13 @@ onMounted(async () => {
     loadDeptStats()
   })
   pageLoading.value = false
-  // v1.4.4: 等待 v-if 切换完成后再绘制图表（解决首次加载图表偶现不显示）
-  await nextTick()
-  setTimeout(redrawStatsCharts, 50)
 })
 
 onUnmounted(() => {
+  analysisResizeObserver?.disconnect()
   if (cleanupSync) cleanupSync()
   if (weekSelectorResizeObserver) weekSelectorResizeObserver.disconnect()
   window.removeEventListener('resize', updateWeekWindowSize)
-  window.removeEventListener('resize', redrawStatsCharts)
   window.removeEventListener('scroll', updateBackTopVisibility)
 })
 
@@ -451,29 +473,7 @@ async function loadDeptStats() {
     taskId: effectiveTaskId.value,
     pmSort: pmSortOrder.value || undefined
   })
-  await nextTick()
-  drawChart()
-  drawEngineeringChart()
-  drawProductDepartmentChart()
 }
-
-// v1.4.4: 切换到部门全观时重绘图表
-watch(activeTab, async (tab) => {
-  if (tab === 'department') {
-    await nextTick()
-    drawChart()
-    drawProductDepartmentChart()
-  } else if (tab === 'engineeringHours') {
-    await nextTick()
-    drawEngineeringChart()
-  }
-})
-
-watch(hideZeroValueBars, async () => {
-  await nextTick()
-  drawChart()
-  drawProductDepartmentChart()
-})
 
 watch([selectedYear, selectedQuarter, selectedTaskId, selectedNaturalWeekTaskId], async ([year, quarter], [oldYear, oldQuarter]) => {
   if ((year !== oldYear || quarter !== oldQuarter) && selectedTaskId.value !== 'all') {
@@ -499,16 +499,7 @@ watch([selectedYear, selectedQuarter, selectedTaskId, selectedNaturalWeekTaskId]
     } else if (viewMode.value === 'all') {
       await loadAllPersonalData()
     }
-  } else if (activeTab.value === 'productHours' || activeTab.value === 'engineeringHours') {
-    await statsStore.fetch({
-      year: selectedYear.value,
-      quarter: selectedQuarter.value,
-      taskId: effectiveTaskId.value
-    })
-    if (activeTab.value === 'engineeringHours') {
-      await nextTick()
-      drawEngineeringChart()
-    }
+
   } else if (activeTab.value === 'product') {
     // 刷新部门统计（保持 taskOptions 同步）
     await statsStore.fetch({
@@ -529,24 +520,98 @@ watch([selectedYear, selectedQuarter, selectedTaskId, selectedNaturalWeekTaskId]
 })
 
 /* ========== 角色工时（基于后端 roleSummary，REQ-11/REQ-19） ========== */
+const periodRecords = computed(() => uniqueStatsRecords(statsStore.records || [], statsStore.workHours))
+const currentPeriodTasks = computed(() => (statsStore.tasks || []).filter(task => effectiveTaskId.value === 'all' || String(task.id) === String(effectiveTaskId.value)))
+const departmentPeople = computed(() => summarizeStaffDelivery(periodRecords.value, statsStore.workHours))
 const roleTotals = computed(() => {
-  const summary = statsStore.roleSummary || {}
-  return Object.fromEntries(roleStore.list.map(role => {
-    if (role.key === ROLE_AI_DEV && summary[role.key] === undefined) {
-      return [role.key, Number(summary.frontend || 0) + Number(summary.backend || 0)]
-    }
-    if (role.key === ROLE_AI_QUALITY && summary[role.key] === undefined) {
-      return [role.key, Number(summary.test || 0)]
-    }
-    return [role.key, Number(summary[role.key] || 0)]
-  }))
+  return Object.fromEntries(roleStore.list.map(role => [role.key, periodRecords.value
+    .filter(record => normalizeRole(record.staff?.role || record.role) === role.key)
+    .reduce((sum, record) => sum + toNumber(record.hours), 0)]))
 })
 
-const roleWeightedProgress = computed(() => Object.fromEntries(roleStore.list.map(role => [
-  role.key,
-  weightedProgress((statsStore.records || []).filter(record => normalizeRole(record.staff?.role || record.role) === role.key))
+
+function capacityUnits({ role = '', sourceType = '', staffId = '', units = statsStore.workHours?.units || [] } = {}) {
+  return units.filter(unit => (!role || normalizeRole(unit.role) === role)
+    && (!staffId || String(unit.staffId) === String(staffId))
+    && (!sourceType || (sourceType === 'product_manager' ? normalizeRole(unit.role) === 'ai_pm' : normalizeRole(unit.role) !== 'ai_pm')))
+}
+
+function hoursMetric(records, options = {}) {
+  if (!statsStore.workHours) return null
+  return { ...summarizeWorkHours(records, capacityUnits(options)), scopeNote: statsStore.workHours.scopeNote }
+}
+
+const roleWorkHours = computed(() => Object.fromEntries(roleStore.list.map(role => [role.key,
+  hoursMetric(periodRecords.value.filter(record => normalizeRole(record.staff?.role || record.role) === role.key), { role: role.key })
 ])))
-const totalWeightedProgress = computed(() => weightedProgress(statsStore.records || []))
+const analysisCapacityUnits = computed(() => capacityUnits({ role: analysisDimensionMeta.value.role, sourceType: analysisSourceType.value, staffId: analysisStaffId.value }))
+const analysisWorkHours = computed(() => hoursMetric(analysisRecords.value, { units: analysisCapacityUnits.value }))
+const progressListRoleKey = ref('')
+const progressListVersionType = ref('')
+const hasVersion = hasDeliveryVersion
+
+const departmentDelivery = computed(() => summarizeDelivery(periodRecords.value, statsStore.workHours))
+const roleDelivery = computed(() => Object.fromEntries(roleStore.list.map(role => [role.key,
+  summarizeDelivery(periodRecords.value.filter(record => normalizeRole(record.staff?.role || record.role) === role.key), roleWorkHours.value[role.key])
+])))
+const analysisVersionType = ref('all')
+watch(analysisVersionType, async () => { await nextTick(); measureAnalysisTable() })
+const analysisRecordScope = ref('current')
+const analysisCustomYear = ref(CURRENT_YEAR)
+const analysisCustomQuarter = ref(getCurrentQuarter())
+const analysisCustomTaskId = ref('all')
+const analysisUsesRemoteScope = computed(() => analysisRecordScope.value !== 'current')
+const analysisCustomYears = computed(() => [...new Set([...yearOptions.value, ...(taskStore.list || []).map(task => Number(task.year)).filter(Boolean)])].sort((a, b) => b - a))
+const analysisCustomTasks = computed(() => (taskStore.list || []).filter(task => {
+  if (Number(task.year) !== Number(analysisCustomYear.value)) return false
+  const month = Number(String(task.end_date || task.start_date || '').slice(5, 7))
+  return analysisCustomQuarter.value === 'all' || (month && getQuarterByMonth(month) === analysisCustomQuarter.value)
+}).sort((a, b) => String(b.end_date || '').localeCompare(String(a.end_date || ''))))
+const analysisPeriodModeLabel = computed(() => analysisRecordScope.value === 'all' ? '全部周期' : analysisRecordScope.value === 'custom' ? '所选周期' : '当前周期')
+const analysisPeriodTitle = computed(() => {
+  if (analysisRecordScope.value === 'all') return '全部可见历史'
+  if (analysisRecordScope.value === 'current') return statsScopeTitle.value
+  const task = analysisCustomTasks.value.find(task => String(task.id) === String(analysisCustomTaskId.value))
+  return task ? formatTaskPeriod(task) : `${analysisCustomYear.value}年 ${analysisCustomQuarter.value === 'all' ? '全年' : analysisCustomQuarter.value}`
+})
+const analysisPeriodRangeText = computed(() => analysisRecordScope.value === 'current' ? selectedPeriodRangeText.value : analysisPeriodTitle.value)
+const deliveryDialogRecords = computed(() => analysisUsesRemoteScope.value
+  ? sortRecordsByCreatedAt(uniqueStatsRecords(statsStore.progressDetails?.records || [], statsStore.progressDetails?.workHours)) : analysisRecords.value)
+const analysisScopeCapacity = computed(() => analysisUsesRemoteScope.value ? statsStore.progressDetails?.workHours : analysisWorkHours.value)
+const analysisScopeTasks = computed(() => analysisUsesRemoteScope.value ? statsStore.progressDetails?.tasks || [] : currentPeriodTasks.value)
+const deliveryDialogSummary = computed(() => summarizeDelivery(deliveryDialogRecords.value, analysisScopeCapacity.value))
+const deliveryDialogRows = computed(() => deliveryDialogRecords.value.filter(record => analysisVersionType.value === 'all' || hasDeliveryVersion(record) === (analysisVersionType.value === 'versioned')))
+const analysisShowsUnversioned = computed(() => analysisActiveTab.value === 'noVersion' || (analysisActiveTab.value === 'records' && analysisVersionType.value === 'noVersion'))
+function recordGroupDelivery(records) {
+  if (!analysisScopeCapacity.value) return null
+  const keys = new Set(records.map(record => JSON.stringify([String(record.staff_id || record.staff?.id || ''), String(record.task_id || '')])))
+  const units = (analysisScopeCapacity.value.units || []).filter(unit => keys.has(JSON.stringify([String(unit.staffId), String(unit.taskId)])))
+  return summarizeDelivery(records, summarizeWorkHours(records, units))
+}
+function withRecordDelivery(record) {
+  return { ...record, roleLabel: roleDisplay(record.staff?.role || record.role, true), deliveryRate: hasDeliveryVersion(record) ? recordGroupDelivery([record])?.deliveryRate ?? null : null }
+}
+const analysisRawRows = computed(() => recordTableRows(deliveryDialogRows.value.map(withRecordDelivery), analysisScopeTasks.value))
+const analysisTrackingRows = computed(() => recordTableRows(deliveryDialogRecords.value.map(withRecordDelivery), analysisScopeTasks.value))
+function deliveryFromInfo(info) {
+  return info?.deliverySummary || summarizeDelivery((info?.tasks || []).flatMap(task => task.records || []), info?.workHours)
+}
+watch(analysisVersionType, () => resetAnalysisPage('records'))
+watch(analysisRecordScope, () => ANALYSIS_PAGE_KEYS.forEach(resetAnalysisPage))
+async function changeDeliveryScope() {
+  ANALYSIS_PAGE_KEYS.forEach(resetAnalysisPage)
+  if (!analysisUsesRemoteScope.value) return
+  const scope = analysisRecordScope.value
+  try {
+    await loadProgressDetails(scope)
+  } catch {
+    if (analysisRecordScope.value === scope) ElMessage.error('所选范围工时加载失败，请刷新或切回当前周期后重试')
+  }
+}
+async function changeAnalysisCustomPeriod() {
+  analysisCustomTaskId.value = 'all'
+  await changeDeliveryScope()
+}
 
 function roleSummaryHours(summary = {}, role) {
   if (role === ROLE_AI_DEV && summary[role] === undefined) return Number(summary.frontend || 0) + Number(summary.backend || 0)
@@ -576,34 +641,31 @@ function rolePillStyle(role, compact = false) {
   }
 }
 
-/* ========== 柱状图数据（基于后端 pmDistribution，REQ-13） ========== */
+/* ========== 柱状图按同一原始记录范围聚合，每条研发记录归属首位产品经理 ========== */
 const chartData = computed(() => {
-  return (statsStore.pmDistribution || []).filter(pm => {
-    if (Number(pm.total || 0) > 0) return true
-    return roleStore.list.some(role => roleSummaryHours(pm, role.key) > 0)
-  })
-})
-
-const productDemandRows = computed(() => {
-  const rows = statsStore.productDemandDistribution || []
-  return rows.map(row => ({
-    ...row,
-    product: Number(row.product ?? row.total ?? 0),
-    total: Number(row.total || 0)
-  }))
-})
-
-const productDemandMax = computed(() => Math.max(...productDemandRows.value.map(row => row.product), 1))
-
-function productDemandBarStyle(row) {
-  const value = Number(row.product || 0)
-  return {
-    height: `${value > 0 ? Math.max((value / productDemandMax.value) * 170, 4) : 0}px`,
-    background: row.color || productSourceColor(row.name)
+  const groups = new Map()
+  for (const record of periodRecords.value) {
+    if (recordSource(record) !== 'engineering') continue
+    const name = firstPmName(record.product_managers)
+    if (!groups.has(name)) groups.set(name, { name, total: 0, ...Object.fromEntries(roleStore.list.map(role => [role.key, 0])) })
+    const row = groups.get(name)
+    const role = normalizeRole(record.staff?.role || record.role)
+    row.total += toNumber(record.hours)
+    row[role] = (row[role] || 0) + toNumber(record.hours)
   }
-}
+  return [...groups.values()].filter(row => row.total > 0).sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, 'zh-CN'))
+})
 
-const productRecords = computed(() => statsStore.productManagerRecords || [])
+const engineeringChartSources = computed(() => barMeta.value
+  .filter(bar => bar.key !== 'total')
+  .map(bar => ({ id: bar.key, name: bar.label, color: bar.color })))
+const engineeringChartRows = computed(() => chartData.value.map(row => ({
+  staffId: row.name,
+  staffName: row.name,
+  total: toNumber(row.total),
+  sourceValues: Object.fromEntries(engineeringChartSources.value.map(source => [source.id, roleSummaryHours(row, source.id)]))
+})))
+const productRecords = computed(() => periodRecords.value.filter(record => recordSource(record) === 'product_manager'))
 const productChartSources = computed(() => (statsStore.demandSources || []).slice().sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0)))
 const productManagerChartRows = computed(() => {
   const sourceList = productChartSources.value
@@ -642,52 +704,50 @@ const productManagerChartRows = computed(() => {
     }))
     .sort((a, b) => b.total - a.total || a.staffName.localeCompare(b.staffName, 'zh-Hans-CN'))
 })
-const productManagerChartMax = computed(() => Math.max(...productManagerChartRows.value.flatMap(row => [row.total, ...productChartSources.value.map(source => row.sourceValues[source.id] || 0)]), 1))
+function formatChartHours(value) {
+  const hours = Number(value)
+  return Number.isFinite(hours) ? String(Number(hours.toFixed(1))) : '0'
+}
+const chartBarGap = computed(() => {
+  const values = [
+    ...engineeringChartRows.value.flatMap(row => Object.values(row.sourceValues)),
+    ...productManagerChartRows.value.flatMap(row => Object.values(row.sourceValues))
+  ]
+  return Math.max(8, ...values.map(value => formatChartHours(value).length * 6 + 4 - CHART_BAR_WIDTH))
+})
+// Allocate width by each chart's actual group density; totals no longer reserve a bar slot.
+// Keep the allocation stable when toggling zeroes, then let the chart wrap if needed.
+function chartPanelWidth(rows) {
+  const groupWidth = Math.max(76, ...rows.map(row => {
+    const count = Object.values(row.sourceValues || {}).filter(value => Number(value) > 0).length
+    return count * CHART_BAR_WIDTH + Math.max(0, count - 1) * chartBarGap.value + 16
+  }))
+  return Math.max(340, rows.length * (groupWidth + 8) - 8 + 34)
+}
+const departmentChartLayout = computed(() => ({
+  '--engineering-chart-width': `${chartPanelWidth(engineeringChartRows.value)}fr`,
+  '--product-chart-width': `${chartPanelWidth(productManagerChartRows.value)}fr`
+}))
 
-function productManagerChartBarStyle(value, color) {
-  return {
-    height: `${value > 0 ? Math.max((value / productManagerChartMax.value) * 170, 4) : 0}px`,
-    background: color
-  }
+function selectProductChartManager(staffId) {
+  const query = { year: selectedYear.value, quarter: selectedQuarter.value, taskId: effectiveTaskId.value }
+  if (authStore.isAdmin) query.admin = '1'
+  else if (authStore.token) query.token = authStore.token
+  const routeData = router.resolve({ name: 'ProductManagerHours', params: { staffId }, query })
+  window.open(routeData.href, '_blank', 'noopener')
 }
 
-const filteredProductRecords = computed(() => {
-  return productRecords.value.filter(record => {
-    const staffId = record.staff?.id || record.staff_id || record.staff?.name || record.staff_name || '-'
-    const managerMatch = !productManagerFilter.value || staffId === productManagerFilter.value
-    const sourceMatch = !productSourceFilter.value || (record.demand_sources || []).includes(productSourceFilter.value)
-    return managerMatch && sourceMatch
-  })
-})
-const productManagerFilterLabel = computed(() => {
-  if (!productManagerFilter.value) return ''
-  return productManagerChartRows.value.find(row => row.staffId === productManagerFilter.value)?.staffName || productManagerFilter.value
-})
-const sortedProductRecords = computed(() => {
-  const records = [...filteredProductRecords.value]
-  if (pmSortOrder.value === 'desc') return records.sort((a, b) => toNumber(b.hours) - toNumber(a.hours))
-  if (pmSortOrder.value === 'asc') return records.sort((a, b) => toNumber(a.hours) - toNumber(b.hours))
-  return records
-})
-const productSummary = computed(() => {
-  const records = productRecords.value
-  const staff = new Set(records.map(record => record.staff?.id || record.staff_id).filter(Boolean))
-  const tasks = new Set(records.map(record => record.task_id).filter(Boolean))
-  const requirements = new Set(records.map(record => `${record.task_id || ''}||${record.requirement_title || ''}||${record.version || ''}`))
-  return {
-    totalHours: records.reduce((sum, record) => sum + toNumber(record.hours), 0),
-    recordCount: records.length,
-    staffCount: staff.size,
-    taskCount: tasks.size,
-    requirementCount: requirements.size,
-    weightedProgress: weightedProgress(records)
-  }
-})
-const analysisVersionedRows = computed(() => analysisData.value.progressRows.filter(row => row.versionType === '有版本号'))
+const analysisVersionedRows = computed(() => analysisData.value.progressRows.filter(row => row.versionType !== '无版本号'))
 const analysisNoVersionRows = computed(() => analysisData.value.progressRows.filter(row => row.versionType === '无版本号'))
 const ANALYSIS_PAGE_SIZE_OPTIONS = [10, 20, 30, 50, 100, 200, 300]
-const ANALYSIS_PAGE_KEYS = ['tracking', 'versioned', 'noVersion', 'pm', 'staff', 'task', 'version', 'requirement', 'keyword', 'quality', 'progress', 'progressModal']
+const ANALYSIS_PAGE_KEYS = ['records', 'tracking', 'versioned', 'noVersion', 'pm', 'staff', 'task', 'version', 'requirement', 'keyword', 'quality', 'progress', 'progressModal']
 const analysisPagination = ref(Object.fromEntries(ANALYSIS_PAGE_KEYS.map(key => [key, { currentPage: 1, pageSize: 20 }])))
+const analysisSorts = ref(Object.fromEntries(ANALYSIS_PAGE_KEYS.map(key => [key, ['records', 'tracking', 'versioned', 'noVersion', 'progress', 'progressModal'].includes(key) ? { prop: 'created_at', order: 'descending' } : { prop: '', order: null }])))
+
+function changeAnalysisSort(key, sort) {
+  analysisSorts.value[key] = { prop: sort.prop, order: sort.order }
+  resetAnalysisPage(key)
+}
 
 function pagedAnalysisRows(key, rows = []) {
   const state = analysisPagination.value[key]
@@ -695,7 +755,7 @@ function pagedAnalysisRows(key, rows = []) {
   const totalPages = Math.max(1, Math.ceil(rows.length / state.pageSize))
   if (state.currentPage > totalPages) state.currentPage = totalPages
   const start = (state.currentPage - 1) * state.pageSize
-  return rows.slice(start, start + state.pageSize)
+  return sortStatsRows(rows, analysisSorts.value[key]).slice(start, start + state.pageSize)
 }
 
 function analysisPageTotal(rows = []) {
@@ -706,84 +766,64 @@ function resetAnalysisPage(key) {
   if (analysisPagination.value[key]) analysisPagination.value[key].currentPage = 1
 }
 
-const analysisVersionProgressCards = computed(() => [
-  { key: 'versioned', label: '普通版本综合进度', rows: analysisVersionedRows.value, color: '#165DFF' },
-  { key: 'noVersion', label: '无版本号综合进度', rows: analysisNoVersionRows.value, color: '#86909C' }
-].map(item => ({
-  ...item,
-  hours: Number(item.rows.reduce((sum, row) => sum + toNumber(row.hours), 0).toFixed(1)),
-  progress: weightedProgress(item.rows.map(row => ({ hours: row.hours, delivery_progress: row.progress })))
-})))
-const engineeringRoles = computed(() => roleStore.list.filter(role => role.key !== 'ai_pm'))
-const engineeringRecords = computed(() => (statsStore.records || []).filter(record => {
-  const role = normalizeRole(record.staff?.role || record.role)
-  return !record.is_product_manager_record && role !== 'ai_pm'
-}))
-const engineeringTotalHours = computed(() => engineeringRecords.value.reduce((sum, record) => sum + toNumber(record.hours), 0))
-const engineeringStaffCount = computed(() => new Set(engineeringRecords.value.map(record => record.staff_id || record.staff?.id).filter(Boolean)).size)
-const engineeringRoleTotals = computed(() => Object.fromEntries(engineeringRoles.value.map(role => [
-  role.key,
-  engineeringRecords.value.filter(record => normalizeRole(record.staff?.role || record.role) === role.key).reduce((sum, record) => sum + toNumber(record.hours), 0)
-])))
-const engineeringTotalWeightedProgress = computed(() => weightedProgress(engineeringRecords.value))
-const engineeringRequirementCount = computed(() => new Set(engineeringRecords.value.map(record => `${record.task_id || ''}||${record.requirement_title || ''}||${record.version || ''}`)).size)
-const engineeringTaskCount = computed(() => new Set(engineeringRecords.value.map(record => record.task_id).filter(Boolean)).size)
-const engineeringSummaryCardCount = computed(() => engineeringRoles.value.length + 5)
-
-function getProductMedalRank(row) {
-  const staffId = row.staff?.id || row.staff_id || row.staff?.name || '-'
-  const staffRows = sortedProductRecords.value.filter(record => (record.staff?.id || record.staff_id || record.staff?.name || '-') === staffId)
-  return getMedalRank(staffRows, row.hours)
-}
-
-function selectProductDemandSource(source = '') {
-  productSourceFilter.value = productSourceFilter.value === source ? '' : source
-}
-
-function selectProductManager(staffId = '') {
-  productManagerFilter.value = productManagerFilter.value === staffId ? '' : staffId
-  productSourceFilter.value = ''
-}
-
-const departmentSummaryCardCount = computed(() => roleStore.list.length + 5)
-
-/* ========== v3.2.1: 需求总数统计（从 pmDistribution 计算） ========== */
-const reqStats = computed(() => {
-  const pmDist = statsStore.pmDistribution || []
-  const allVersions = new Set()
-  let noVersionCount = 0
-  const perPm = []
-
-  for (const pm of pmDist) {
-    const recs = pm.records || []
-    const pmVersions = new Set()
-    let pmNoVersion = 0
-    for (const r of recs) {
-      const v = r.version || ''
-      if (v && v !== '-' && v.trim() !== '') {
-        allVersions.add(v)
-        pmVersions.add(v)
-      } else {
-        noVersionCount++
-        pmNoVersion++
-      }
-    }
-    if (pmVersions.size > 0 || pmNoVersion > 0) {
-      perPm.push({ name: pm.name, versionCount: pmVersions.size, noVersionCount: pmNoVersion })
-    }
-  }
-
+/* The two detail tabs partition the same period records by who submitted them. */
+const mainScopeMeta = computed(() => {
+  const role = ['total', 'engineering', 'productOnly'].includes(mainDimension.value) ? '' : mainDimension.value
   return {
-    totalVersions: allVersions.size,
-    totalNoVersion: noVersionCount,
-    total: allVersions.size + noVersionCount,
-    perPm
+    label: role ? roleDisplay(role) : mainRecordTabs.find(tab => tab.key === mainRecordTab.value).label,
+    role,
+    sourceType: mainRecordTab.value
   }
 })
+const mainStaffOptions = computed(() => [...new Map(capacityUnits(mainScopeMeta.value)
+  .map(unit => [String(unit.staffId), { id: String(unit.staffId), name: unit.staffName, role: unit.role }])).values()])
+const mainScopeLabel = computed(() => `${mainScopeMeta.value.label}${mainStaffId.value ? ` · ${mainStaffOptions.value.find(person => person.id === mainStaffId.value)?.name || mainStaffId.value}` : ''}`)
+const mainScopeRecords = computed(() => sortRecordsByCreatedAt(periodRecords.value.filter(record =>
+  (!mainScopeMeta.value.role || normalizeRole(record.staff?.role || record.role) === mainScopeMeta.value.role)
+  && (!mainScopeMeta.value.sourceType || recordSource(record) === mainScopeMeta.value.sourceType)
+  && (!mainStaffId.value || recordStaffId(record) === mainStaffId.value))))
+const mainScopeCapacity = computed(() => hoursMetric(mainScopeRecords.value, { ...mainScopeMeta.value, staffId: mainStaffId.value }))
+const mainScopeDelivery = computed(() => summarizeDelivery(mainScopeRecords.value, mainScopeCapacity.value))
+const mainRecordRows = computed(() => recordTableRows(mainScopeRecords.value.map(record => ({
+  ...record, roleLabel: roleDisplay(record.staff?.role || record.role, true)
+})), statsStore.tasks))
+watch(mainStaffOptions, people => { if (mainStaffId.value && !people.some(person => person.id === mainStaffId.value)) mainStaffId.value = '' })
+function changeMainDimension() { mainStaffId.value = '' }
+function selectStatsCard(dimension = 'total') {
+  mainDimension.value = dimension
+  mainStaffId.value = ''
+  openAnalysisDialog(dimension)
+}
+function openMainAnalysis(tab = 'staff') {
+  openAnalysisDialog(mainScopeMeta.value.role || 'total', mainScopeMeta.value.sourceType, '', mainStaffId.value)
+  analysisActiveTab.value = tab
+}
+const departmentCounts = computed(() => [
+  { key: 'records', label: '提交记录数', value: periodRecords.value.length, color: '#165DFF', action: 'records', tip: '当前周期非离职人员已保存记录数，按来源与记录ID去重，包含五类工时及普通无版本记录。' },
+  { key: 'requirements', label: '统计需求总数', value: new Set(periodRecords.value.filter(record => !isFullCreditRecord(record)).map(requirementIdentity)).size, color: '#FF7D00', action: 'requirement', tip: '当前范围普通需求按周期、版本、精确标题去重；不包含请假、培训、公司会议、出差、团建。' },
+  { key: 'tasks', label: '收集任务数', value: currentPeriodTasks.value.length, color: '#009688', action: 'task', tip: '当前筛选范围可见的收集任务数，含尚无提交记录的任务。' },
+  { key: 'staff', label: '部门人数', value: departmentPeople.value.length, color: '#722ED1', action: 'staff', tip: '当前非离职且所选范围有记录的研发与产品人员，按人员ID去重；没有记录的人员不计入。' }
+])
+function openDepartmentCount(tab) {
+  mainDimension.value = 'total'
+  mainStaffId.value = ''
+  if (tab === 'staff') departmentPeopleVisible.value = true
+  else {
+    openAnalysisDialog('total')
+    analysisActiveTab.value = tab
+  }
+}
 
 function toNumber(val) {
   const n = parseFloat(val || 0)
   return Number.isFinite(n) ? n : 0
+}
+
+function formatRecordCreatedAt(value) {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) return '-'
+  return date.toLocaleString('zh-CN', { hour12: false })
 }
 
 function formatTaskPeriod(task) {
@@ -820,6 +860,7 @@ function groupAnalysisRows(records, keyGetter, labelGetter) {
         label,
         total: 0,
         recordCount: 0,
+        records: [],
         requirementSet: new Set(),
         taskSet: new Set(),
         weekSet: new Set()
@@ -828,21 +869,23 @@ function groupAnalysisRows(records, keyGetter, labelGetter) {
       map.set(key, initial)
     }
     const row = map.get(key)
+    row.records.push(rec)
     const hours = toNumber(rec.hours)
     const role = normalizeRole(rec.staff?.role || rec.role)
     row.total += hours
     row.recordCount += 1
     row.taskSet.add(rec.task_id)
-    const task = (statsStore.tasks || []).find(item => item.id === rec.task_id)
+    const task = analysisScopeTasks.value.find(item => item.id === rec.task_id)
     const weekLabel = taskWeekLabel(task)
     if (weekLabel !== '-') row.weekSet.add(weekLabel)
-    row.requirementSet.add(`${rec.task_id || ''}||${rec.requirement_title || ''}||${rec.version || ''}`)
+    if (!isFullCreditRecord(rec)) row.requirementSet.add(requirementIdentity(rec))
     if (row[role] !== undefined) row[role] += hours
   }
-  return [...map.values()]
+  return sortRecordsByCreatedAt([...map.values()]
     .map(row => {
       const result = {
         ...row,
+        created_at: latestCreatedAt(row.records),
         total: Number(row.total.toFixed(1)),
         taskCount: row.taskSet.size,
         requirementCount: row.requirementSet.size,
@@ -851,13 +894,12 @@ function groupAnalysisRows(records, keyGetter, labelGetter) {
       }
       roleStore.list.forEach(role => { result[role.key] = Number((row[role.key] || 0).toFixed(1)) })
       return result
-    })
-    .sort((a, b) => b.total - a.total)
+    }))
 }
 
 const analysisDimensionMeta = computed(() => {
-  const meta = { total: { label: '总工时', role: '', color: '#F53F3F' } }
-  roleStore.list.forEach(role => { meta[role.key] = { label: `${role.name}总工时`, role: role.key, color: role.color } })
+  const meta = { total: { label: analysisSourceType.value === 'engineering' ? 'AI研发' : analysisSourceType.value === 'product_manager' ? 'AI产品' : '部门', role: '', color: '#F53F3F' } }
+  roleStore.list.forEach(role => { meta[role.key] = { label: role.name, role: role.key, color: role.color } })
   return meta[analysisDimension.value] || meta.total
 })
 
@@ -874,41 +916,62 @@ function showAnalysisRole(role) {
 }
 
 const analysisRecords = computed(() => {
-  const sourceRecords = statsStore.records || []
+  const sourceRecords = sortRecordsByCreatedAt(periodRecords.value)
   const records = analysisSourceType.value
-    ? sourceRecords.filter(record => analysisSourceType.value === 'product_manager'
-      ? record.is_product_manager_record
-      : !record.is_product_manager_record)
+    ? sourceRecords.filter(record => recordSource(record) === analysisSourceType.value)
     : sourceRecords
   const role = analysisDimensionMeta.value.role
-  return role ? records.filter(r => normalizeRole(r.staff?.role || r.role) === role) : records
+  const scoped = records.filter(record => (!role || normalizeRole(record.staff?.role || record.role) === role)
+    && (!analysisStaffId.value || recordStaffId(record) === analysisStaffId.value))
+  if (!analysisDemandSourceId.value) return scoped
+  const source = statsStore.demandSources.find(item => item.id === analysisDemandSourceId.value)?.name || analysisDemandSourceId.value
+  return scoped.filter(record => (record.demand_sources || []).includes(source)).map(record => {
+    const sources = record.demand_sources || []
+    const weights = sources.map(name => Math.max(0, Number(record.demand_source_weights?.[name]) || 0))
+    const total = weights.reduce((sum, value) => sum + value, 0)
+    const fraction = total > 0 ? weights[sources.indexOf(source)] / total : 1 / sources.length
+    return { ...record, originalHours: record.hours, hours: toNumber(record.hours) * fraction }
+  })
 })
 
 const analysisData = computed(() => {
-  const records = analysisRecords.value
+  const records = deliveryDialogRecords.value
   const total = records.reduce((sum, rec) => sum + toNumber(rec.hours), 0)
   const roleTotals = Object.fromEntries(roleStore.list.map(role => [role.key, 0]))
   for (const rec of records) {
     const role = normalizeRole(rec.staff?.role || rec.role)
     if (roleTotals[role] !== undefined) roleTotals[role] += toNumber(rec.hours)
   }
-  const requirementKey = rec => `${rec.task_id || ''}||${rec.requirement_title || ''}||${rec.version || ''}`
-  const pmRows = groupAnalysisRows(records, rec => firstPmName(rec.product_managers)).map(row => ({ ...row, share: total ? Number((row.total * 100 / total).toFixed(1)) : 0 }))
-  const staffRows = groupAnalysisRows(records, rec => rec.staff?.name || '-', rec => `${rec.staff?.name || '-'}（${roleDisplay(rec.staff?.role, true)}）`).map(row => ({ ...row, share: total ? Number((row.total * 100 / total).toFixed(1)) : 0 }))
-  const versionRows = groupAnalysisRows(records, rec => rec.version || '——').map(row => ({ ...row, share: total ? Number((row.total * 100 / total).toFixed(1)) : 0 }))
-  const requirementRows = groupAnalysisRows(records, requirementKey, rec => rec.requirement_title || '-').map(row => ({ ...row, share: total ? Number((row.total * 100 / total).toFixed(1)) : 0 }))
-  const taskRows = groupAnalysisRows(records, rec => rec.task_id || '-', rec => {
-    const task = (statsStore.tasks || []).find(t => t.id === rec.task_id)
-    return task ? formatTaskPeriod(task) : rec.task_id || '-'
-  }).map(row => {
-    const task = (statsStore.tasks || []).find(t => t.id === row.key)
+  const requirementKey = requirementIdentity
+  const pmRows = groupAnalysisRows(records, rec => rec.is_product_manager_record ? `product:${rec.staff_id || rec.staff?.id}` : firstPmName(rec.product_managers), rec => rec.is_product_manager_record ? rec.staff?.name || '-' : firstPmName(rec.product_managers)).map(row => ({ ...row, share: total ? Number((row.total * 100 / total).toFixed(1)) : 0 }))
+  const staffRows = sortRecordsByCreatedAt(summarizeStaffDelivery(records, analysisScopeCapacity.value))
+    .map(row => ({
+      ...row,
+      key: row.staffId,
+      label: `${row.staffName}（${roleDisplay(row.role, true)}）`,
+      total: row.recordedHours,
+      share: total ? Number((row.recordedHours * 100 / total).toFixed(1)) : 0
+    }))
+  const versionRows = groupAnalysisRows(records, rec => isFullCreditRecord(rec) ? String(rec.version || '五类工时（历史未填版本）').trim() : hasDeliveryVersion(rec) ? String(rec.version).trim() : '无版本号').map(row => ({ ...row, share: total ? Number((row.total * 100 / total).toFixed(1)) : 0 }))
+  const requirementRows = groupAnalysisRows(records.filter(rec => !isFullCreditRecord(rec)), requirementKey, rec => rec.requirement_title || '-').map(row => ({ ...row, share: total ? Number((row.total * 100 / total).toFixed(1)) : 0 }))
+  const taskGroups = new Map(groupAnalysisRows(records, rec => String(rec.task_id || '-')).map(row => [row.key, row]))
+  const allowedTaskIds = new Set((analysisScopeCapacity.value?.units || []).map(unit => String(unit.taskId)))
+  const limitedPeople = analysisDimensionMeta.value.role || analysisStaffId.value || analysisSourceType.value
+  const taskRows = sortRecordsByCreatedAt(analysisScopeTasks.value.filter(task => !limitedPeople || allowedTaskIds.has(String(task.id)) || taskGroups.has(String(task.id))).map(task => {
+    const row = taskGroups.get(String(task.id)) || {
+      total: 0, recordCount: 0, requirementCount: 0, taskCount: 1,
+      ...Object.fromEntries(roleStore.list.map(role => [role.key, 0]))
+    }
     return {
       ...row,
+      key: String(task.id),
+      label: formatTaskPeriod(task),
+      created_at: task.created_at,
       sortTime: taskSortTime(task),
       share: total ? Number((row.total * 100 / total).toFixed(1)) : 0
     }
-  }).sort((a, b) => b.sortTime - a.sortTime)
-  const roleComboRows = groupAnalysisRows(records, requirementKey, rec => rec.requirement_title || '-')
+  }))
+  const roleComboRows = groupAnalysisRows(records.filter(rec => !isFullCreditRecord(rec)), requirementKey, rec => rec.requirement_title || '-')
     .map(row => ({
       combo: roleStore.list.filter(role => row[role.key] > 0).map(role => role.short_name).join('+') || '无角色',
       total: row.total,
@@ -934,11 +997,11 @@ const analysisData = computed(() => {
       total: Number(hours.toFixed(1)),
       share: total ? Number((hours * 100 / total).toFixed(1)) : 0,
       recordCount: hitRecords.length,
-      requirementCount: new Set(hitRecords.map(requirementKey)).size
+      requirementCount: new Set(hitRecords.filter(rec => !isFullCreditRecord(rec)).map(requirementKey)).size
     }
   }).filter(row => row.total > 0).sort((a, b) => b.total - a.total)
-  const emptyPmRecords = records.filter(rec => parseJsonField(rec.product_managers).filter(isValidPMName).length === 0)
-  const missingVersionRecords = records.filter(rec => !String(rec.version || '').trim() || rec.version === '-')
+  const emptyPmRecords = records.filter(rec => !isFullCreditRecord(rec) && !rec.is_product_manager_record && parseJsonField(rec.product_managers).filter(isValidPMName).length === 0)
+  const missingVersionRecords = records.filter(rec => !hasDeliveryVersion(rec))
   const zeroHoursRecords = records.filter(rec => toNumber(rec.hours) <= 0)
   const qualityRows = [
     { label: '空AI产品经理', records: emptyPmRecords },
@@ -957,32 +1020,41 @@ const analysisData = computed(() => {
   for (const rec of records) {
     const version = String(rec.version || '').trim()
     const person = rec.staff?.name || '-'
-    const key = `${person}||${rec.task_id || ''}||${version || '__NO_VERSION__'}||${rec.requirement_title || '-'}`
+    const key = JSON.stringify([rec.staff_id || rec.staff?.id || person, hasVersion(rec) ? version : '__NO_VERSION__', String(rec.requirement_title || '').trim(), isFullCreditRecord(rec) ? rec.id : ''])
     if (!progressMap.has(key)) progressMap.set(key, [])
     progressMap.get(key).push(rec)
   }
-  const progressRows = [...progressMap.values()].map(group => {
+  const progressRows = sortRecordsByCreatedAt([...progressMap.values()].map(group => {
     const first = group[0]
-    const progress = weightedProgress(group)
+    const metric = recordGroupDelivery(group)
+    const progress = metric?.requirementProgress ?? null
     return {
       person: first.staff?.name || '-',
       role: roleDisplay(first.staff?.role, true),
+      roleKey: normalizeRole(first.staff?.role || first.role),
+      records: group.map(withRecordDelivery),
+      created_at: latestCreatedAt(group),
       version: String(first.version || '').trim(),
-      versionType: String(first.version || '').trim() ? '有版本号' : '无版本号',
+      versionType: isFullCreditRecord(first) ? '五类有效工时' : hasVersion(first) ? '有版本号' : '无版本号',
       requirement: first.requirement_title || '-',
       hours: Number(group.reduce((sum, row) => sum + toNumber(row.hours), 0).toFixed(1)),
+      deliveredHours: metric?.deliveredHours ?? 0,
+      deliveryRate: metric?.deliveryRate ?? null,
+      weightedDeliveryRate: metric?.weightedDeliveryRate ?? null,
+      fullCredit: isFullCreditRecord(first),
+      standardHours: metric?.standardHours ?? 0,
+      weeks: [...new Set(group.map(record => taskWeekLabel(analysisScopeTasks.value.find(task => task.id === record.task_id))))].filter(week => week !== '-'),
       progress,
-      completed: progress === 100
+      completed: progress != null && progress >= 100
     }
-  }).sort((a, b) => (b.progress ?? -1) - (a.progress ?? -1) || b.hours - a.hours)
+  }))
   return {
     total: Number(total.toFixed(1)),
     recordCount: records.length,
-    requirementCount: new Set(records.map(requirementKey)).size,
-    taskCount: new Set(records.map(r => r.task_id)).size,
+    requirementCount: new Set(records.filter(rec => !isFullCreditRecord(rec)).map(requirementKey)).size,
+    taskCount: taskRows.length,
     avgRecordHours: records.length ? Number((total / records.length).toFixed(1)) : 0,
     avgRequirementHours: requirementRows.length ? Number((total / requirementRows.length).toFixed(1)) : 0,
-    weightedProgress: weightedProgress(records),
     roleTotals: Object.fromEntries(roleStore.list.map(role => [role.key, Number((roleTotals[role.key] || 0).toFixed(1))])),
     pmRows,
     staffRows,
@@ -996,14 +1068,35 @@ const analysisData = computed(() => {
   }
 })
 
-const analysisDialogTitle = computed(() => `${statsScopeTitle.value}｜${analysisDimensionMeta.value.label} 数据分析`)
+const analysisScopeLabel = computed(() => {
+  const person = analysisStaffId.value ? analysisScopeCapacity.value?.units?.find(unit => String(unit.staffId) === analysisStaffId.value)?.staffName : ''
+  return `${analysisDimensionMeta.value.label}${person ? ` · ${person}` : ''}`
+})
+const analysisDialogTitle = computed(() => `${analysisPeriodTitle.value}｜${analysisScopeLabel.value}工时明细`)
+const analysisGroupTabs = computed(() => [
+  { key: 'pm', label: 'AI产品经理', rows: analysisData.value.pmRows, roles: true, requirements: true },
+  { key: 'task', label: '周期', rows: analysisData.value.taskRows, roles: true, requirements: true },
+  { key: 'version', label: '版本', rows: analysisData.value.versionRows, roles: true, weeks: true, requirements: true },
+  { key: 'requirement', label: '需求', rows: analysisData.value.requirementRows, roles: true },
+  { key: 'keyword', label: '关键词', rows: analysisData.value.keywordRows, requirements: true },
+  { key: 'quality', label: '数据质量', rows: analysisData.value.qualityRows }
+])
+const analysisProgressTabs = computed(() => [
+  { key: 'versioned', label: '有效工时（版本及五类）', rows: analysisVersionedRows.value },
+  { key: 'noVersion', label: '无版本号版本', rows: analysisNoVersionRows.value },
+  { key: 'progress', label: '需求进度', rows: analysisData.value.progressRows }
+])
+function analysisExportVersion() {
+  return analysisActiveTab.value === 'records' ? analysisVersionType.value
+    : ['versioned', 'noVersion'].includes(analysisActiveTab.value) ? analysisActiveTab.value : ''
+}
 
 const analysisTopRows = computed(() => ({
   period: [...analysisData.value.taskRows].sort((a, b) => b.total - a.total)[0],
-  pm: analysisData.value.pmRows[0],
-  staff: analysisData.value.staffRows[0],
-  requirement: analysisData.value.requirementRows[0],
-  version: analysisData.value.versionRows[0],
+  pm: [...analysisData.value.pmRows].sort((a, b) => b.total - a.total)[0],
+  staff: [...analysisData.value.staffRows].sort((a, b) => b.total - a.total)[0],
+  requirement: [...analysisData.value.requirementRows].sort((a, b) => b.total - a.total)[0],
+  version: [...analysisData.value.versionRows].sort((a, b) => b.total - a.total)[0],
   keyword: analysisData.value.keywordRows[0],
   combo: analysisData.value.roleComboRows[0]
 }))
@@ -1030,34 +1123,50 @@ const analysisRoleSummaryText = computed(() => {
   return `${roleStore.list.map(role => `${role.name} ${Number(analysisData.value.roleTotals[role.key] || 0).toFixed(1)}h`).join('，')}。`
 })
 
-async function openAnalysisDialog(dimension = 'total', sourceType = '', demandSourceId = '') {
+async function openAnalysisDialog(dimension = 'total', sourceType = '', demandSourceId = '', staffId = '') {
   analysisDimension.value = dimension
   analysisSourceType.value = sourceType
   analysisDemandSourceId.value = demandSourceId
+  analysisStaffId.value = String(staffId || '')
+  analysisVersionType.value = 'all'
+  analysisRecordScope.value = 'current'
+  analysisCustomYear.value = selectedYear.value
+  analysisCustomQuarter.value = selectedQuarter.value
+  analysisCustomTaskId.value = effectiveTaskId.value
+  analysisActiveTab.value = 'staff'
+  ANALYSIS_PAGE_KEYS.forEach(resetAnalysisPage)
   analysisDialogVisible.value = true
-  await loadProgressDetails('all')
+}
+
+function analysisPeriodParams(scope) {
+  const custom = scope === 'custom'
+  return {
+    scope: scope === 'all' ? 'all' : 'current',
+    year: custom ? analysisCustomYear.value : selectedYear.value,
+    quarter: custom ? analysisCustomQuarter.value : selectedQuarter.value,
+    taskId: custom ? analysisCustomTaskId.value : effectiveTaskId.value
+  }
 }
 
 async function loadProgressDetails(scope = 'all') {
   const params = {
-    scope,
-    year: selectedYear.value,
-    quarter: selectedQuarter.value,
-    taskId: effectiveTaskId.value,
+    ...analysisPeriodParams(scope),
     sourceType: analysisSourceType.value,
-    demandSourceId: analysisDemandSourceId.value
+    role: analysisDimensionMeta.value.role,
+    demandSourceId: analysisDemandSourceId.value,
+    staffId: analysisStaffId.value
   }
   await statsStore.fetchProgressDetails(params)
 }
 
-function downloadProgressDetails(scope = 'all') {
+function downloadProgressDetails(scope = 'all', versionType = '', roleKey = '') {
   const params = new URLSearchParams({
-    scope,
-    year: String(selectedYear.value),
-    quarter: selectedQuarter.value,
-    taskId: effectiveTaskId.value,
+    ...analysisPeriodParams(scope),
     sourceType: analysisSourceType.value,
-    demandSourceId: analysisDemandSourceId.value
+    role: roleKey || analysisDimensionMeta.value.role,
+    versionType: versionType === 'noVersion' ? 'no_version' : versionType,
+    demandSourceId: analysisDemandSourceId.value,
+    staffId: analysisStaffId.value
   })
   const base = api.defaults.baseURL || '/api'
   const url = `${base}/stats/export.xlsx?${params.toString()}`
@@ -1068,18 +1177,15 @@ function downloadProgressDetails(scope = 'all') {
   link.click()
 }
 
-function openProductAnalysis(demandSourceId = '') {
-  productSourceFilter.value = demandSourceId ? (statsStore.demandSources.find(source => source.id === demandSourceId)?.name || '') : ''
-  openAnalysisDialog('ai_pm', 'product_manager', demandSourceId)
-}
-
 function openProgressList(roleKey = '', versionType = '') {
+  progressListRoleKey.value = roleKey
+  progressListVersionType.value = versionType
   const role = roleKey ? roleStore.list.find(item => item.key === roleKey) : null
-  const versionLabel = versionType === 'versioned' ? '普通版本' : versionType === 'noVersion' ? '无版本号' : ''
+  const versionLabel = versionType === 'versioned' ? '有效工时' : versionType === 'noVersion' ? '普通无版本' : ''
   progressListTitle.value = `${role ? `${role.name}` : analysisDimensionMeta.value.label}${versionLabel ? ` · ${versionLabel}` : ''}需求进度明细`
   progressListRows.value = analysisData.value.progressRows.filter(row => {
-    const roleMatch = !role || row.role === role.name || row.role === role.key
-    const versionMatch = !versionType || (versionType === 'versioned' ? row.versionType === '有版本号' : row.versionType === '无版本号')
+    const roleMatch = !role || row.roleKey === role.key
+    const versionMatch = !versionType || (versionType === 'versioned' ? row.versionType !== '无版本号' : row.versionType === '无版本号')
     return roleMatch && versionMatch
   })
   resetAnalysisPage('progressModal')
@@ -1109,445 +1215,13 @@ function openWorkloadReportPage(dimension = 'total') {
   if (!opened) ElMessage.info('浏览器拦截了新窗口，请允许弹窗后重试')
 }
 
-/* ========== 明细表：按 PM 分组的扁平数据 + 合并单元格（REQ-13 + REQ-30 需求合并） ========== */
-const flatTableData = computed(() => {
-  const pmDist = statsStore.pmDistribution || []
-  const rows = []
-  for (const pm of pmDist) {
-    const recs = pm.records || []
-    if (recs.length === 0) {
-      rows.push({
-        pmName: pm.name,
-        pmRowSpan: 1,
-        pmTotalRowSpan: 0,
-        reqRowSpan: 1,
-        version: '-',
-        requirement_title: '（汇总）',
-        staffName: '-',
-        role: '-',
-        roleRaw: '-',
-        hours: pm.total.toFixed(1),
-        pmTotal: pm.total.toFixed(1),
-        isTotalRow: false
-      })
-    } else {
-      // REQ-30: 默认按 requirement_title + version 排序；pmSort 模式下保持后端工时排序
-      let sortedRecs
-      if (pmSortOrder.value) {
-        // 后端已按工时排好序，直接使用
-        sortedRecs = [...recs]
-      } else {
-        sortedRecs = [...recs].sort((a, b) => {
-          const titleA = a.requirement_title || ''
-          const titleB = b.requirement_title || ''
-          const cmp = titleA.localeCompare(titleB, 'zh-CN')
-          if (cmp !== 0) return cmp
-          return (a.version || '').localeCompare(b.version || '')
-        })
-      }
-
-      const totalRows = sortedRecs.length + 1  // +1 for total row
-
-      // 构建行数据
-      const recRows = []
-      for (let i = 0; i < sortedRecs.length; i++) {
-        const roleKey = normalizeRole(sortedRecs[i].role)
-        recRows.push({
-          pmName: pm.name,
-          pmRowSpan: i === 0 ? totalRows : 0,
-          pmTotalRowSpan: 0,
-          reqRowSpan: 1,
-          versionRowSpan: 1,
-          version: sortedRecs[i].version || '-',
-          requirement_title: sortedRecs[i].requirement_title || '-',
-          staffName: sortedRecs[i].staffName || '-',
-          role: roleDisplay(roleKey, true),
-          roleRaw: roleKey,
-          delivery_progress: sortedRecs[i].delivery_progress,
-          hours: parseFloat(sortedRecs[i].hours || 0).toFixed(1),
-          pmTotal: '',
-          isTotalRow: false
-        })
-      }
-
-      // 从后往前计算 reqRowSpan（需求名称合并）
-      for (let i = recRows.length - 1; i >= 0; i--) {
-        if (i < recRows.length - 1 && recRows[i].requirement_title === recRows[i + 1].requirement_title) {
-          recRows[i].reqRowSpan = recRows[i + 1].reqRowSpan + 1
-          recRows[i + 1].reqRowSpan = 0
-        }
-      }
-
-      // 从后往前计算 versionRowSpan（版本号合并）
-      for (let i = recRows.length - 1; i >= 0; i--) {
-        if (i < recRows.length - 1 && recRows[i].version === recRows[i + 1].version && recRows[i].version !== '-') {
-          recRows[i].versionRowSpan = recRows[i + 1].versionRowSpan + 1
-          recRows[i + 1].versionRowSpan = 0
-        }
-      }
-
-      rows.push(...recRows)
-
-      // PM 总计行
-      rows.push({
-        pmName: pm.name,
-        pmRowSpan: 0,
-        pmTotalRowSpan: 0,
-        reqRowSpan: 0,
-        version: '',
-        requirement_title: '',
-        staffName: '',
-        role: '',
-        roleRaw: '',
-        hours: '',
-        pmTotal: pm.total.toFixed(1),
-        isTotalRow: true
-      })
-    }
+/* ========== 研发图表姓名入口 ========== */
+function selectEngineeringChartManager(name) {
+  const pm = pmStore.list.find(item => item.name === name)
+  if (pm?.token) {
+    const routeData = router.resolve({ path: `/pm/view/${pm.token}`, query: { year: selectedYear.value, quarter: 0, month: 0 } })
+    window.open(routeData.href, '_blank', 'noopener')
   }
-  return rows
-})
-
-/** 部门全观 — 每个 PM 分组内的工时排名（金银铜） */
-function getDeptMedalRank(row) {
-  if (row.isTotalRow) return -1
-  const pmName = row.pmName
-  const allRows = flatTableData.value.filter(r => r.pmName === pmName && !r.isTotalRow)
-  const uniqueHours = [...new Set(allRows.map(r => parseFloat(r.hours || 0)))]
-    .sort((a, b) => b - a)
-    .slice(0, 3)
-  const h = parseFloat(row.hours || 0)
-  if (h <= 0) return -1
-  const idx = uniqueHours.indexOf(h)
-  return idx >= 0 && idx < 3 ? idx : -1
-}
-
-/** PM 点击选中高亮 */
-const selectedPM = ref('')
-function togglePM(pmName) {
-  selectedPM.value = selectedPM.value === pmName ? '' : pmName
-}
-function rowClassName({ row }) {
-  const isSelected = selectedPM.value && row.pmName === selectedPM.value
-  if (row.isTotalRow && isSelected) return 'dt-total-row dt-row-selected'
-  if (row.isTotalRow) return 'dt-total-row'
-  if (isSelected) return 'dt-row-selected'
-  return ''
-}
-
-/** PM列 + 版本号列 + 需求名称列 + 总计列 合并 */
-function pmSpanMethod({ row, rowIndex, columnIndex }) {
-  if (columnIndex === 1) {
-    // 产品经理列
-    if (row.pmRowSpan > 0) {
-      return { rowspan: row.pmRowSpan, colspan: 1 }
-    }
-    return { rowspan: 0, colspan: 0 }
-  }
-  // 版本号列合并（columnIndex === 2）
-  if (columnIndex === 2 && !row.isTotalRow) {
-    if (row.versionRowSpan > 0) {
-      return { rowspan: row.versionRowSpan, colspan: 1 }
-    }
-    if (row.versionRowSpan === 0) {
-      return { rowspan: 0, colspan: 0 }
-    }
-  }
-  // 需求名称列合并（columnIndex === 3）
-  if (columnIndex === 3 && !row.isTotalRow) {
-    if (row.reqRowSpan > 0) {
-      return { rowspan: row.reqRowSpan, colspan: 1 }
-    }
-    if (row.reqRowSpan === 0) {
-      return { rowspan: 0, colspan: 0 }
-    }
-  }
-  // 总计行合并（v1.4.2：从版本号列合并到工时列，共5列覆盖全部剩余列）
-  if (row.isTotalRow) {
-    if (columnIndex === 2) {
-      return { rowspan: 1, colspan: 5 }
-    }
-    if (columnIndex >= 3 && columnIndex <= 6) {
-      return { rowspan: 0, colspan: 0 }
-    }
-  }
-}
-
-/* ========== Canvas 绘制（REQ-11 图表清晰度改善） ========== */
-const chartRef = ref(null)
-const engineeringChartRef = ref(null)
-const departmentProductChartRef = ref(null)
-const pmLabelAreas = ref([])  // v3.2.1: 存储 PM 标签点击区域
-
-function drawChart(targetCanvas = chartRef.value) {
-  const canvas = targetCanvas && typeof targetCanvas.getContext === 'function' ? targetCanvas : chartRef.value
-  if (!canvas) return
-  const ctx = canvas.getContext('2d')
-  const data = chartData.value
-  if (data.length === 0) {
-    canvas.width = canvas.parentElement?.clientWidth || 800
-    canvas.height = CANVAS_HEIGHT
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-    ctx.fillStyle = '#86909C'
-    ctx.font = '14px "Inter", "Microsoft YaHei", sans-serif'
-    ctx.textAlign = 'center'
-    ctx.fillText('暂无数据', canvas.width / 2, CANVAS_HEIGHT / 2)
-    return
-  }
-
-  const dpr = window.devicePixelRatio || 1
-  const containerWidth = canvas.parentElement?.clientWidth || 800
-  canvas.width = containerWidth * dpr
-  canvas.height = CANVAS_HEIGHT * dpr
-  canvas.style.width = containerWidth + 'px'
-  canvas.style.height = CANVAS_HEIGHT + 'px'
-  ctx.scale(dpr, dpr)
-
-  const W = containerWidth
-  const H = CANVAS_HEIGHT
-  const padding = { top: 60, right: 30, bottom: 55, left: 55 }
-  const chartW = W - padding.left - padding.right
-  const chartH = H - padding.top - padding.bottom
-
-  ctx.clearRect(0, 0, W, H)
-
-  // 计算最大值
-  const areas = []  // v3.2.1: PM 标签点击区域收集
-  const maxVal = Math.max(...data.map(d => d.total), 1)
-  const yScale = chartH / (maxVal * 1.2)
-
-  const groupCount = data.length
-  const bars = barMeta.value
-  const groupWidth = chartW / groupCount
-
-  // 绘制 Y 轴网格线
-  const GRID_COUNT = 5
-  ctx.strokeStyle = '#F2F3F5'
-  ctx.lineWidth = 1
-  ctx.textAlign = 'right'
-  for (let i = 0; i <= GRID_COUNT; i++) {
-    const val = Math.round(maxVal * 1.2 / GRID_COUNT * i)
-    const y = padding.top + chartH - val * yScale
-    ctx.beginPath()
-    ctx.moveTo(padding.left, y)
-    ctx.lineTo(W - padding.right, y)
-    ctx.stroke()
-    // Y 轴标签 — 字体不小于 13px（REQ-11 清晰度要求）
-    ctx.fillStyle = '#86909C'
-    ctx.font = '13px "Inter", "Microsoft YaHei", sans-serif'
-    ctx.fillText(val.toString(), padding.left - 8, y + 5)
-  }
-
-  // 绘制柱形
-  data.forEach((d, gi) => {
-    const visibleBars = hideZeroValueBars.value
-      ? bars.filter(bar => Number(d[bar.key] || 0) > 0)
-      : bars
-    const barWidth = Math.max(Math.min(groupWidth / (STANDARD_BAR_SLOT_COUNT + 1.5), 40), 8)
-    const groupGap = (groupWidth - barWidth * visibleBars.length) / 2
-    const groupX = padding.left + gi * groupWidth + groupGap
-
-    visibleBars.forEach((bar, bi) => {
-      const key = bar.key
-      const val = d[key] || 0
-      const barH = val * yScale
-      const x = groupX + bi * barWidth
-      const y = padding.top + chartH - barH
-
-      // 柱形（圆角顶部）
-      ctx.fillStyle = bar.color
-      ctx.beginPath()
-      const r = 3
-      if (barH > r) {
-        ctx.moveTo(x, y + r)
-        ctx.arcTo(x, y, x + barWidth, y, r)
-        ctx.arcTo(x + barWidth, y, x + barWidth, y + barH, r)
-        ctx.lineTo(x + barWidth, padding.top + chartH)
-        ctx.lineTo(x, padding.top + chartH)
-      } else if (barH > 0) {
-        ctx.rect(x, y, barWidth, barH)
-      }
-      ctx.closePath()
-      ctx.fill()
-
-      // 柱顶标签 — 纵排：上方角色名 / 下方数值（v3.3.0 防遮挡）
-      ctx.fillStyle = '#1D2129'
-      ctx.font = 'bold 10px "Inter", "Microsoft YaHei", sans-serif'
-      ctx.textAlign = 'left'
-      const labelBottomY = val > 0 ? y - 4 : padding.top + chartH - 8
-      const labelTopY = labelBottomY - 12
-      ctx.fillText(bar.label, x, labelTopY)
-      ctx.fillText(val.toFixed(0), x, labelBottomY)
-    })
-
-    // X 轴标签（PM 名称）— v3.2.1: 可点击样式
-    ctx.fillStyle = '#1D2129'
-    ctx.font = '13px "Inter", "Microsoft YaHei", sans-serif'
-    ctx.textAlign = 'center'
-    const labelX = padding.left + (gi + 0.5) * groupWidth
-    const displayName = d.name.length > 5 ? d.name.substring(0, 5) + '...' : d.name
-    const labelW = ctx.measureText(displayName).width
-    const labelY = padding.top + chartH + 22
-    ctx.fillText(displayName, labelX, labelY)
-    // 存储标签点击区域
-    areas.push({ name: d.name, x: labelX - labelW / 2, y: labelY - 13, width: labelW, height: 16 })
-  })
-  pmLabelAreas.value = areas
-
-  // 图例
-  const legendY = 18
-  const legendMarkerSize = 10
-  const legendMarkerGap = 5
-  const legendItemGap = 18
-  const legendControlReserve = 112
-  ctx.font = '13px "Inter", "Microsoft YaHei", sans-serif'
-  const legendItemWidths = bars.map(bar => legendMarkerSize + legendMarkerGap + ctx.measureText(bar.label).width)
-  const legendWidth = legendItemWidths.reduce((sum, width) => sum + width, 0) + legendItemGap * Math.max(bars.length - 1, 0)
-  const legendRight = W - padding.right - legendControlReserve
-  let legendX = Math.max(padding.left, legendRight - legendWidth)
-  bars.forEach((bar, i) => {
-    ctx.fillStyle = bar.color
-    ctx.fillRect(legendX, legendY - 7, legendMarkerSize, legendMarkerSize)
-    ctx.fillStyle = '#4E5969'
-    ctx.textAlign = 'left'
-    ctx.fillText(bar.label, legendX + legendMarkerSize + legendMarkerGap, legendY + 2)
-    legendX += legendItemWidths[i] + legendItemGap
-  })
-}
-
-function drawEngineeringChart() {
-  if (activeTab.value === 'engineeringHours') drawChart(engineeringChartRef.value)
-}
-
-function drawProductDepartmentChart() {
-  if (activeTab.value !== 'department') return
-  const canvas = departmentProductChartRef.value
-  if (!canvas) return
-  const rows = productDemandRows.value
-  const dpr = window.devicePixelRatio || 1
-  const containerWidth = canvas.parentElement?.clientWidth || 800
-  canvas.width = containerWidth * dpr
-  canvas.height = CANVAS_HEIGHT * dpr
-  canvas.style.width = `${containerWidth}px`
-  canvas.style.height = `${CANVAS_HEIGHT}px`
-  const ctx = canvas.getContext('2d')
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-  const W = containerWidth
-  const H = CANVAS_HEIGHT
-  const padding = { top: 60, right: 24, bottom: 55, left: 50 }
-  const chartW = Math.max(W - padding.left - padding.right, 1)
-  const chartH = H - padding.top - padding.bottom
-  const maxVal = Math.max(...rows.map(row => Number(row.product || 0)), 1)
-  const yScale = chartH / (maxVal * 1.2)
-  const gridCount = 5
-  ctx.clearRect(0, 0, W, H)
-  ctx.strokeStyle = '#F2F3F5'
-  ctx.lineWidth = 1
-  ctx.textAlign = 'right'
-  for (let i = 0; i <= gridCount; i++) {
-    const val = Math.round(maxVal * 1.2 / gridCount * i)
-    const y = padding.top + chartH - val * yScale
-    ctx.beginPath()
-    ctx.moveTo(padding.left, y)
-    ctx.lineTo(W - padding.right, y)
-    ctx.stroke()
-    ctx.fillStyle = '#86909C'
-    ctx.font = '13px "Inter", "Microsoft YaHei", sans-serif'
-    ctx.fillText(String(val), padding.left - 8, y + 5)
-  }
-
-  const groupWidth = chartW / Math.max(rows.length, 1)
-  // 右图数据分组较少，柱宽参照左侧研发图的标准单柱宽度，避免因 4 组数据被横向放大。
-  const leftChartWidth = chartRef.value?.parentElement?.clientWidth || containerWidth
-  const referenceGroupWidth = leftChartWidth / Math.max(chartData.value.length, 1)
-  const barWidth = Math.max(Math.min(referenceGroupWidth / (STANDARD_BAR_SLOT_COUNT + 1.5), 40), 8)
-  rows.forEach((row, index) => {
-    const value = Number(row.product || 0)
-    const barVisible = !hideZeroValueBars.value || value > 0
-    const x = padding.left + index * groupWidth + (groupWidth - barWidth) / 2
-    const barHeight = value * yScale
-    const y = padding.top + chartH - barHeight
-    if (barVisible && barHeight > 0) {
-      ctx.fillStyle = row.color || productSourceColor(row.name)
-      ctx.beginPath()
-      const radius = 3
-      ctx.moveTo(x, y + radius)
-      ctx.arcTo(x, y, x + barWidth, y, radius)
-      ctx.arcTo(x + barWidth, y, x + barWidth, y + barHeight, radius)
-      ctx.lineTo(x + barWidth, padding.top + chartH)
-      ctx.lineTo(x, padding.top + chartH)
-      ctx.closePath()
-      ctx.fill()
-    }
-    ctx.fillStyle = '#1D2129'
-    ctx.font = 'bold 10px "Inter", "Microsoft YaHei", sans-serif'
-    ctx.textAlign = 'center'
-    ctx.fillText(value.toFixed(0), x + barWidth / 2, barVisible && value > 0 ? y - 7 : padding.top + chartH - 8)
-    ctx.font = '13px "Inter", "Microsoft YaHei", sans-serif'
-    ctx.fillText(row.name, x + barWidth / 2, padding.top + chartH + 22)
-  })
-
-  const legendY = 18
-  let legendX = padding.left
-  ctx.font = '13px "Inter", "Microsoft YaHei", sans-serif'
-  rows.forEach(row => {
-    const label = row.name
-    const itemWidth = 10 + 5 + ctx.measureText(label).width
-    ctx.fillStyle = productSourceColor(label)
-    ctx.fillRect(legendX, legendY - 7, 10, 10)
-    ctx.fillStyle = '#4E5969'
-    ctx.textAlign = 'left'
-    ctx.fillText(label, legendX + 15, legendY + 2)
-    legendX += itemWidth + 16
-  })
-}
-
-function onProductDepartmentChartClick(event) {
-  const canvas = departmentProductChartRef.value
-  const rows = productDemandRows.value
-  if (!canvas || !rows.length) return
-  const rect = canvas.getBoundingClientRect()
-  const padding = { left: 50, right: 24 }
-  const groupWidth = (rect.width - padding.left - padding.right) / rows.length
-  const index = Math.floor((event.clientX - rect.left - padding.left) / groupWidth)
-  const row = rows[index]
-  if (row) openProductAnalysis(row.id)
-}
-
-/* v3.2.1: Canvas 点击/悬停事件 — PM 标签跳转 */
-function onChartClick(event) {
-  const canvas = chartRef.value
-  if (!canvas) return
-  const rect = canvas.getBoundingClientRect()
-  const dpr = window.devicePixelRatio || 1
-  const x = (event.clientX - rect.left)
-  const y = (event.clientY - rect.top)
-  for (const area of pmLabelAreas.value) {
-    if (x >= area.x && x <= area.x + area.width && y >= area.y && y <= area.y + area.height) {
-      const pm = pmStore.list.find(p => p.name === area.name)
-      if (pm?.token) {
-        const routeData = router.resolve({ path: `/pm/view/${pm.token}`, query: { year: selectedYear.value, quarter: 0, month: 0 } })
-        window.open(routeData.href, '_blank')
-      }
-      return
-    }
-  }
-}
-
-function onChartMouseMove(event) {
-  const canvas = chartRef.value
-  if (!canvas) return
-  const rect = canvas.getBoundingClientRect()
-  const x = (event.clientX - rect.left)
-  const y = (event.clientY - rect.top)
-  let isOverLabel = false
-  for (const area of pmLabelAreas.value) {
-    if (x >= area.x && x <= area.x + area.width && y >= area.y && y <= area.y + area.height) {
-      isOverLabel = true
-      break
-    }
-  }
-  canvas.style.cursor = isOverLabel ? 'pointer' : 'default'
 }
 
 /* ========== Tab 2: 研发聚焦 ========== */
@@ -1608,16 +1282,7 @@ watch(activeTab, async (tab) => {
     } else if (viewMode.value === 'all') {
       await loadAllPersonalData()
     }
-  } else if (tab === 'productHours' || tab === 'engineeringHours') {
-    await statsStore.fetch({
-      year: selectedYear.value,
-      quarter: selectedQuarter.value,
-      taskId: effectiveTaskId.value
-    })
-    if (tab === 'engineeringHours') {
-      await nextTick()
-      drawEngineeringChart()
-    }
+
   } else if (tab === 'product') {
     // 切换到产品聚焦 Tab 时，刷新部门统计 + PM 列表
     await statsStore.fetch({
@@ -1729,18 +1394,16 @@ const pmExpandedTaskIds = ref([])
 const pmAllExpandedMap = ref({})
 
 /** PM 聚焦信息 */
-const pmFocusInfo = computed(() => statsStore.pmFocusData)
+const pmFocusInfo = computed(() => pmList.value.some(pm => String(pm.id) === String(selectedPmId.value)) ? statsStore.pmFocusData : null)
 
-/** PM 列表：当前非离职 PM + 所选周期仍有历史数据的离职 PM */
+/** Only current non-resigned attribution PMs with records in the selected scope. */
 const pmList = computed(() => {
-  const map = new Map()
-  for (const pm of pmStore.activePms) map.set(pm.id, pm)
-  for (const item of statsStore.pmDistribution || []) {
-    if (item.id && !map.has(item.id)) {
-      map.set(item.id, { id: item.id, name: item.name })
-    }
-  }
-  return [...map.values()]
+  const active = new Map(pmStore.activePms.map(pm => [String(pm.id), pm]))
+  return (statsStore.pmDistribution || []).filter(item => item.records?.length && active.has(String(item.id)))
+    .map(item => active.get(String(item.id)))
+})
+watch(pmList, people => {
+  if (selectedPmId.value && !people.some(pm => String(pm.id) === String(selectedPmId.value))) selectedPmId.value = ''
 })
 
 /** 选择产品经理 */
@@ -1855,7 +1518,6 @@ function getVisiblePmTasks(pmData) {
 
 /** 个人信息 */
 const personalInfo = computed(() => statsStore.personalData)
-const currentStaffList = computed(() => statsStore.currentStaff || statsStore.staff || [])
 
 /** 人员头像首字 */
 function getInitial(name) {
@@ -1892,67 +1554,25 @@ function formatPM(val) {
 
 /* ========== v2.0.0: 全量导出 ========== */
 function exportStatsData() {
-  const pmDist = statsStore.pmDistribution || []
-  if (pmDist.length === 0) {
-    ElMessage.warning('暂无数据可导出')
-    return
+  const records = sortRecordsByCreatedAt(periodRecords.value)
+  if (!records.length) { ElMessage.warning('暂无数据可导出'); return }
+  const summaryRows = [['范围', '有效已交付/h', '应交付工时/h（工作日×8）', '有效交付率', '加权交付率', '需求填报进度', '进度覆盖']]
+  for (const [name, metric] of [['部门', departmentDelivery.value], ...roleStore.list.map(role => [role.name, roleDelivery.value[role.key]])]) {
+    summaryRows.push([name, metric?.deliveredHours ?? 0, metric?.standardHours ?? 0, metric?.deliveryRate == null ? '不适用' : String(metric.deliveryRate) + '%', weightedRateText(metric), metric?.requirementProgress == null ? '—' : `${metric.requirementProgress}%`, metric?.progressCoverage == null ? '—' : `${metric.progressCoverage}%`])
   }
-
-  const sheets = []
-
-  // Sheet 1: 角色工时汇总
-  const summaryHeader = ['角色', '总工时(小时)']
-  const summaryData = [summaryHeader]
-  const rt = roleTotals.value
-  roleStore.list.forEach(role => summaryData.push([role.name, rt[role.key] || 0]))
-  summaryData.push(['合计', roleStore.list.reduce((sum, role) => sum + Number(rt[role.key] || 0), 0)])
-  sheets.push({ name: '角色工时汇总', data: summaryData, colWidths: [12, 14] })
-
-  // Sheet 2: AI产品经理明细表（与页面表格一致）
-  const detailHeader = ['序号', 'AI产品经理', '版本号', '需求名称', '人员', '角色', '工时(小时)', '合计']
-  const detailData = [detailHeader]
-  let idx = 1
-  for (const pm of pmDist) {
-    const recs = pm.records || []
-    if (recs.length === 0) {
-      detailData.push([idx++, pm.name, '-', '（汇总）', '-', '-', pm.total.toFixed(1), pm.total.toFixed(1)])
-    } else {
-      for (const rec of recs) {
-        detailData.push([
-          idx++,
-          pm.name,
-          rec.version || '-',
-          rec.requirement_title || '-',
-          rec.staffName || '-',
-          roleDisplay(rec.role),
-          parseFloat(rec.hours || 0).toFixed(1),
-          ''
-        ])
-      }
-      detailData.push(['', pm.name + ' 合计', '', '', '', '', '', pm.total.toFixed(1)])
-    }
-  }
-  sheets.push({ name: 'AI产品经理工时明细', data: detailData, colWidths: [8, 16, 14, 30, 10, 12, 12, 10] })
-
-  // Sheet 3: AI产品经理柱状图数据
-  const chartHeader = ['AI产品经理', ...roleStore.list.map(role => `${role.name}(小时)`), '总计(小时)']
-  const chartDataExport = [chartHeader]
-  for (const d of chartData.value) {
-    chartDataExport.push([d.name, ...roleStore.list.map(role => roleSummaryHours(d, role.key)), d.total || 0])
-  }
-  sheets.push({ name: 'AI产品经理柱状图数据', data: chartDataExport, colWidths: [16, ...roleStore.list.map(() => 18), 12] })
-
-  const filename = `周期统计_${selectedYear.value}年${selectedQuarter.value}.xlsx`
+  const detailRows = rows => [['人员', '岗位', '版本号', '需求', '填写工时/h', '创建时间'], ...rows.map(record => [record.staff?.name || '-', roleDisplay(record.staff?.role || record.role), hasDeliveryVersion(record) ? record.version : '无版本号', record.requirement_title || '-', Number(record.hours || 0), formatRecordCreatedAt(record.created_at)])]
+  const sheets = [
+    { name: '交付汇总', data: summaryRows, colWidths: [24, 18, 26, 18, 18, 18, 18] },
+    { name: '有效工时（版本及五类）', data: detailRows(records.filter(hasDeliveryVersion)), colWidths: [16, 18, 18, 42, 18, 26] },
+    { name: '无版本工时（仅记录）', data: detailRows(records.filter(record => !hasDeliveryVersion(record))), colWidths: [16, 18, 18, 42, 18, 26] },
+    { name: '口径说明', data: [['统计范围', selectedPeriodRangeText.value], ['说明', DELIVERY_NOTE], ['日历状态', departmentDelivery.value?.calendarStatus || '待核实']], colWidths: [20, 105] }
+  ]
+  const filename = '周期统计_' + selectedYear.value + '年' + selectedQuarter.value + '.xlsx'
   const blob = generateAndDownloadExcel({ filename, sheets })
-
-  uploadExcelToServer(blob, {
-    source_page: 'stats',
-    upload_type: 'export',
-    filename
-  }).catch(() => {})
-
+  uploadExcelToServer(blob, { source_page: 'stats', upload_type: 'export', filename }).catch(() => {})
   ElMessage.success('导出成功')
 }
+
 </script>
 
 <template>
@@ -1978,10 +1598,10 @@ function exportStatsData() {
     <!-- 年度 / 季度 / 任务周期 三联筛选器（两个 Tab 共享，REQ-12） -->
     <div class="dt-period-filter">
       <div class="dt-period-filter-row">
-        <el-select v-model="selectedYear" style="width:120px;">
+        <el-select v-model="selectedYear" class="dt-year-select" aria-label="统计年份" style="width:120px;">
           <el-option v-for="y in yearOptions" :key="y" :label="`${y}年`" :value="y" />
         </el-select>
-        <el-select v-model="selectedQuarter" style="width:100px;">
+        <el-select v-model="selectedQuarter" class="dt-quarter-select" aria-label="统计季度" style="width:100px;">
           <el-option v-for="q in quarterOptions" :key="q" :label="q" :value="q" />
         </el-select>
         <el-select v-model="selectedTaskId" class="dt-task-period-select" placeholder="选择任务周期">
@@ -2023,244 +1643,58 @@ function exportStatsData() {
 
       <el-tab-pane label="部门展示" name="department">
 
-        <!-- 概要卡片（v1.4.2：总工时→角色→通用，排序调整） -->
-        <div
-          class="dt-stat-cards dt-stat-cards-single-row"
-          :style="{ '--dt-stat-card-count': departmentSummaryCardCount }"
-        >
-          <div class="dt-stat-card dt-stat-card-clickable" @click="openAnalysisDialog('total')">
-            <div class="dt-stat-card-label">{{ filterLabel }} 总工时</div>
-            <div class="dt-stat-card-value" style="color:#F53F3F;">
-              {{ statsStore.summary.totalHours?.toFixed(1) || '0' }}
-              <span class="dt-stat-card-unit">小时</span>
+        <div class="dt-summary-strip" :style="{ '--delivery-card-count': roleStore.list.length + 1 }">
+          <div class="dt-delivery-cards">
+            <StatsHoursCard :label="`${filterLabel} · 部门`" :hours="departmentDelivery?.recordedHours" :metric="departmentDelivery" color="#F53F3F" background-color="#effafa" hover-background-color="#e3f6f6" :class="{ 'is-selected-scope': mainDimension === 'total' && !mainStaffId }" @select="selectStatsCard('total')" />
+            <StatsHoursCard v-for="role in roleStore.list" :key="role.key" :label="role.name" :hours="roleTotals[role.key]" :metric="roleDelivery[role.key]" :color="role.color" :class="{ 'is-selected-scope': mainDimension === role.key && !mainStaffId }" @select="selectStatsCard(role.key)" />
+          </div>
+          <StatsCountsCard :items="departmentCounts" :caption="`${filterLabel} · 部门统计`" @select="openDepartmentCount" />
+        </div>
+        <p class="dt-delivery-brief" :title="DELIVERY_NOTE">有版本普通工时及请假、培训、公司会议、出差、团建计入有效交付；普通无版本仅记录。</p>
+
+        <!-- 柱宽固定，面板按每组完整系列数分配可用宽度。 -->
+        <div class="dt-department-chart-grid" :style="departmentChartLayout">
+          <div class="dt-data-card dt-department-chart-card" data-testid="department-engineering-chart">
+            <div class="dt-chart-card-heading">
+              <h3>AI研发工时分布 · 按AI产品经理归属人 — {{ filterLabel }}</h3>
+              <label class="dt-product-demand-zero-toggle">隐藏零值 <el-switch v-model="hideZeroValueBars" size="small" aria-label="隐藏零值柱状图" /></label>
             </div>
-            <el-tooltip :content="WEIGHTED_PROGRESS_TIP" placement="top">
-              <div class="dt-stat-card-progress">
-                综合进度：<span class="dt-stat-card-progress-value" style="color:#F53F3F;">{{ totalWeightedProgress === null ? '-' : `${totalWeightedProgress.toFixed(2)}%` }}</span>
-              </div>
-            </el-tooltip>
+            <ProductHoursChart expandable :rows="engineeringChartRows" :sources="engineeringChartSources" :hide-zero="hideZeroValueBars" :bar-width="CHART_BAR_WIDTH" :bar-gap="chartBarGap" aria-label="AI研发工时按产品经理归属人分布" empty-text="当前范围暂无研发工时" @select="selectEngineeringChartManager" />
           </div>
-          <div v-for="role in roleStore.list" :key="role.key" class="dt-stat-card dt-stat-card-clickable" @click="openAnalysisDialog(role.key)">
-            <div class="dt-stat-card-label">{{ filterLabel }} {{ role.name }}总工时</div>
-            <div class="dt-stat-card-value" :style="{ color: role.color }">
-              {{ Number(roleTotals[role.key] || 0).toFixed(1) }}
-              <span class="dt-stat-card-unit">小时</span>
+          <div class="dt-data-card dt-department-chart-card" data-testid="department-product-chart">
+            <div class="dt-chart-card-heading">
+              <h3>AI产品经理工时分布（按人员与需求方） — {{ filterLabel }}</h3>
+              <label class="dt-product-demand-zero-toggle">隐藏零值 <el-switch v-model="hideZeroValueBars" size="small" aria-label="隐藏零值产品柱状图" /></label>
             </div>
-            <el-tooltip :content="WEIGHTED_PROGRESS_TIP" placement="top">
-              <div class="dt-stat-card-progress">
-                综合进度：<span class="dt-stat-card-progress-value" :style="{ color: role.color }">{{ roleWeightedProgress[role.key] === null ? '-' : `${roleWeightedProgress[role.key].toFixed(2)}%` }}</span>
-              </div>
-            </el-tooltip>
-          </div>
-          <div class="dt-stat-card">
-            <div class="dt-stat-card-label">{{ filterLabel }} 提交记录数</div>
-            <div class="dt-stat-card-value">{{ statsStore.summary.recordCount || 0 }}</div>
-          </div>
-          <div class="dt-stat-card dt-stat-card-clickable" @click="reqStatsDialogVisible = true">
-            <div class="dt-stat-card-label">{{ filterLabel }} 统计需求总数 <span style="font-size:11px; color:var(--color-primary);">ⓘ</span></div>
-            <div class="dt-stat-card-value">{{ reqStats.total }}</div>
-          </div>
-          <div class="dt-stat-card">
-            <div class="dt-stat-card-label">{{ filterLabel }} 收集任务数</div>
-            <div class="dt-stat-card-value">{{ statsStore.summary.taskCount || 0 }}</div>
-          </div>
-          <div class="dt-stat-card dt-stat-card-clickable" @click="staffDialogVisible = true">
-            <div class="dt-stat-card-label">{{ filterLabel }} 研发人员人数 <span style="font-size:11px; color:var(--color-primary);">ⓘ</span></div>
-            <div class="dt-stat-card-value">{{ statsStore.summary.staffCount || 0 }}</div>
+            <ProductHoursChart expandable :rows="productManagerChartRows" :sources="productChartSources" :hide-zero="hideZeroValueBars" :bar-width="CHART_BAR_WIDTH" :bar-gap="chartBarGap" @select="selectProductChartManager" />
           </div>
         </div>
 
-        <!-- 柱状图双视图：研发归属人与 AI产品需求方并列展示 -->
-        <div class="dt-department-chart-grid">
-          <div class="dt-data-card dt-department-chart-card">
-            <h3>AI研发工时分布 · 按AI产品经理归属人 — {{ filterLabel }}</h3>
-            <div class="dt-pm-chart-stage" :data-hide-zero-bars="hideZeroValueBars ? 'true' : 'false'">
-              <canvas ref="chartRef" :height="CANVAS_HEIGHT" @click="onChartClick" @mousemove="onChartMouseMove"></canvas>
-              <div class="dt-pm-chart-zero-toggle" title="开启后隐藏数值为0的柱子">
-                <span>隐藏零值</span>
-                <el-switch v-model="hideZeroValueBars" size="small" aria-label="隐藏零值柱状图" />
-              </div>
-            </div>
-          </div>
-
-          <div class="dt-data-card dt-department-chart-card">
-            <h3>AI产品工时分布 · 按需求方 — {{ filterLabel }}</h3>
-            <div class="dt-pm-chart-stage" :data-hide-zero-bars="hideZeroValueBars ? 'true' : 'false'">
-              <canvas ref="departmentProductChartRef" :height="CANVAS_HEIGHT" @click="onProductDepartmentChartClick"></canvas>
-              <div class="dt-pm-chart-zero-toggle" title="开启后隐藏数值为0的柱子">
-                <span>隐藏零值</span>
-                <el-switch v-model="hideZeroValueBars" size="small" aria-label="隐藏零值产品柱状图" />
-              </div>
-            </div>
-            <el-tooltip content="同一条产品工时多选需求方时，图表按保存的权重均摊；产品总工时只统计原始记录一次。" placement="top">
-              <div class="dt-product-demand-tip">ⓘ AI产品展示独立使用需求方维度，不进入研发归属人图。</div>
-            </el-tooltip>
-          </div>
-        </div>
-
-        <!-- 明细表（REQ-13：PM 合并单元格） -->
-        <div class="dt-data-card">
-          <!-- v3.2.0: PM 排序控件 -->
-          <div v-if="flatTableData.length > 0" style="display:flex; justify-content:space-between; align-items:center; padding:12px 16px; border-bottom:1px solid var(--color-border-light, #F2F3F5);">
-            <span style="font-size:13px; font-weight:500; color:var(--color-text-2);">AI产品经理内数据排序：</span>
-            <el-radio-group v-model="pmSortOrder" size="small" @change="loadDeptStats">
-              <el-radio-button value="">按新增顺序</el-radio-button>
-              <el-radio-button value="desc">工时降序 ↓</el-radio-button>
-              <el-radio-button value="asc">工时升序 ↑</el-radio-button>
-            </el-radio-group>
-          </div>
-          <el-skeleton v-if="statsStore.loading" :rows="4" animated />
-          <div v-else-if="flatTableData.length === 0" class="dt-empty" style="padding:40px;">
-            <div class="dt-empty-icon">📈</div>
-            <p class="dt-empty-text">所选周期暂无统计数据</p>
-          </div>
-          <el-table
-            v-else
-            :data="flatTableData"
-            :span-method="pmSpanMethod"
-            :row-class-name="rowClassName"
-            border
-          >
-            <el-table-column type="index" label="序号" width="60" align="center" />
-            <el-table-column label="AI产品经理" width="130" align="center">
-              <template #default="{ row }">
-                <span
-                  style="font-weight:600; cursor:pointer; user-select:none;"
-                  :style="{ color: selectedPM === row.pmName ? 'var(--color-primary)' : 'inherit' }"
-                  @click="togglePM(row.pmName)"
-                >{{ row.pmName }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="版本号" width="110">
-              <template #default="{ row }">
-                <template v-if="row.isTotalRow">
-                  <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
-                    <span style="font-weight:700; font-size:13px; color:var(--color-text-1);">合计</span>
-                    <span style="font-weight:800; font-size:15px; color:var(--color-primary);">{{ row.pmTotal }}小时</span>
-                  </div>
-                </template>
-                <span v-else style="font-family:var(--font-mono);">{{ row.version }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="需求名称" min-width="200" align="left" header-align="center">
-              <template #default="{ row }">
-                <span style="font-weight:500;">{{ row.requirement_title }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="人员" width="100" align="center">
-              <template #default="{ row }">
-                {{ row.staffName }}
-              </template>
-            </el-table-column>
-            <el-table-column label="角色" width="80" align="center">
-              <template #default="{ row }">
-                <span v-if="row.role && row.role !== '-'"
-                  :style="rolePillStyle(row.roleRaw)"
-                >{{ row.role }}</span>
-                <span v-else style="color:var(--color-text-4);">-</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="工时/小时" width="120" align="center">
-              <template #default="{ row }">
-                <template v-if="row.isTotalRow">
-                  <span style="font-weight:700; color:var(--color-primary);">{{ row.hours }}</span>
-                </template>
-                <template v-else>
-                  <div class="hours-cell" :class="MEDAL_CLASS[getDeptMedalRank(row)] || ''">
-                    <span class="hours-val">{{ row.hours }}</span>
-                    <span v-if="getDeptMedalRank(row) >= 0" class="medal-badge">
-                      {{ MEDAL_EMOJI[getDeptMedalRank(row)] }}
-                    </span>
-                  </div>
-                </template>
-              </template>
-            </el-table-column>
-          </el-table>
-        </div>
-      </el-tab-pane>
-
-      <!-- ===== Tab 2: AI产品经理工时 ===== -->
-      <el-tab-pane label="AI产品展示" name="productHours">
-        <div class="dt-stat-cards dt-stat-cards-single-row" :style="{ '--dt-stat-card-count': 5 }">
-          <div class="dt-stat-card dt-stat-card-clickable" @click="openProductAnalysis()">
-            <div class="dt-stat-card-label">{{ filterLabel }} AI产品经理总工时</div>
-            <div class="dt-stat-card-value" :style="{ color: PRODUCT_CARD_COLORS.total }">{{ productSummary.totalHours.toFixed(1) }} <span class="dt-stat-card-unit">小时</span></div>
-            <el-tooltip :content="WEIGHTED_PROGRESS_TIP" placement="top"><div class="dt-stat-card-progress">综合进度：<span class="dt-stat-card-progress-value" :style="{ color: PRODUCT_CARD_COLORS.total }">{{ productSummary.weightedProgress === null ? '-' : `${productSummary.weightedProgress.toFixed(2)}%` }}</span></div></el-tooltip>
-          </div>
-          <div class="dt-stat-card dt-stat-card-clickable" @click="openProductAnalysis()"><div class="dt-stat-card-label">{{ filterLabel }} 提交记录数</div><div class="dt-stat-card-value" :style="{ color: PRODUCT_CARD_COLORS.records }">{{ productSummary.recordCount }}</div></div>
-          <div class="dt-stat-card dt-stat-card-clickable" @click="openProductAnalysis()"><div class="dt-stat-card-label">{{ filterLabel }} 统计需求总数</div><div class="dt-stat-card-value" :style="{ color: PRODUCT_CARD_COLORS.requirements }">{{ productSummary.requirementCount }}</div></div>
-          <div class="dt-stat-card dt-stat-card-clickable" @click="openProductAnalysis()"><div class="dt-stat-card-label">{{ filterLabel }} 收集任务数</div><div class="dt-stat-card-value" :style="{ color: PRODUCT_CARD_COLORS.tasks }">{{ productSummary.taskCount }}</div></div>
-          <div class="dt-stat-card dt-stat-card-clickable" @click="openProductAnalysis()"><div class="dt-stat-card-label">{{ filterLabel }} 产品人员数</div><div class="dt-stat-card-value" :style="{ color: PRODUCT_CARD_COLORS.staff }">{{ productSummary.staffCount }}</div></div>
-        </div>
-
-        <div class="dt-data-card dt-product-demand-panel" style="padding:24px; margin-bottom:24px;">
-          <div class="dt-product-demand-header">
-            <h3 style="font-size:15px; font-weight:600; color:var(--color-text-1); margin:0;">AI产品经理工时分布（按人员与需求方） — {{ filterLabel }}</h3>
-            <div class="dt-product-demand-chart-actions">
-              <span class="dt-product-demand-note">点击产品经理名称筛选下方列表</span>
-              <span class="dt-product-demand-zero-toggle">隐藏零值 <el-switch v-model="hideZeroValueBars" size="small" aria-label="隐藏零值产品经理柱状图" /></span>
-            </div>
-          </div>
-          <div v-if="productRecords.length" class="dt-product-manager-chart">
-            <div class="dt-product-manager-legend">
-              <span v-for="source in productChartSources" :key="source.id"><i :style="{ background: source.color }"></i>{{ source.name }}</span>
-              <span><i style="background:#F53F3F"></i>总计</span>
-            </div>
-            <div class="dt-product-manager-chart-groups">
-              <div v-for="row in productManagerChartRows" :key="row.staffId" class="dt-product-manager-group" :class="{ 'is-selected': productManagerFilter === row.staffId }">
-                <div class="dt-product-manager-bars">
-                  <template v-for="source in productChartSources" :key="source.id">
-                    <div v-if="!hideZeroValueBars || row.sourceValues[source.id] > 0" class="dt-product-manager-bar" :style="productManagerChartBarStyle(row.sourceValues[source.id] || 0, source.color)">
-                      <span v-if="row.sourceValues[source.id] > 0">{{ row.sourceValues[source.id].toFixed(1) }}</span>
-                    </div>
-                  </template>
-                  <div v-if="!hideZeroValueBars || row.total > 0" class="dt-product-manager-bar dt-product-manager-total-bar" :style="productManagerChartBarStyle(row.total, '#F53F3F')"><span>{{ row.total.toFixed(1) }}</span></div>
+        <div class="dt-data-card dt-main-records" data-testid="stats-main-records">
+          <el-tabs v-model="mainRecordTab" class="dt-main-record-tabs" data-testid="main-record-tabs">
+            <el-tab-pane v-for="tab in mainRecordTabs" :key="tab.key" :name="tab.key" :label="tab.label">
+              <div v-if="mainRecordTab === tab.key" :data-record-source="tab.key">
+                <div class="dt-main-records-toolbar">
+                  <strong>工时明细 · {{ mainScopeLabel }}</strong>
+                  <el-select v-if="mainRecordTab === 'engineering'" v-model="mainDimension" size="small" aria-label="明细岗位范围" @change="changeMainDimension">
+                    <el-option label="全部非产品经理" value="total" />
+                    <el-option v-for="role in mainRecordRoles" :key="role.key" :label="role.name" :value="role.key" />
+                  </el-select>
+                  <el-select v-model="mainStaffId" size="small" clearable aria-label="明细人员范围" placeholder="全部人员">
+                    <el-option v-for="person in mainStaffOptions" :key="person.id" :label="person.name" :value="person.id" />
+                  </el-select>
+                  <el-button size="small" @click="openMainAnalysis()">查看当前范围分析</el-button>
                 </div>
-                <button type="button" class="dt-product-manager-label" @click="selectProductManager(row.staffId)">{{ row.staffName }}</button>
+                <div class="dt-main-records-totals" data-testid="main-record-totals">
+                  <span>{{ mainScopeRecords.length }} 条记录</span><span>总工时 <strong>{{ mainScopeDelivery?.recordedHours ?? '—' }}h</strong></span>
+                  <span :title="deliveryMetricTip(mainScopeDelivery, 'deliveredHours')">有效已交付 <strong>{{ mainScopeDelivery?.deliveredHours ?? '—' }}h</strong></span>
+                  <span>无版本工时 <strong>{{ mainScopeDelivery?.unversionedHours ?? '—' }}h</strong></span>
+                </div>
+                <StatsGroupedRecordTable :rows="mainRecordRows" :max-height="560" />
               </div>
-            </div>
-          </div>
-          <div v-else class="dt-empty" style="padding:28px;">当前范围暂无AI产品经理工时</div>
-          <el-tooltip content="多选需求方按保存权重均摊；每名AI产品经理的总计柱按原始记录只计一次；零值柱子由开关控制。" placement="top"><div class="dt-product-demand-tip">ⓘ 当前筛选：{{ productManagerFilterLabel || productSourceFilter || '全部产品经理' }}</div></el-tooltip>
+            </el-tab-pane>
+          </el-tabs>
         </div>
-
-        <div class="dt-data-card">
-          <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 16px; border-bottom:1px solid var(--color-border-light, #F2F3F5);">
-            <strong>AI产品经理工时明细</strong>
-            <span class="dt-product-demand-note">独立存储 · {{ productManagerFilterLabel || productSourceFilter || '全部产品经理' }}</span>
-          </div>
-          <div v-if="sortedProductRecords.length > 0" style="padding:10px 16px; border-bottom:1px solid var(--color-border-light, #F2F3F5); text-align:right;">
-            <el-radio-group v-model="pmSortOrder" size="small">
-              <el-radio-button value="">按新增顺序</el-radio-button>
-              <el-radio-button value="desc">工时降序 ↓</el-radio-button>
-              <el-radio-button value="asc">工时升序 ↑</el-radio-button>
-            </el-radio-group>
-          </div>
-          <el-table :data="sortedProductRecords" border size="small" empty-text="当前范围暂无AI产品经理工时">
-            <el-table-column type="index" label="#" width="55" />
-            <el-table-column label="人员" width="110"><template #default="{ row }">{{ row.staff?.name || '-' }}</template></el-table-column>
-            <el-table-column prop="version" label="版本号" width="110"><template #default="{ row }">{{ row.version || '-' }}</template></el-table-column>
-            <el-table-column prop="requirement_title" label="需求名称" min-width="220" show-overflow-tooltip />
-            <el-table-column label="需求方" min-width="220"><template #default="{ row }">{{ (row.demand_sources || []).join('、') || '-' }}</template></el-table-column>
-            <el-table-column label="工时/h" width="120" align="right"><template #default="{ row }"><div class="hours-cell" :class="MEDAL_CLASS[getProductMedalRank(row)] || ''"><span class="hours-val">{{ toNumber(row.hours).toFixed(1) }}</span><span v-if="getProductMedalRank(row) >= 0" class="medal-badge">{{ MEDAL_EMOJI[getProductMedalRank(row)] }}</span></div></template></el-table-column>
-            <el-table-column label="交付进度" width="110" align="center"><template #default="{ row }">{{ row.delivery_progress === null || row.delivery_progress === undefined || row.delivery_progress === '' ? '-' : `${row.delivery_progress}%` }}</template></el-table-column>
-            <el-table-column label="来源" width="120" align="center"><template #default>AI产品经理</template></el-table-column>
-          </el-table>
-        </div>
-      </el-tab-pane>
-
-      <!-- ===== Tab 3: AI研发人员工时 ===== -->
-      <el-tab-pane label="AI研发展示" name="engineeringHours">
-        <div class="dt-stat-cards dt-stat-cards-single-row" :style="{ '--dt-stat-card-count': engineeringSummaryCardCount }">
-          <div class="dt-stat-card dt-stat-card-clickable" @click="openAnalysisDialog('total', 'engineering')"><div class="dt-stat-card-label">{{ filterLabel }} AI研发人员总工时</div><div class="dt-stat-card-value" style="color:#F53F3F;">{{ engineeringTotalHours.toFixed(1) }} <span class="dt-stat-card-unit">小时</span></div><el-tooltip :content="WEIGHTED_PROGRESS_TIP" placement="top"><div class="dt-stat-card-progress">综合进度：<span class="dt-stat-card-progress-value" style="color:#F53F3F;">{{ engineeringTotalWeightedProgress === null ? '-' : `${engineeringTotalWeightedProgress.toFixed(2)}%` }}</span></div></el-tooltip></div>
-          <div v-for="role in engineeringRoles" :key="role.key" class="dt-stat-card dt-stat-card-clickable" @click="openAnalysisDialog(role.key, 'engineering')"><div class="dt-stat-card-label">{{ filterLabel }} {{ role.name }}总工时</div><div class="dt-stat-card-value" :style="{ color: role.color }">{{ Number(engineeringRoleTotals[role.key] || 0).toFixed(1) }} <span class="dt-stat-card-unit">小时</span></div></div>
-          <div class="dt-stat-card dt-stat-card-clickable" @click="openAnalysisDialog('total', 'engineering')"><div class="dt-stat-card-label">{{ filterLabel }} 提交记录数</div><div class="dt-stat-card-value" :style="{ color: PRODUCT_CARD_COLORS.records }">{{ engineeringRecords.length }}</div></div>
-          <div class="dt-stat-card dt-stat-card-clickable" @click="openAnalysisDialog('total', 'engineering')"><div class="dt-stat-card-label">{{ filterLabel }} 统计需求总数</div><div class="dt-stat-card-value" :style="{ color: PRODUCT_CARD_COLORS.requirements }">{{ engineeringRequirementCount }}</div></div>
-          <div class="dt-stat-card dt-stat-card-clickable" @click="openAnalysisDialog('total', 'engineering')"><div class="dt-stat-card-label">{{ filterLabel }} 收集任务数</div><div class="dt-stat-card-value" :style="{ color: PRODUCT_CARD_COLORS.tasks }">{{ engineeringTaskCount }}</div></div>
-          <div class="dt-stat-card dt-stat-card-clickable" @click="openAnalysisDialog('total', 'engineering')"><div class="dt-stat-card-label">{{ filterLabel }} 研发人员数</div><div class="dt-stat-card-value" :style="{ color: PRODUCT_CARD_COLORS.staff }">{{ engineeringStaffCount }}</div></div>
-        </div>
-        <div class="dt-data-card" style="padding:24px; margin-bottom:24px;"><div class="dt-product-demand-header"><h3 style="font-size:15px; font-weight:600; margin:0;">研发工时分布 · 按 AI产品经理归属人</h3><span class="dt-product-demand-note">不含 AI产品经理独立工时</span></div><div class="dt-pm-chart-stage"><canvas ref="engineeringChartRef" :height="CANVAS_HEIGHT"></canvas></div></div>
-        <div class="dt-data-card"><div style="display:flex; justify-content:space-between; align-items:center; padding:12px 16px; border-bottom:1px solid var(--color-border-light, #F2F3F5);"><strong>AI研发人员工时明细</strong><el-radio-group v-model="pmSortOrder" size="small"><el-radio-button value="">按新增顺序</el-radio-button><el-radio-button value="desc">工时降序 ↓</el-radio-button><el-radio-button value="asc">工时升序 ↑</el-radio-button></el-radio-group></div><el-table :data="flatTableData" :span-method="pmSpanMethod" :row-class-name="rowClassName" border empty-text="当前范围暂无研发工时"><el-table-column type="index" label="#" width="55" /><el-table-column label="AI产品经理归属人" width="150"><template #default="{ row }"><span :style="{ color: selectedPM === row.pmName ? 'var(--color-primary)' : 'inherit', fontWeight: 600, cursor: 'pointer' }" @click="togglePM(row.pmName)">{{ row.pmName }}</span></template></el-table-column><el-table-column label="版本号" width="110"><template #default="{ row }">{{ row.isTotalRow ? `合计 ${row.pmTotal}小时` : row.version }}</template></el-table-column><el-table-column prop="requirement_title" label="需求名称" min-width="220" show-overflow-tooltip /><el-table-column prop="staffName" label="人员" width="100" /><el-table-column prop="role" label="角色" width="120" /><el-table-column label="工时/h" width="120" align="right"><template #default="{ row }"><template v-if="row.isTotalRow">{{ row.pmTotal }}小时</template><template v-else><div class="hours-cell" :class="MEDAL_CLASS[getDeptMedalRank(row)] || ''"><span class="hours-val">{{ row.hours }}</span><span v-if="getDeptMedalRank(row) >= 0" class="medal-badge">{{ MEDAL_EMOJI[getDeptMedalRank(row)] }}</span></div></template></template></el-table-column><el-table-column label="交付进度" width="110" align="center"><template #default="{ row }">{{ row.isTotalRow ? '-' : (row.delivery_progress === null || row.delivery_progress === undefined ? '-' : `${row.delivery_progress}%`) }}</template></el-table-column></el-table></div>
       </el-tab-pane>
 
       <el-tab-pane label="研发聚焦" name="personal">
@@ -2329,19 +1763,7 @@ function exportStatsData() {
                     {{ roleDisplay(personalInfo.staff?.role, true) }}
                   </span>
                 </div>
-                <div class="dt-personal-meta">
-                  <span class="dt-personal-meta-item">
-                    <strong>{{ personalInfo.totalHours?.toFixed(1) || '0' }}</strong> 总工时/小时
-                  </span>
-                  <span class="dt-personal-meta-divider">|</span>
-                  <span class="dt-personal-meta-item">
-                    <strong>{{ personalInfo.recordCount || 0 }}</strong> 提交记录
-                  </span>
-                  <span class="dt-personal-meta-divider">|</span>
-                  <span class="dt-personal-meta-item">
-                    <strong>{{ personalInfo.taskCount || 0 }}</strong> 参与周期
-                  </span>
-                </div>
+                <DeliverySummary :metric="deliveryFromInfo(personalInfo)" />
               </div>
             </div>
 
@@ -2365,8 +1787,8 @@ function exportStatsData() {
                 <transition name="accordion">
                   <div v-if="expandedTaskIds.includes(task.id)" class="dt-accordion-body">
                     <div v-if="task.records.length === 0" style="padding:16px; text-align:center; color:var(--color-text-3); font-size:13px;">该周期暂无提交记录</div>
-                    <el-table v-else :data="task.records" border size="small" style="width:100%;" table-layout="fixed"
-                      :default-sort="{ prop: 'hours', order: 'descending' }"
+                    <el-table v-else :data="sortRecordsByCreatedAt(task.records)" border size="small" style="width:100%;" table-layout="fixed"
+
                     >
                       <el-table-column type="index" label="#" width="45" align="center" />
                       <el-table-column prop="version" label="版本号" width="100" sortable>
@@ -2410,8 +1832,8 @@ function exportStatsData() {
                 <div style="display:flex; align-items:center; gap:8px; padding:8px 12px; background:var(--color-bg-2); border-radius:8px; margin-bottom:4px;">
                   <div class="dt-role-avatar" :style="{ background: roleColor(ROLE_AI_DEV) }">{{ getInitial(person.staff?.name) }}</div>
                   <span style="font-weight:600; font-size:13px;">{{ person.staff?.name }}</span>
-                  <span style="margin-left:auto; font-weight:700; color:var(--color-primary); font-size:13px;">{{ person.totalHours?.toFixed(1) || 0 }}H</span>
                 </div>
+                <DeliverySummary :metric="deliveryFromInfo(person)" />
                 <div v-if="person.tasks?.length" style="padding-left:8px;">
                   <div v-for="(task, taskIndex) in person.tasks" :key="task.id" class="dt-research-person-task" :data-latest="taskIndex === 0 ? 'true' : 'false'" :data-expanded="isAllExpanded(person.staff?.id, task.id) ? 'true' : 'false'" style="border-bottom:1px solid var(--color-border-light);">
                     <div
@@ -2425,7 +1847,7 @@ function exportStatsData() {
                       <span style="font-weight:700; color:var(--color-primary); font-size:13px;">{{ task.records.reduce((s,r) => s + parseFloat(r.hours || 0), 0).toFixed(1) }}H</span>
                     </div>
                     <div v-if="isAllExpanded(person.staff?.id, task.id)" class="dt-research-person-task-body" style="padding:4px 8px 8px 20px; font-size:12px; color:var(--color-text-3);">
-                      <div v-for="(rec, ri) in task.records" :key="ri" style="display:flex; justify-content:space-between; padding:2px 0;">
+                      <div v-for="(rec, ri) in sortRecordsByCreatedAt(task.records)" :key="ri" style="display:flex; justify-content:space-between; padding:2px 0;">
                         <span>{{ rec.requirement_title || '-' }}</span>
                         <span style="font-weight:600; color:var(--color-text-2);">{{ rec.hours }}H</span>
                       </div>
@@ -2442,8 +1864,8 @@ function exportStatsData() {
                 <div style="display:flex; align-items:center; gap:8px; padding:8px 12px; background:var(--color-bg-2); border-radius:8px; margin-bottom:4px;">
                   <div class="dt-role-avatar" :style="{ background: roleColor(ROLE_VOIP) }">{{ getInitial(person.staff?.name) }}</div>
                   <span style="font-weight:600; font-size:13px;">{{ person.staff?.name }}</span>
-                  <span style="margin-left:auto; font-weight:700; color:#00B42A; font-size:13px;">{{ person.totalHours?.toFixed(1) || 0 }}H</span>
                 </div>
+                <DeliverySummary :metric="deliveryFromInfo(person)" />
                 <div v-if="person.tasks?.length" style="padding-left:8px;">
                   <div v-for="(task, taskIndex) in person.tasks" :key="task.id" class="dt-research-person-task" :data-latest="taskIndex === 0 ? 'true' : 'false'" :data-expanded="isAllExpanded(person.staff?.id, task.id) ? 'true' : 'false'" style="border-bottom:1px solid var(--color-border-light);">
                     <div
@@ -2457,7 +1879,7 @@ function exportStatsData() {
                       <span style="font-weight:700; color:#00B42A; font-size:13px;">{{ task.records.reduce((s,r) => s + parseFloat(r.hours || 0), 0).toFixed(1) }}H</span>
                     </div>
                     <div v-if="isAllExpanded(person.staff?.id, task.id)" class="dt-research-person-task-body" style="padding:4px 8px 8px 20px; font-size:12px; color:var(--color-text-3);">
-                      <div v-for="(rec, ri) in task.records" :key="ri" style="display:flex; justify-content:space-between; padding:2px 0;">
+                      <div v-for="(rec, ri) in sortRecordsByCreatedAt(task.records)" :key="ri" style="display:flex; justify-content:space-between; padding:2px 0;">
                         <span>{{ rec.requirement_title || '-' }}</span>
                         <span style="font-weight:600; color:var(--color-text-2);">{{ rec.hours }}H</span>
                       </div>
@@ -2474,8 +1896,8 @@ function exportStatsData() {
                 <div style="display:flex; align-items:center; gap:8px; padding:8px 12px; background:var(--color-bg-2); border-radius:8px; margin-bottom:4px;">
                   <div class="dt-role-avatar" :style="{ background: roleColor(ROLE_AI_QUALITY) }">{{ getInitial(person.staff?.name) }}</div>
                   <span style="font-weight:600; font-size:13px;">{{ person.staff?.name }}</span>
-                  <span style="margin-left:auto; font-weight:700; color:var(--color-primary); font-size:13px;">{{ person.totalHours?.toFixed(1) || 0 }}H</span>
                 </div>
+                <DeliverySummary :metric="deliveryFromInfo(person)" />
                 <div v-if="person.tasks?.length" style="padding-left:8px;">
                   <div v-for="(task, taskIndex) in person.tasks" :key="task.id" class="dt-research-person-task" :data-latest="taskIndex === 0 ? 'true' : 'false'" :data-expanded="isAllExpanded(person.staff?.id, task.id) ? 'true' : 'false'" style="border-bottom:1px solid var(--color-border-light);">
                     <div
@@ -2489,7 +1911,7 @@ function exportStatsData() {
                       <span style="font-weight:700; color:var(--color-primary); font-size:13px;">{{ task.records.reduce((s,r) => s + parseFloat(r.hours || 0), 0).toFixed(1) }}H</span>
                     </div>
                     <div v-if="isAllExpanded(person.staff?.id, task.id)" class="dt-research-person-task-body" style="padding:4px 8px 8px 20px; font-size:12px; color:var(--color-text-3);">
-                      <div v-for="(rec, ri) in task.records" :key="ri" style="display:flex; justify-content:space-between; padding:2px 0;">
+                      <div v-for="(rec, ri) in sortRecordsByCreatedAt(task.records)" :key="ri" style="display:flex; justify-content:space-between; padding:2px 0;">
                         <span>{{ rec.requirement_title || '-' }}</span>
                         <span style="font-weight:600; color:var(--color-text-2);">{{ rec.hours }}H</span>
                       </div>
@@ -2505,8 +1927,8 @@ function exportStatsData() {
                 <div style="display:flex; align-items:center; gap:8px; padding:8px 12px; background:var(--color-bg-2); border-radius:8px; margin-bottom:4px;">
                   <div class="dt-role-avatar" :style="{ background: role.color }">{{ getInitial(person.staff?.name) }}</div>
                   <span style="font-weight:600; font-size:13px;">{{ person.staff?.name }}</span>
-                  <span :style="{ marginLeft: 'auto', fontWeight: 700, color: role.color, fontSize: '13px' }">{{ person.totalHours?.toFixed(1) || 0 }}H</span>
                 </div>
+                <DeliverySummary :metric="deliveryFromInfo(person)" />
                 <div v-if="person.tasks?.length" style="padding-left:8px;">
                   <div v-for="(task, taskIndex) in person.tasks" :key="task.id" class="dt-research-person-task" :data-latest="taskIndex === 0 ? 'true' : 'false'" :data-expanded="isAllExpanded(person.staff?.id, task.id) ? 'true' : 'false'" style="border-bottom:1px solid var(--color-border-light);">
                     <div style="display:flex; justify-content:space-between; padding:4px; cursor:pointer; font-size:13px;" @click="toggleAllTask(person.staff?.id, task.id)">
@@ -2517,7 +1939,7 @@ function exportStatsData() {
                       <span :style="{ fontWeight: 700, color: role.color, fontSize: '13px' }">{{ task.records.reduce((sum, record) => sum + parseFloat(record.hours || 0), 0).toFixed(1) }}H</span>
                     </div>
                     <div v-if="isAllExpanded(person.staff?.id, task.id)" class="dt-research-person-task-body" style="padding:4px 8px 8px 20px; font-size:12px; color:var(--color-text-3);">
-                      <div v-for="(record, recordIndex) in task.records" :key="recordIndex" style="display:flex; justify-content:space-between; padding:2px 0;">
+                      <div v-for="(record, recordIndex) in sortRecordsByCreatedAt(task.records)" :key="recordIndex" style="display:flex; justify-content:space-between; padding:2px 0;">
                         <span>{{ record.requirement_title || '-' }}</span>
                         <span style="font-weight:600; color:var(--color-text-2);">{{ record.hours }}H</span>
                       </div>
@@ -2585,23 +2007,7 @@ function exportStatsData() {
                   {{ pmFocusInfo.pm?.name }}
                   <span class="dt-tag dt-tag-purple">AI产品经理</span>
                 </div>
-                <div class="dt-personal-meta">
-                  <span class="dt-personal-meta-item">
-                    <strong>{{ pmFocusInfo.totalHours?.toFixed(1) || '0' }}</strong> 总工时/小时
-                  </span>
-                  <span class="dt-personal-meta-divider">|</span>
-                  <span class="dt-personal-meta-item">
-                    <strong>{{ pmFocusInfo.recordCount || 0 }}</strong> 提交记录
-                  </span>
-                  <span class="dt-personal-meta-divider">|</span>
-                  <span class="dt-personal-meta-item">
-                    <strong>{{ pmFocusInfo.taskCount || 0 }}</strong> 参与周期
-                  </span>
-                </div>
-                <!-- 角色工时分布 -->
-                <div v-if="pmFocusInfo.roleSummary" style="margin-top:8px; display:flex; gap:16px; flex-wrap:wrap; font-size:12px;">
-                  <span v-for="role in roleStore.list" :key="role.key" :style="{ color: role.color, whiteSpace: 'nowrap' }">{{ role.short_name }} <strong>{{ roleSummaryHours(pmFocusInfo.roleSummary, role.key).toFixed(1) }}</strong>H</span>
-                </div>
+                <DeliverySummary :metric="deliveryFromInfo(pmFocusInfo)" />
               </div>
             </div>
 
@@ -2625,8 +2031,8 @@ function exportStatsData() {
                 <transition name="accordion">
                   <div v-if="pmExpandedTaskIds.includes(task.id)" class="dt-accordion-body">
                     <div v-if="task.records.length === 0" style="padding:16px; text-align:center; color:var(--color-text-3); font-size:13px;">该周期暂无提交记录</div>
-                    <el-table v-else :data="task.records" border size="small" style="width:100%;" table-layout="fixed"
-                      :default-sort="{ prop: 'hours', order: 'descending' }"
+                    <el-table v-else :data="sortRecordsByCreatedAt(task.records)" border size="small" style="width:100%;" table-layout="fixed"
+
                     >
                       <el-table-column type="index" label="#" width="45" align="center" />
                       <el-table-column prop="version" label="版本号" width="100" sortable>
@@ -2687,11 +2093,6 @@ function exportStatsData() {
                 <div style="flex:1; min-width:0;">
                   <div style="display:flex; align-items:center; gap:6px;">
                     <span style="font-weight:600; font-size:14px;">{{ pmData.pm?.name }}</span>
-                    <span style="font-weight:700; color:#722ED1; font-size:14px;">{{ pmData.totalHours?.toFixed(1) || 0 }}H</span>
-                    <span style="font-size:11px; color:var(--color-text-3);">{{ pmData.recordCount || 0 }}条</span>
-                  </div>
-                  <div v-if="pmData.roleSummary" style="display:flex; gap:10px; flex-wrap:wrap; font-size:11px; margin-top:2px;">
-                    <span v-for="role in roleStore.list" :key="role.key" :style="{ color: role.color, whiteSpace: 'nowrap' }">{{ role.short_name }} <strong>{{ roleSummaryHours(pmData.roleSummary, role.key).toFixed(1) }}</strong>H</span>
                   </div>
                 </div>
                 <router-link
@@ -2702,6 +2103,7 @@ function exportStatsData() {
                 >查看全部 →</router-link>
               </div>
               <!-- 任务周期列表 -->
+              <DeliverySummary :metric="deliveryFromInfo(pmData)" />
               <div v-if="pmData.tasks?.length" class="dt-pm-all-card-body">
                 <div v-for="task in getVisiblePmTasks(pmData)" :key="task.id" style="margin-bottom:2px;">
                   <div
@@ -2717,11 +2119,11 @@ function exportStatsData() {
                   <!-- 展开后用表格展示，含金银铜 -->
                   <div v-if="isPmAllExpanded(pmData.pm?.id, task.id)" style="padding:0 4px 8px;">
                     <el-table
-                      :data="task.records"
+                      :data="sortRecordsByCreatedAt(task.records)"
                       border size="small"
                       style="width:100%;"
                       table-layout="fixed"
-                      :default-sort="{ prop: 'hours', order: 'descending' }"
+
                     >
                       <el-table-column type="index" label="#" width="32" align="center" />
                       <el-table-column prop="version" label="版本" width="65" sortable>
@@ -2777,326 +2179,123 @@ function exportStatsData() {
       </el-tab-pane>
     </el-tabs>
 
-    <!-- 本地周期数据分析弹窗 -->
-    <el-dialog v-model="analysisDialogVisible" :title="analysisDialogTitle" width="88%" class="dt-analysis-dialog">
-      <div class="dt-analysis-scope">
-        <span>统计周期：{{ selectedPeriodRangeText }}</span>
-        <span>筛选范围：{{ statsScopeTitle }}</span>
-        <span>口径：以工时填报记录和人员岗位为准</span>
-        <el-button size="small" type="primary" plain @click="openWorkloadReportPage(analysisDimension)">打开完整报告页</el-button>
+    <DepartmentPeopleDialog v-model="departmentPeopleVisible" :people="departmentPeople" :scope-label="statsScopeTitle" />
+    <el-dialog v-model="analysisDialogVisible" :title="analysisDialogTitle" width="92%" top="4vh" class="dt-delivery-dialog" @opened="measureAnalysisTable">
+      <div class="dt-analysis-spotlight" :class="{ 'is-custom-period': analysisRecordScope === 'custom' }" data-testid="analysis-spotlight" v-loading="analysisUsesRemoteScope && statsStore.progressDetailsLoading">
+      <section class="dt-delivery-dialog-summary">
+        <h3>{{ analysisScopeLabel }}<span>{{ analysisPeriodModeLabel }}</span></h3>
+        <DeliverySummary :metric="deliveryDialogSummary" :unversioned="analysisShowsUnversioned" show-expected-hours show-weighted show-progress :all-periods="analysisRecordScope === 'all'" :period-label="analysisRecordScope === 'custom' ? '所选周期' : ''" />
+        <div class="dt-analysis-inline-kpis">
+          <button type="button" :title="deliveryMetricTip(deliveryDialogSummary, 'recordedHours')" @click="openProgressList()">总工时 <strong>{{ analysisData.total.toFixed(1) }}h</strong></button>
+          <button type="button" title="当前范围已保存记录数，按来源和记录ID去重，包含五类和普通无版本记录。" @click="openProgressList()">记录 <strong>{{ analysisData.recordCount }}</strong></button>
+          <button type="button" title="当前范围按周期、版本、标题去重的普通需求数量，不包含请假、培训、公司会议、出差、团建。" @click="analysisActiveTab = 'requirement'">需求 <strong>{{ analysisData.requirementCount }}</strong></button>
+          <button type="button" title="当前筛选范围内可见的收集周期数量。" @click="analysisActiveTab = 'task'">收集任务 <strong>{{ analysisData.taskCount }}</strong></button>
+        </div>
+        <p :title="DELIVERY_NOTE">有版本普通工时及五类工时计入有效交付；普通无版本仅记录。</p>
+      </section>
+      <section class="dt-analysis-people" data-testid="analysis-people">
+        <div class="dt-analysis-people-heading"><h3>{{ analysisShowsUnversioned ? '无版本号记录' : '人员交付情况' }}</h3><span v-if="!analysisShowsUnversioned">{{ analysisData.staffRows.length }} 人 · 工时单位 h</span></div>
+        <StaffDeliveryList v-if="!analysisShowsUnversioned" :people="analysisData.staffRows" :max-rows="20" />
+        <p v-else class="dt-analysis-record-only">无版本号仅记录工时，不计交付率。下方列表可查看、排序和导出记录。</p>
+      </section>
       </div>
-
-      <div class="dt-analysis-kpis">
-        <div class="dt-analysis-kpi">
-          <span>当前维度工时</span>
-        <strong :style="{ color: analysisDimensionMeta.color, cursor: 'pointer' }" title="点击查看需求进度明细" @click="openProgressList()">{{ analysisData.total.toFixed(1) }}</strong>
-          <em>小时</em>
-        </div>
-        <div class="dt-analysis-kpi">
-          <span>记录数</span>
-          <strong style="cursor:pointer" title="点击查看需求进度明细" @click="openProgressList()">{{ analysisData.recordCount }}</strong>
-          <em>条</em>
-        </div>
-        <div class="dt-analysis-kpi">
-          <span>需求数</span>
-          <strong style="cursor:pointer" title="点击查看需求进度明细" @click="openProgressList()">{{ analysisData.requirementCount }}</strong>
-          <em>个</em>
-        </div>
-        <div class="dt-analysis-kpi">
-          <span>周期数</span>
-          <strong style="cursor:pointer" title="点击查看需求进度明细" @click="openProgressList()">{{ analysisData.taskCount }}</strong>
-          <em>个</em>
-        </div>
-        <div class="dt-analysis-kpi">
-          <el-tooltip :content="WEIGHTED_PROGRESS_TIP" placement="top">
-            <span>综合进度 ⓘ</span>
-          </el-tooltip>
-          <strong style="cursor:pointer" title="点击查看需求进度明细" @click="openProgressList()">{{ analysisData.weightedProgress === null ? '-' : `${analysisData.weightedProgress.toFixed(2)}%` }}</strong>
-          <em>工时加权</em>
-        </div>
-        <div v-for="card in analysisVersionProgressCards" :key="card.key" class="dt-analysis-kpi dt-analysis-kpi-clickable" :style="{ borderColor: `${card.color}55` }" title="点击查看该版本分组的需求进度明细" @click="openProgressList('', card.key)">
-          <span>{{ card.label }} ⓘ</span>
-          <strong :style="{ color: card.color }">{{ card.progress === null ? '-' : `${card.progress.toFixed(2)}%` }}</strong>
-          <em>{{ card.hours.toFixed(1) }}H 工时加权</em>
-        </div>
+      <div class="dt-delivery-toolbar">
+        <el-select v-model="analysisRecordScope" size="small" style="width:115px" aria-label="记录周期范围" @change="changeDeliveryScope">
+          <el-option label="当前周期" value="current" /><el-option label="其他周期" value="custom" /><el-option label="全部周期" value="all" />
+        </el-select>
+        <template v-if="analysisRecordScope === 'custom'">
+          <el-select v-model="analysisCustomYear" size="small" style="width:100px" aria-label="弹窗统计年份" @change="changeAnalysisCustomPeriod"><el-option v-for="year in analysisCustomYears" :key="year" :label="`${year}年`" :value="year" /></el-select>
+          <el-select v-model="analysisCustomQuarter" size="small" style="width:95px" aria-label="弹窗统计季度" @change="changeAnalysisCustomPeriod"><el-option label="全年" value="all" /><el-option v-for="quarter in quarterOptions" :key="quarter" :label="quarter" :value="quarter" /></el-select>
+          <el-select v-model="analysisCustomTaskId" size="small" style="width:210px" aria-label="弹窗具体周期" @change="changeDeliveryScope"><el-option label="范围内所有周期" value="all" /><el-option v-for="task in analysisCustomTasks" :key="task.id" :label="task.title" :value="task.id" /></el-select>
+        </template>
+        <span class="dt-analysis-current-scope">{{ analysisPeriodRangeText }} · {{ analysisScopeLabel }}</span>
+        <el-button v-if="analysisUsesRemoteScope" size="small" plain :loading="statsStore.progressDetailsLoading" @click="changeDeliveryScope">刷新</el-button>
+        <el-button size="small" plain @click="downloadProgressDetails(analysisRecordScope, analysisExportVersion())">导出 Excel</el-button>
+        <el-button size="small" type="primary" plain @click="openWorkloadReportPage(analysisDimension)">{{ analysisUsesRemoteScope || analysisStaffId ? '打开页面周期完整报告' : '打开完整报告页' }}</el-button>
       </div>
-
-      <div class="dt-analysis-role-strip">
-        <div
-          v-for="role in analysisRoleRows"
-          :key="role.key"
-          class="dt-analysis-role-item"
-          :style="{ borderColor: `${role.color}55`, color: role.color, background: `${role.color}0D` }"
-          title="点击查看该岗位的需求进度明细"
-          @click="openProgressList(role.key)"
-        >
-          <span>{{ role.label }}</span>
-          <strong>{{ role.hours.toFixed(1) }}H</strong>
-        </div>
+      <div class="dt-analysis-role-pills">
+        <button v-for="role in analysisRoleRows" :key="role.key" type="button" :style="{ color: role.color }" @click="openProgressList(role.key)">{{ role.label }} <strong>{{ role.hours.toFixed(1) }}h</strong></button>
       </div>
-
-      <el-tabs type="border-card" class="dt-analysis-tabs">
-        <el-tab-pane label="总览">
+      <div ref="analysisDetailsRef" class="dt-analysis-details">
+      <el-tabs v-model="analysisActiveTab" class="dt-restored-analysis-tabs" v-loading="analysisUsesRemoteScope && statsStore.progressDetailsLoading">
+        <el-tab-pane label="总览" name="overview">
           <div class="dt-analysis-overview">
-            <div class="dt-analysis-findings">
-              <h4>核心解读</h4>
-              <ul>
-                <li>当前维度共 {{ analysisData.recordCount }} 条记录、{{ analysisData.requirementCount }} 个需求粒度、{{ analysisData.taskCount }} 个周期。</li>
-                <li>{{ analysisRoleSummaryText }}</li>
-                <li>平均单条记录 {{ analysisData.avgRecordHours.toFixed(1) }}h，平均单需求 {{ analysisData.avgRequirementHours.toFixed(1) }}h。</li>
-                <li v-if="analysisTopRows.period">峰值周期：{{ analysisTopRows.period.label }}，{{ analysisTopRows.period.total }}h。</li>
-              </ul>
-            </div>
-            <div class="dt-analysis-findings">
-              <h4>重点维度</h4>
-              <ul>
-                <li v-if="analysisTopRows.pm">AI产品经理最高：{{ analysisTopRows.pm.label }}，{{ analysisTopRows.pm.total }}h / {{ analysisTopRows.pm.share }}%。</li>
-                <li v-if="analysisTopRows.staff">人员最高：{{ analysisTopRows.staff.label }}，{{ analysisTopRows.staff.total }}h / {{ analysisTopRows.staff.share }}%。</li>
-                <li v-if="analysisTopRows.requirement">需求最高：{{ analysisTopRows.requirement.label }}，{{ analysisTopRows.requirement.total }}h / {{ analysisTopRows.requirement.share }}%。</li>
-                <li v-if="analysisTopRows.combo">协作形态最高：{{ analysisTopRows.combo.combo }}，{{ analysisTopRows.combo.total }}h / {{ analysisTopRows.combo.share }}%。</li>
-              </ul>
-            </div>
+            <div class="dt-analysis-findings"><h4>核心解读</h4><ul>
+              <li>{{ analysisData.recordCount }} 条记录、{{ analysisData.requirementCount }} 个需求、{{ analysisData.taskCount }} 个周期。</li>
+              <li>{{ analysisRoleSummaryText }}</li>
+              <li>平均单条 {{ analysisData.avgRecordHours.toFixed(1) }}h，平均单需求 {{ analysisData.avgRequirementHours.toFixed(1) }}h。</li>
+              <li v-if="analysisTopRows.period">峰值周期：{{ analysisTopRows.period.label }}，{{ analysisTopRows.period.total }}h。</li>
+            </ul></div>
+            <div class="dt-analysis-findings"><h4>重点维度</h4><ul>
+              <li v-if="analysisTopRows.pm">AI产品经理最高：{{ analysisTopRows.pm.label }}，{{ analysisTopRows.pm.total }}h / {{ analysisTopRows.pm.share }}%。</li>
+              <li v-if="analysisTopRows.staff">人员最高：{{ analysisTopRows.staff.label }}，{{ analysisTopRows.staff.total }}h / {{ analysisTopRows.staff.share }}%。</li>
+              <li v-if="analysisTopRows.requirement">需求最高：{{ analysisTopRows.requirement.label }}，{{ analysisTopRows.requirement.total }}h / {{ analysisTopRows.requirement.share }}%。</li>
+              <li v-if="analysisTopRows.combo">协作形态最高：{{ analysisTopRows.combo.combo }}，{{ analysisTopRows.combo.total }}h / {{ analysisTopRows.combo.share }}%。</li>
+            </ul></div>
           </div>
-          <div class="dt-analysis-mini-bars">
-            <div v-for="role in analysisRoleRows" :key="role.key" class="dt-analysis-mini-bar">
-              <span>{{ role.label }}</span>
-              <div><i :style="{ width: `${role.share}%`, background: role.color }"></i></div>
-              <strong>{{ role.hours.toFixed(1) }}h</strong>
-            </div>
-          </div>
+          <div class="dt-analysis-mini-bars"><div v-for="role in analysisRoleRows" :key="role.key" class="dt-analysis-mini-bar"><span>{{ role.label }}</span><div><i :style="{ width: `${role.share}%`, background: role.color }"></i></div><strong>{{ role.hours.toFixed(1) }}h</strong></div></div>
         </el-tab-pane>
-        <el-tab-pane label="全部追踪和进度">
-          <div class="dt-analysis-scope-row">
-            <span>当前范围：{{ selectedPeriodRangeText }}</span>
-            <span>全部范围：{{ statsStore.progressDetails?.scopeMeta?.taskCount || 0 }} 个周期</span>
-            <el-button size="small" type="primary" plain :loading="statsStore.progressDetailsLoading" @click="loadProgressDetails('all')">刷新</el-button>
-            <el-button size="small" type="success" plain @click="downloadProgressDetails('all')">下载 Excel</el-button>
-          </div>
-          <el-alert v-if="statsStore.progressDetails" type="info" :closable="false" style="margin-bottom:10px;">
-            综合进度：{{ statsStore.progressDetails.weightedProgress === null ? '-' : `${statsStore.progressDetails.weightedProgress.toFixed(2)}%` }}；有效工时 {{ statsStore.progressDetails.effectiveHours }}h；未填写 {{ statsStore.progressDetails.missingProgressCount }} 条。
-          </el-alert>
-          <el-table :data="pagedAnalysisRows('tracking', statsStore.progressDetails?.records || [])" border size="small" class="dt-analysis-table" style="width:100%;" empty-text="当前筛选暂无追踪数据">
-            <el-table-column type="index" label="#" width="55" />
-            <el-table-column prop="source_type" label="来源" width="105"><template #default="{ row }">{{ row.source_type === 'product_manager' ? 'AI产品经理' : '研发' }}</template></el-table-column>
-            <el-table-column prop="staff.name" label="人员" width="110"><template #default="{ row }">{{ row.staff?.name || '-' }}</template></el-table-column>
-            <el-table-column prop="version" label="版本号" width="110"><template #default="{ row }">{{ String(row.version || '').trim() && String(row.version).trim() !== '-' ? row.version : '无版本号' }}</template></el-table-column>
-            <el-table-column prop="requirement_title" label="需求" min-width="180" show-overflow-tooltip />
-            <el-table-column label="需求方" min-width="150"><template #default="{ row }">{{ row.demand_sources?.join('、') || '-' }}</template></el-table-column>
-            <el-table-column prop="hours" label="工时/h" width="90" align="right" />
-            <el-table-column label="进度/状态" width="130" align="center"><template #default="{ row }">{{ row.delivery_progress === null || row.delivery_progress === undefined ? '-' : `${row.delivery_progress}%` }} · {{ row.progress_status }}</template></el-table-column>
+        <el-tab-pane label="人员" name="staff">
+          <el-table :data="pagedAnalysisRows('staff', analysisData.staffRows)" row-key="staffId" border size="small" class="dt-staff-delivery-table" :default-sort="analysisSorts.staff" @sort-change="changeAnalysisSort('staff', $event)" :max-height="analysisTableHeight" empty-text="当前范围暂无应交付人员">
+            <el-table-column prop="label" label="人员" min-width="170" show-overflow-tooltip sortable="custom" />
+            <el-table-column prop="standardHours" label="应交付工时/h" min-width="135" align="right" sortable="custom"><template #default="{ row }">
+              <span :title="deliveryMetricTip(row, 'standardHours')">{{ row.calendarStatus === 'invalid_period' ? '—' : row.standardHours }}</span>
+            </template></el-table-column>
+            <el-table-column prop="deliveredHours" label="有效已交付/h" min-width="135" align="right" sortable="custom"><template #default="{ row }"><span :title="deliveryMetricTip(row, 'deliveredHours')">{{ row.deliveredHours }}</span></template></el-table-column>
+            <el-table-column prop="deliveryRate" label="有效交付率" width="115" align="right" sortable="custom"><template #default="{ row }">
+              <span :class="{ 'dt-staff-delivery-complete': row.deliveryRate != null && row.deliveryRate >= 100 }" :title="deliveryMetricTip(row, 'deliveryRate')">{{ row.deliveryRate == null ? '—' : `${row.deliveryRate}%` }}</span>
+            </template></el-table-column>
+            <el-table-column prop="weightedDeliveryRate" label="加权交付率" width="120" align="right" sortable="custom"><template #default="{ row }"><span :title="deliveryMetricTip(row, 'weightedDeliveryRate')" :class="{ 'dt-staff-delivery-complete': row.weightedDeliveryRate != null && row.weightedDeliveryRate >= 100 }">{{ weightedRateText(row) }}</span></template></el-table-column>
+            <el-table-column prop="requirementProgress" label="需求填报进度" width="125" align="right" sortable="custom"><template #default="{ row }"><span :title="deliveryMetricTip(row, 'requirementProgress')">{{ row.requirementProgress == null ? '—' : `${row.requirementProgress}%` }}</span></template></el-table-column>
+            <el-table-column prop="total" label="已填总工时/h" min-width="130" align="right" sortable="custom" />
+            <el-table-column prop="share" label="工时占比" width="110" align="right" sortable="custom"><template #default="{ row }">{{ row.share }}%</template></el-table-column>
+            <el-table-column prop="recordCount" label="记录数" width="95" sortable="custom" />
+            <el-table-column prop="taskCount" label="周期数" width="90" sortable="custom" />
+            <el-table-column prop="requirementCount" label="需求数" width="90" sortable="custom" />
           </el-table>
-          <el-pagination v-model:current-page="analysisPagination.tracking.currentPage" v-model:page-size="analysisPagination.tracking.pageSize" class="dt-analysis-pagination" :page-sizes="ANALYSIS_PAGE_SIZE_OPTIONS" :total="analysisPageTotal(statsStore.progressDetails?.records || [])" layout="total, sizes, prev, pager, next, jumper" @size-change="resetAnalysisPage('tracking')" />
+          <el-pagination v-model:current-page="analysisPagination.staff.currentPage" v-model:page-size="analysisPagination.staff.pageSize" class="dt-analysis-pagination" :page-sizes="ANALYSIS_PAGE_SIZE_OPTIONS" :total="analysisData.staffRows.length" layout="total, sizes, prev, pager, next, jumper" @size-change="resetAnalysisPage('staff')" />
         </el-tab-pane>
-        <el-tab-pane label="普通版本（有版本号）">
-          <div class="dt-analysis-scope-row"><span>当前范围内有版本号需求</span><el-button size="small" type="success" plain @click="downloadProgressDetails('current')">下载 Excel</el-button></div>
-          <el-table :data="pagedAnalysisRows('versioned', analysisVersionedRows)" border size="small" class="dt-analysis-table" style="width:100%;" empty-text="当前范围暂无有版本号需求">
-            <el-table-column prop="person" label="人员" width="110" sortable /><el-table-column prop="version" label="版本号" width="120" sortable /><el-table-column prop="requirement" label="需求" min-width="220" show-overflow-tooltip sortable /><el-table-column prop="hours" label="工时/h" width="90" sortable /><el-table-column label="综合进度" width="120" align="center"><template #default="{ row }"><span :class="row.completed ? 'dt-progress-completed' : 'dt-progress-value'">{{ row.progress === null ? '未填写' : row.completed ? '已完成100%' : `${row.progress.toFixed(2)}%` }}</span></template></el-table-column>
+        <el-tab-pane label="工时记录" name="records">
+          <el-radio-group v-model="analysisVersionType" size="small" class="dt-analysis-version-filter" aria-label="版本分类">
+            <el-radio-button value="all">全部记录</el-radio-button><el-radio-button value="versioned">有效工时</el-radio-button><el-radio-button value="noVersion">普通无版本（仅记录）</el-radio-button>
+          </el-radio-group>
+          <StatsRecordTable :max-height="analysisTableHeight" external-sort :sort-state="analysisSorts.records" @sort-change="changeAnalysisSort('records', $event)" :rows="pagedAnalysisRows('records', analysisRawRows)" :tasks="analysisScopeTasks" :record-only="analysisVersionType === 'noVersion'" />
+          <el-pagination v-model:current-page="analysisPagination.records.currentPage" v-model:page-size="analysisPagination.records.pageSize" class="dt-analysis-pagination" :page-sizes="ANALYSIS_PAGE_SIZE_OPTIONS" :total="analysisRawRows.length" layout="total, sizes, prev, pager, next, jumper" @size-change="resetAnalysisPage('records')" />
+        </el-tab-pane>
+        <el-tab-pane label="全部追踪和进度" name="tracking">
+          <StatsRecordTable :max-height="analysisTableHeight" external-sort :sort-state="analysisSorts.tracking" @sort-change="changeAnalysisSort('tracking', $event)" :rows="pagedAnalysisRows('tracking', analysisTrackingRows)" :tasks="analysisScopeTasks" />
+          <el-pagination v-model:current-page="analysisPagination.tracking.currentPage" v-model:page-size="analysisPagination.tracking.pageSize" class="dt-analysis-pagination" :page-sizes="ANALYSIS_PAGE_SIZE_OPTIONS" :total="analysisTrackingRows.length" layout="total, sizes, prev, pager, next, jumper" @size-change="resetAnalysisPage('tracking')" />
+        </el-tab-pane>
+        <el-tab-pane v-for="tab in analysisProgressTabs.filter(tab => tab.key !== 'progress')" :key="tab.key" :label="tab.label" :name="tab.key">
+          <p v-if="tab.key === 'noVersion'" class="dt-analysis-tab-note">无版本号仅记录工时，不计交付率。</p>
+          <StatsProgressTable :max-height="analysisTableHeight" external-sort :sort-state="analysisSorts[tab.key]" @sort-change="changeAnalysisSort(tab.key, $event)" :rows="pagedAnalysisRows(tab.key, tab.rows)" :tasks="analysisScopeTasks" :record-only="tab.key === 'noVersion'" />
+          <el-pagination v-model:current-page="analysisPagination[tab.key].currentPage" v-model:page-size="analysisPagination[tab.key].pageSize" class="dt-analysis-pagination" :page-sizes="ANALYSIS_PAGE_SIZE_OPTIONS" :total="tab.rows.length" layout="total, sizes, prev, pager, next, jumper" @size-change="resetAnalysisPage(tab.key)" />
+        </el-tab-pane>
+        <el-tab-pane v-for="tab in analysisGroupTabs" :key="tab.key" :label="tab.label" :name="tab.key">
+          <el-table :data="pagedAnalysisRows(tab.key, tab.rows)" :default-sort="analysisSorts[tab.key]" @sort-change="changeAnalysisSort(tab.key, $event)" border size="small" :max-height="analysisTableHeight" empty-text="当前范围暂无数据">
+            <el-table-column prop="label" :label="tab.label === '数据质量' ? '检查项' : tab.label" min-width="180" show-overflow-tooltip sortable="custom" />
+            <el-table-column v-if="tab.weeks" prop="weeks" sortable="custom" label="周" width="120"><template #default="{ row }">{{ row.weeks?.join('、') || '-' }}</template></el-table-column>
+            <el-table-column prop="total" :label="tab.key === 'keyword' ? '命中工时/h' : '工时/h'" width="110" align="right" sortable="custom" />
+            <el-table-column prop="share" label="工时占比" width="110" sortable="custom"><template #default="{ row }">{{ row.share }}%</template></el-table-column>
+            <template v-if="tab.roles"><el-table-column v-for="role in analysisRoleMeta.filter(item => showAnalysisRole(item.key))" :key="role.key" :prop="role.key" :label="role.label" min-width="100" sortable="custom" /></template>
+            <el-table-column prop="recordCount" label="记录数" width="95" sortable="custom" />
+            <el-table-column v-if="tab.tasks" prop="taskCount" label="周期数" width="90" sortable="custom" />
+            <el-table-column v-if="tab.requirements" prop="requirementCount" label="需求数" width="90" sortable="custom" />
           </el-table>
-          <el-pagination v-model:current-page="analysisPagination.versioned.currentPage" v-model:page-size="analysisPagination.versioned.pageSize" class="dt-analysis-pagination" :page-sizes="ANALYSIS_PAGE_SIZE_OPTIONS" :total="analysisPageTotal(analysisVersionedRows)" layout="total, sizes, prev, pager, next, jumper" @size-change="resetAnalysisPage('versioned')" />
+          <el-pagination v-model:current-page="analysisPagination[tab.key].currentPage" v-model:page-size="analysisPagination[tab.key].pageSize" class="dt-analysis-pagination" :page-sizes="ANALYSIS_PAGE_SIZE_OPTIONS" :total="tab.rows.length" layout="total, sizes, prev, pager, next, jumper" @size-change="resetAnalysisPage(tab.key)" />
+          <p v-if="tab.key === 'keyword'" class="dt-analysis-tab-note">关键词匹配需求名称和版本，同一记录可命中多个关键词，仅用于识别特征。</p>
         </el-tab-pane>
-        <el-tab-pane label="无版本号版本">
-          <div class="dt-analysis-scope-row"><span>当前范围内无版本号需求</span><el-button size="small" type="success" plain @click="downloadProgressDetails('current')">下载 Excel</el-button></div>
-          <el-table :data="pagedAnalysisRows('noVersion', analysisNoVersionRows)" border size="small" class="dt-analysis-table" style="width:100%;" empty-text="当前范围暂无无版本号需求">
-            <el-table-column prop="person" label="人员" width="110" sortable /><el-table-column label="版本号" width="120">无版本号</el-table-column><el-table-column prop="requirement" label="需求" min-width="220" show-overflow-tooltip sortable /><el-table-column prop="hours" label="工时/h" width="90" sortable /><el-table-column label="综合进度" width="120" align="center"><template #default="{ row }"><span :class="row.completed ? 'dt-progress-completed' : 'dt-progress-value'">{{ row.progress === null ? '未填写' : row.completed ? '已完成100%' : `${row.progress.toFixed(2)}%` }}</span></template></el-table-column>
-          </el-table>
-          <el-pagination v-model:current-page="analysisPagination.noVersion.currentPage" v-model:page-size="analysisPagination.noVersion.pageSize" class="dt-analysis-pagination" :page-sizes="ANALYSIS_PAGE_SIZE_OPTIONS" :total="analysisPageTotal(analysisNoVersionRows)" layout="total, sizes, prev, pager, next, jumper" @size-change="resetAnalysisPage('noVersion')" />
-        </el-tab-pane>
-        <el-tab-pane label="AI产品经理">
-          <el-table :data="pagedAnalysisRows('pm', analysisData.pmRows)" border size="small" class="dt-analysis-table" table-layout="auto" style="width:100%;" :default-sort="{ prop: 'total', order: 'descending' }">
-            <el-table-column prop="label" label="AI产品经理" width="1" align="center" sortable class-name="dt-analysis-primary-cell" header-class-name="dt-analysis-primary-header" />
-            <el-table-column prop="total" label="工时" align="center" sortable />
-            <el-table-column prop="share" label="占比" align="center" sortable>
-              <template #default="{ row }">{{ row.share }}%</template>
-            </el-table-column>
-            <el-table-column v-for="role in analysisRoleMeta.filter(item => showAnalysisRole(item.key))" :key="role.key" :prop="role.key" :label="role.label" align="center" sortable />
-            <el-table-column prop="recordCount" label="记录数" align="center" sortable />
-            <el-table-column prop="requirementCount" label="需求数" align="center" sortable />
-          </el-table>
-          <el-pagination v-model:current-page="analysisPagination.pm.currentPage" v-model:page-size="analysisPagination.pm.pageSize" class="dt-analysis-pagination" :page-sizes="ANALYSIS_PAGE_SIZE_OPTIONS" :total="analysisPageTotal(analysisData.pmRows)" layout="total, sizes, prev, pager, next, jumper" @size-change="resetAnalysisPage('pm')" />
-        </el-tab-pane>
-        <el-tab-pane label="人员">
-          <el-table :data="pagedAnalysisRows('staff', analysisData.staffRows)" border size="small" class="dt-analysis-table" table-layout="auto" style="width:100%;" :default-sort="{ prop: 'total', order: 'descending' }">
-            <el-table-column prop="label" label="人员" width="1" align="center" sortable class-name="dt-analysis-primary-cell" header-class-name="dt-analysis-primary-header" />
-            <el-table-column prop="total" label="工时" align="center" sortable />
-            <el-table-column prop="share" label="占比" align="center" sortable>
-              <template #default="{ row }">{{ row.share }}%</template>
-            </el-table-column>
-            <el-table-column prop="recordCount" label="记录数" align="center" sortable />
-            <el-table-column prop="taskCount" label="周期数" align="center" sortable />
-            <el-table-column prop="requirementCount" label="需求数" align="center" sortable />
-          </el-table>
-          <el-pagination v-model:current-page="analysisPagination.staff.currentPage" v-model:page-size="analysisPagination.staff.pageSize" class="dt-analysis-pagination" :page-sizes="ANALYSIS_PAGE_SIZE_OPTIONS" :total="analysisPageTotal(analysisData.staffRows)" layout="total, sizes, prev, pager, next, jumper" @size-change="resetAnalysisPage('staff')" />
-        </el-tab-pane>
-        <el-tab-pane label="周期">
-          <el-table :data="pagedAnalysisRows('task', analysisData.taskRows)" border size="small" class="dt-analysis-table" table-layout="auto" style="width:100%;" :default-sort="{ prop: 'sortTime', order: 'descending' }">
-            <el-table-column prop="sortTime" label="周期" width="1" align="center" sortable :sort-method="(a, b) => a.sortTime - b.sortTime" class-name="dt-analysis-primary-cell" header-class-name="dt-analysis-primary-header">
-              <template #default="{ row }">{{ row.label }}</template>
-            </el-table-column>
-            <el-table-column prop="total" label="工时" align="center" sortable />
-            <el-table-column prop="share" label="占比" align="center" sortable>
-              <template #default="{ row }">{{ row.share }}%</template>
-            </el-table-column>
-            <el-table-column v-for="role in analysisRoleMeta.filter(item => showAnalysisRole(item.key))" :key="role.key" :prop="role.key" :label="role.label" align="center" sortable />
-            <el-table-column prop="recordCount" label="记录数" align="center" sortable />
-            <el-table-column prop="requirementCount" label="需求数" align="center" sortable />
-          </el-table>
-          <el-pagination v-model:current-page="analysisPagination.task.currentPage" v-model:page-size="analysisPagination.task.pageSize" class="dt-analysis-pagination" :page-sizes="ANALYSIS_PAGE_SIZE_OPTIONS" :total="analysisPageTotal(analysisData.taskRows)" layout="total, sizes, prev, pager, next, jumper" @size-change="resetAnalysisPage('task')" />
-        </el-tab-pane>
-        <el-tab-pane label="版本">
-          <el-table :data="pagedAnalysisRows('version', analysisData.versionRows)" border size="small" class="dt-analysis-table" table-layout="auto" style="width:100%;" :default-sort="{ prop: 'total', order: 'descending' }">
-            <el-table-column prop="label" label="版本" width="1" align="center" sortable class-name="dt-analysis-primary-cell" header-class-name="dt-analysis-primary-header" />
-            <el-table-column label="周" width="120" align="center" sortable>
-              <template #default="{ row }">{{ row.weeks?.join('、') || '-' }}</template>
-            </el-table-column>
-            <el-table-column prop="total" label="工时" align="center" sortable />
-            <el-table-column prop="share" label="占比" align="center" sortable>
-              <template #default="{ row }">{{ row.share }}%</template>
-            </el-table-column>
-            <el-table-column v-for="role in analysisRoleMeta.filter(item => showAnalysisRole(item.key))" :key="role.key" :prop="role.key" :label="role.label" align="center" sortable />
-            <el-table-column prop="recordCount" label="记录数" align="center" sortable />
-            <el-table-column prop="requirementCount" label="需求数" align="center" sortable />
-          </el-table>
-          <el-pagination v-model:current-page="analysisPagination.version.currentPage" v-model:page-size="analysisPagination.version.pageSize" class="dt-analysis-pagination" :page-sizes="ANALYSIS_PAGE_SIZE_OPTIONS" :total="analysisPageTotal(analysisData.versionRows)" layout="total, sizes, prev, pager, next, jumper" @size-change="resetAnalysisPage('version')" />
-        </el-tab-pane>
-        <el-tab-pane label="需求">
-          <el-table :data="pagedAnalysisRows('requirement', analysisData.requirementRows)" border size="small" class="dt-analysis-table dt-analysis-requirement-table" table-layout="auto" style="width:100%;" :default-sort="{ prop: 'total', order: 'descending' }">
-            <el-table-column prop="label" label="需求" width="130" align="left" header-align="center" show-overflow-tooltip sortable class-name="dt-analysis-requirement-cell" />
-            <el-table-column prop="total" label="工时" align="center" sortable />
-            <el-table-column prop="share" label="占比" align="center" sortable>
-              <template #default="{ row }">{{ row.share }}%</template>
-            </el-table-column>
-            <el-table-column v-for="role in analysisRoleMeta.filter(item => showAnalysisRole(item.key))" :key="role.key" :prop="role.key" :label="role.label" align="center" sortable />
-            <el-table-column prop="recordCount" label="记录数" align="center" sortable />
-          </el-table>
-          <el-pagination v-model:current-page="analysisPagination.requirement.currentPage" v-model:page-size="analysisPagination.requirement.pageSize" class="dt-analysis-pagination" :page-sizes="ANALYSIS_PAGE_SIZE_OPTIONS" :total="analysisPageTotal(analysisData.requirementRows)" layout="total, sizes, prev, pager, next, jumper" @size-change="resetAnalysisPage('requirement')" />
-        </el-tab-pane>
-        <el-tab-pane label="关键词">
-          <el-table :data="pagedAnalysisRows('keyword', analysisData.keywordRows)" border size="small" class="dt-analysis-table" table-layout="auto" style="width:100%;" :default-sort="{ prop: 'total', order: 'descending' }">
-            <el-table-column prop="label" label="关键词" width="1" align="center" sortable class-name="dt-analysis-primary-cell" header-class-name="dt-analysis-primary-header" />
-            <el-table-column prop="total" label="命中工时" align="center" sortable />
-            <el-table-column prop="share" label="占比" align="center" sortable>
-              <template #default="{ row }">{{ row.share }}%</template>
-            </el-table-column>
-            <el-table-column prop="recordCount" label="记录数" align="center" sortable />
-            <el-table-column prop="requirementCount" label="需求数" align="center" sortable />
-          </el-table>
-          <el-pagination v-model:current-page="analysisPagination.keyword.currentPage" v-model:page-size="analysisPagination.keyword.pageSize" class="dt-analysis-pagination" :page-sizes="ANALYSIS_PAGE_SIZE_OPTIONS" :total="analysisPageTotal(analysisData.keywordRows)" layout="total, sizes, prev, pager, next, jumper" @size-change="resetAnalysisPage('keyword')" />
-          <p class="dt-analysis-note">关键词按固定正则命中需求名称和版本字段，同一记录可命中多个关键词，仅用于识别特征，不用于反推总工时。</p>
-        </el-tab-pane>
-        <el-tab-pane label="数据质量">
-          <el-table :data="pagedAnalysisRows('quality', analysisData.qualityRows)" border size="small" class="dt-analysis-table" table-layout="auto" style="width:100%;" :default-sort="{ prop: 'total', order: 'descending' }">
-            <el-table-column prop="label" label="检查项" width="1" align="center" sortable class-name="dt-analysis-primary-cell" header-class-name="dt-analysis-primary-header" />
-            <el-table-column prop="recordCount" label="记录数" align="center" sortable />
-            <el-table-column prop="total" label="工时" align="center" sortable />
-            <el-table-column prop="share" label="占比" align="center" sortable>
-              <template #default="{ row }">{{ row.share }}%</template>
-            </el-table-column>
-          </el-table>
-          <el-pagination v-model:current-page="analysisPagination.quality.currentPage" v-model:page-size="analysisPagination.quality.pageSize" class="dt-analysis-pagination" :page-sizes="ANALYSIS_PAGE_SIZE_OPTIONS" :total="analysisPageTotal(analysisData.qualityRows)" layout="total, sizes, prev, pager, next, jumper" @size-change="resetAnalysisPage('quality')" />
-        </el-tab-pane>
-        <el-tab-pane label="需求进度">
-          <el-tooltip :content="WEIGHTED_PROGRESS_TIP" placement="top">
-            <p style="margin:0 0 10px; color:var(--color-text-3); font-size:12px;">按人员、版本号/无版本号和需求展示综合进度 ⓘ</p>
-          </el-tooltip>
-          <el-table :data="pagedAnalysisRows('progress', analysisData.progressRows)" border size="small" class="dt-analysis-table" style="width:100%;">
-            <el-table-column prop="person" label="人员" width="110" sortable />
-            <el-table-column prop="role" label="岗位" width="100" sortable />
-            <el-table-column prop="versionType" label="版本分组" width="100" sortable />
-            <el-table-column prop="version" label="版本号" width="110" sortable>
-              <template #default="{ row }">{{ row.version || '无版本号' }}</template>
-            </el-table-column>
-            <el-table-column prop="requirement" label="需求" min-width="220" show-overflow-tooltip sortable />
-            <el-table-column prop="hours" label="工时/h" width="90" align="right" sortable />
-            <el-table-column label="综合进度" width="120" align="center" sortable>
-              <template #default="{ row }">
-                <span :style="row.completed ? { color:'#16883B', background:'#E8F7EE', padding:'3px 8px', borderRadius:'4px', fontWeight:700 } : { color:'#165DFF', fontWeight:600 }">
-                  {{ row.progress === null ? '未填写' : row.completed ? '已完成100%' : `${row.progress.toFixed(2)}%` }}
-                </span>
-              </template>
-            </el-table-column>
-          </el-table>
-          <el-pagination v-model:current-page="analysisPagination.progress.currentPage" v-model:page-size="analysisPagination.progress.pageSize" class="dt-analysis-pagination" :page-sizes="ANALYSIS_PAGE_SIZE_OPTIONS" :total="analysisPageTotal(analysisData.progressRows)" layout="total, sizes, prev, pager, next, jumper" @size-change="resetAnalysisPage('progress')" />
-        </el-tab-pane>
-        <el-tab-pane label="公式步骤">
-          <div class="dt-analysis-formula">
-            <ol>
-              <li>先按页面上选择的年份、季度或具体周期确定统计范围。</li>
-              <li>如果点击总工时卡片，就统计全部岗位；如果点击任一研发角色卡片，就只统计对应岗位。</li>
-              <li>工时合计：把当前范围内符合条件的每条填报工时相加。</li>
-              <li>占比：用当前行的工时除以当前弹窗的总工时，再换算成百分比。</li>
-              <li><el-tooltip :content="WEIGHTED_PROGRESS_TIP" placement="top"><span style="text-decoration:underline; text-decoration-style:dotted;">综合进度采用工时加权，悬浮查看公式与示例。</span></el-tooltip></li>
-              <li>需求数量：同一个周期内，需求名称和版本相同的内容视为同一个需求。</li>
-              <li>AI产品经理归属：优先使用填报时选择的第一个AI产品经理；没有填写时归入“不在上述”。</li>
-              <li>AI产品经理、人员、周期、版本、需求、关键词和数据质量页签都沿用同一套周期范围和卡片岗位范围。</li>
-            </ol>
-          </div>
+        <el-tab-pane label="需求进度" name="progress">
+          <StatsProgressTable :max-height="analysisTableHeight" external-sort :sort-state="analysisSorts.progress" @sort-change="changeAnalysisSort('progress', $event)" :rows="pagedAnalysisRows('progress', analysisData.progressRows)" :tasks="analysisScopeTasks" />
+          <el-pagination v-model:current-page="analysisPagination.progress.currentPage" v-model:page-size="analysisPagination.progress.pageSize" class="dt-analysis-pagination" :page-sizes="ANALYSIS_PAGE_SIZE_OPTIONS" :total="analysisData.progressRows.length" layout="total, sizes, prev, pager, next, jumper" @size-change="resetAnalysisPage('progress')" />
         </el-tab-pane>
       </el-tabs>
-    </el-dialog>
-
-    <el-dialog v-model="progressListDialogVisible" :title="progressListTitle" width="78%">
-      <div class="dt-analysis-scope-row">
-        <span>统计范围：{{ selectedPeriodRangeText }}</span>
-        <el-tooltip :content="WEIGHTED_PROGRESS_TIP" placement="top"><span>综合进度：工时加权</span></el-tooltip>
-        <el-button size="small" type="success" plain @click="downloadProgressDetails('current')">下载 Excel</el-button>
-      </div>
-      <el-table :data="pagedAnalysisRows('progressModal', progressListRows)" border size="small" class="dt-analysis-table" style="width:100%;" empty-text="当前范围暂无需求进度">
-        <el-table-column type="index" label="#" width="55" />
-        <el-table-column prop="person" label="人员" width="110" sortable />
-        <el-table-column prop="role" label="岗位" width="120" sortable />
-        <el-table-column prop="versionType" label="版本分组" width="110" sortable />
-        <el-table-column prop="version" label="版本号" width="120"><template #default="{ row }">{{ row.version || '无版本号' }}</template></el-table-column>
-        <el-table-column prop="requirement" label="需求" min-width="220" show-overflow-tooltip />
-        <el-table-column prop="hours" label="工时/h" width="90" align="right" sortable />
-        <el-table-column label="进度/状态" width="140" align="center"><template #default="{ row }"><span :class="row.completed ? 'dt-progress-completed' : 'dt-progress-value'">{{ row.progress === null ? '未填写' : row.completed ? '已完成100%' : `${row.progress.toFixed(2)}%` }}</span></template></el-table-column>
-      </el-table>
-      <el-pagination v-model:current-page="analysisPagination.progressModal.currentPage" v-model:page-size="analysisPagination.progressModal.pageSize" class="dt-analysis-pagination" :page-sizes="ANALYSIS_PAGE_SIZE_OPTIONS" :total="analysisPageTotal(progressListRows)" layout="total, sizes, prev, pager, next, jumper" @size-change="resetAnalysisPage('progressModal')" />
-    </el-dialog>
-
-    <!-- v3.2.1: 需求总数统计弹窗 -->
-    <el-dialog v-model="reqStatsDialogVisible" title="需求总数统计明细" width="520px">
-      <div style="margin-bottom:16px;">
-        <div style="display:flex; gap:24px; margin-bottom:16px;">
-          <div style="flex:1; padding:16px; background:#E8F3FF; border-radius:8px; text-align:center;">
-            <div style="font-size:12px; color:#4E5969; margin-bottom:4px;">按版本号去重总数</div>
-            <div style="font-size:24px; font-weight:700; color:#165DFF;">{{ reqStats.totalVersions }}</div>
-          </div>
-          <div style="flex:1; padding:16px; background:#FFF7E8; border-radius:8px; text-align:center;">
-            <div style="font-size:12px; color:#4E5969; margin-bottom:4px;">无版本号需求总数</div>
-            <div style="font-size:24px; font-weight:700; color:#FF7D00;">{{ reqStats.totalNoVersion }}</div>
-          </div>
-        </div>
-        <div style="font-size:13px; font-weight:600; color:var(--color-text-1); margin-bottom:8px;">按AI产品经理分组：</div>
-        <el-table :data="reqStats.perPm" border size="small" style="width:100%;" :default-sort="{ prop: 'versionCount', order: 'descending' }">
-          <el-table-column prop="name" label="AI产品经理" width="130" align="center" sortable />
-          <el-table-column prop="versionCount" label="去重版本数" width="120" align="center" sortable />
-          <el-table-column prop="noVersionCount" label="无版本号数" width="120" align="center" sortable />
-          <el-table-column label="小计" width="100" align="center" sortable :sort-method="(a, b) => (a.versionCount + a.noVersionCount) - (b.versionCount + b.noVersionCount)">
-            <template #default="{ row }">
-              <span style="font-weight:700; color:var(--color-primary);">{{ row.versionCount + row.noVersionCount }}</span>
-            </template>
-          </el-table-column>
-        </el-table>
       </div>
     </el-dialog>
-
-    <!-- v3.2.1: 研发人员明细弹窗 -->
-    <el-dialog v-model="staffDialogVisible" title="研发人员明细" width="420px">
-      <el-table :data="currentStaffList" border size="small" style="width:100%;">
-        <el-table-column type="index" label="#" width="45" align="center" />
-        <el-table-column prop="name" label="姓名" width="100" align="center" sortable>
-          <template #default="{ row }">
-            <span style="font-weight:600;">{{ row.name }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="role" label="岗位" width="100" align="center" sortable>
-          <template #default="{ row }">
-            <span
-              :style="rolePillStyle(row.role)"
-            >{{ roleDisplay(row.role, true) }}</span>
-          </template>
-        </el-table-column>
-      </el-table>
+    <el-dialog v-model="progressListDialogVisible" :title="progressListTitle" width="90%" top="7vh" append-to-body>
+      <div class="dt-delivery-toolbar"><span class="dt-analysis-current-scope">{{ analysisPeriodRangeText }}</span><el-button size="small" plain @click="downloadProgressDetails(analysisRecordScope, progressListVersionType, progressListRoleKey)">导出 Excel</el-button></div>
+      <StatsProgressTable external-sort :sort-state="analysisSorts.progressModal" @sort-change="changeAnalysisSort('progressModal', $event)" :rows="pagedAnalysisRows('progressModal', progressListRows)" :tasks="analysisScopeTasks" :record-only="progressListVersionType === 'noVersion'" />
+      <el-pagination v-model:current-page="analysisPagination.progressModal.currentPage" v-model:page-size="analysisPagination.progressModal.pageSize" class="dt-analysis-pagination" :page-sizes="ANALYSIS_PAGE_SIZE_OPTIONS" :total="progressListRows.length" layout="total, sizes, prev, pager, next, jumper" @size-change="resetAnalysisPage('progressModal')" />
     </el-dialog>
 
     </template>
@@ -3116,6 +2315,94 @@ function exportStatsData() {
 </template>
 
 <style scoped>
+.dt-main-record-tabs > :deep(.el-tabs__header) { margin: 0; padding: 0 16px; }
+.dt-main-record-tabs > :deep(.el-tabs__content) { overflow: hidden; }
+.dt-main-records-toolbar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:12px 16px; }
+.dt-main-records-toolbar .el-select { width:160px; }
+.dt-main-records-toolbar strong { margin-right:auto; font-size:14px; }
+.dt-main-records-totals { display:flex; flex-wrap:wrap; gap:6px 18px; padding:0 16px 12px; font-size:12px; color:#667085; }
+.dt-main-records .dt-analysis-pagination { padding:0 12px 12px; }
+.dt-delivery-card.is-selected-scope { outline:2px solid #165dff; outline-offset:-2px; }
+.dt-summary-strip { display: grid; grid-template-columns: repeat(var(--delivery-card-count, 6), minmax(0, 1fr)) 224px; grid-auto-rows: 1fr; align-items: stretch; gap: 10px; margin-bottom: 6px; }
+.dt-delivery-cards { display: contents; }
+.dt-delivery-cards-product { grid-template-columns: minmax(250px, 330px); }
+.dt-delivery-brief { margin: 0 0 10px; color: #86909c; font-size: 11px; line-height: 16px; }
+:global(.el-dialog.dt-delivery-dialog) { display: flex; flex-direction: column; height: 92dvh; max-height: 92dvh; max-width: 1500px; border-radius: 12px; overflow: hidden; }
+:global(.dt-delivery-dialog > .el-dialog__header) { flex-shrink: 0; padding-bottom: 12px; }
+:global(.dt-delivery-dialog > .el-dialog__body) { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
+.dt-analysis-spotlight { display: grid; grid-template-columns: minmax(300px, .85fr) minmax(0, 1.4fr); gap: 14px; flex: 0 0 clamp(180px, 25vh, 250px); min-height: 0; margin-bottom: 12px; }
+.dt-delivery-dialog-summary { display: flex; flex-direction: column; justify-content: space-between; gap: 10px; padding: 14px 18px; border: 1px solid #dce7f8; border-radius: 9px; background: linear-gradient(125deg, #f1f6ff, #fbfdff); min-width: 0; overflow-y: auto; }
+.dt-delivery-dialog-summary h3, .dt-analysis-people h3 { margin: 0; font-size: 14px; color: #1d2939; }
+.dt-delivery-dialog-summary h3 { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.dt-delivery-dialog-summary h3 span { font-size: 11px; color: #667085; font-weight: 400; white-space: nowrap; }
+.dt-delivery-dialog-summary :deep(.delivery-summary) { gap: 10px 22px; flex-shrink: 0; }
+.dt-delivery-dialog-summary :deep(.delivery-metric strong) { font-size: 28px; }
+.dt-delivery-dialog-summary p { margin: 0; color: #667085; font-size: 11px; line-height: 1.5; }
+.dt-analysis-people { display: flex; flex-direction: column; min-height: 0; min-width: 0; padding: 10px 14px; border: 1px solid #e4eaf1; border-radius: 9px; background: #fff; overflow: hidden; }
+.dt-analysis-people-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 6px; flex-shrink: 0; }
+.dt-analysis-people-heading > span { color: #86909c; font-size: 11px; }
+.dt-analysis-people :deep(.staff-delivery-list) { flex: 1; min-height: 0; }
+.dt-analysis-record-only { color: #86909c; font-size: 12px; line-height: 1.8; }
+.dt-analysis-details { flex: 1; min-height: 0; }
+.dt-restored-analysis-tabs { display: flex; flex-direction: column; height: 100%; }
+.dt-restored-analysis-tabs :deep(.el-tabs__header) { flex-shrink: 0; }
+.dt-restored-analysis-tabs :deep(.el-tabs__content) { flex: 1; min-height: 0; overflow: hidden; }
+.dt-restored-analysis-tabs :deep(.el-tab-pane) { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow-y: auto; }
+.dt-restored-analysis-tabs :deep(.el-tab-pane > *) { flex-shrink: 0; }
+.dt-restored-analysis-tabs .dt-analysis-pagination { margin: 8px 0 0; }
+.dt-delivery-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.dt-delivery-toolbar .el-radio-group { margin-right: auto; }
+.dt-analysis-inline-kpis { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; }
+.dt-analysis-inline-kpis button { border: 0; padding: 2px 0; background: none; font: inherit; font-size: 12px; color: #667085; cursor: pointer; }
+.dt-analysis-inline-kpis strong { font-size: 16px; color: #344054; margin-left: 3px; }
+.dt-analysis-current-scope { flex: 1; min-width: 140px; font-size: 12px; color: #667085; }
+.dt-analysis-role-pills { display: flex; flex-wrap: wrap; gap: 4px 8px; margin-bottom: 6px; }
+.dt-analysis-role-pills button { display: flex; align-items: center; gap: 5px; padding: 3px 8px; border: 1px solid #e4eaf1; border-radius: 5px; background: #fafcff; cursor: pointer; font: inherit; font-size: 11px; }
+.dt-analysis-role-pills button:hover, .dt-analysis-inline-kpis button:hover { background: #e8f3ff; }
+.dt-analysis-role-pills button:focus-visible, .dt-analysis-inline-kpis button:focus-visible { outline: 2px solid #165dff; outline-offset: 2px; }
+.dt-restored-analysis-tabs :deep(.el-tabs__header) { margin-bottom: 8px; }
+.dt-restored-analysis-tabs :deep(.el-tabs__nav-wrap), .dt-restored-analysis-tabs :deep(.el-tabs__nav-scroll) { overflow: visible; padding: 0; }
+.dt-restored-analysis-tabs :deep(.el-tabs__nav) { display: flex; flex-wrap: wrap; float: none; width: 100%; transform: none !important; white-space: normal; gap: 0 3px; }
+.dt-restored-analysis-tabs :deep(.el-tabs__item) { padding: 0 9px !important; height: 32px; font-size: 12px; border-bottom: 2px solid transparent; }
+.dt-restored-analysis-tabs :deep(.el-tabs__item.is-active) { border-bottom-color: #165dff; }
+.dt-restored-analysis-tabs :deep(.el-tabs__nav-prev), .dt-restored-analysis-tabs :deep(.el-tabs__nav-next), .dt-restored-analysis-tabs :deep(.el-tabs__active-bar), .dt-restored-analysis-tabs :deep(.el-tabs__nav-wrap::after) { display: none; }
+.dt-analysis-version-filter { margin-bottom: 8px; }
+.dt-analysis-tab-note { margin: 0 0 8px; color: #86909c; font-size: 12px; }
+.dt-staff-delivery-complete { color: #146c2e; background: #e8f7ee; padding: 2px 5px; border-radius: 4px; font-weight: 700; }
+.dt-restored-analysis-tabs :deep(.el-tab-pane) { min-width: 0; }
+.dt-delivery-records { width: 100%; }
+@media (max-width: 1400px) {
+  .dt-summary-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .dt-delivery-cards-product { grid-template-columns: minmax(250px, 330px); }
+  .dt-summary-strip :deep(.delivery-summary.has-compact-labels) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 900px) {
+  .dt-summary-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dt-summary-strip :deep(.delivery-summary.has-compact-labels) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dt-analysis-spotlight { grid-template-columns: minmax(270px, 1fr) minmax(0, 1fr); gap: 8px; }
+  .dt-delivery-dialog-summary { padding: 10px; }
+  .dt-delivery-dialog-summary :deep(.delivery-metric strong) { font-size: 23px; }
+}
+@media (max-width: 600px) {
+  .dt-summary-strip { gap: 8px; }
+  .dt-delivery-cards-product { grid-template-columns: minmax(0, 1fr); }
+  .dt-analysis-spotlight { grid-template-columns: minmax(0, 1fr); grid-template-rows: min-content minmax(105px, 1fr); flex-basis: 38vh; overflow-y: auto; gap: 6px; margin-bottom: 8px; }
+  .dt-analysis-spotlight.is-custom-period { flex-basis: 34vh; }
+  .dt-delivery-dialog-summary { gap: 6px; padding: 8px 10px; }
+  .dt-delivery-dialog-summary :deep(.delivery-summary.has-weighted) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 12px; }
+  .dt-delivery-dialog-summary :deep(.delivery-metric strong) { font-size: 20px; }
+  .dt-analysis-people { padding: 6px 10px; }
+  .dt-analysis-people :deep(.staff-delivery-table) { font-size: 11px; }
+  .dt-analysis-people :deep(.staff-delivery-table th), .dt-analysis-people :deep(.staff-delivery-table td) { padding: 3px 2px; }
+  .dt-analysis-people-heading h3 { font-size: 12px; }
+  .dt-delivery-dialog-summary p { font-size: 11px; }
+  .dt-restored-analysis-tabs :deep(.el-tabs__nav-scroll) { overflow-x: auto; }
+  .dt-restored-analysis-tabs :deep(.el-tabs__nav) { flex-wrap: nowrap; width: max-content; }
+  .dt-delivery-toolbar { gap: 6px; margin-bottom: 6px; }
+  .dt-delivery-toolbar .el-button { margin-left: 0; }
+  .dt-delivery-dialog-summary .dt-analysis-inline-kpis { gap: 2px 10px; }
+  .dt-delivery-dialog-summary .dt-analysis-inline-kpis strong { font-size: 13px; }
+}
 .dt-focus-mode-toolbar {
   display: flex;
   align-items: center;
@@ -3133,27 +2420,27 @@ function exportStatsData() {
 }
 
 /* 统计页签按业务浏览顺序展示：研发视图紧邻产品视图之前。 */
-.dt-stats-tabs :deep(.el-tabs__nav) {
+.dt-stats-tabs > :deep(.el-tabs__header .el-tabs__nav) {
   display: flex;
 }
 
-.dt-stats-tabs :deep(.el-tabs__item:nth-child(1)) {
+.dt-stats-tabs > :deep(.el-tabs__header .el-tabs__item:nth-child(1)) {
   order: 1;
 }
 
-.dt-stats-tabs :deep(.el-tabs__item:nth-child(2)) {
+.dt-stats-tabs > :deep(.el-tabs__header .el-tabs__item:nth-child(2)) {
   order: 3;
 }
 
-.dt-stats-tabs :deep(.el-tabs__item:nth-child(3)) {
+.dt-stats-tabs > :deep(.el-tabs__header .el-tabs__item:nth-child(3)) {
   order: 2;
 }
 
-.dt-stats-tabs :deep(.el-tabs__item:nth-child(4)) {
+.dt-stats-tabs > :deep(.el-tabs__header .el-tabs__item:nth-child(4)) {
   order: 4;
 }
 
-.dt-stats-tabs :deep(.el-tabs__item:nth-child(5)) {
+.dt-stats-tabs > :deep(.el-tabs__header .el-tabs__item:nth-child(5)) {
   order: 5;
 }
 
@@ -3178,12 +2465,21 @@ function exportStatsData() {
   overflow: hidden;
 }
 
-.dt-stat-cards-single-row .dt-stat-card-label,
-.dt-stat-cards-single-row .dt-stat-card-value,
-.dt-stat-cards-single-row .dt-stat-card-progress {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.dt-stat-cards-single-row .dt-stat-card-label {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+  min-height: 36px;
+}
+
+.dt-stat-cards-single-row .dt-stat-card-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 4px;
+  font-size: clamp(20px, 1.5vw, 28px);
+  white-space: normal;
+  overflow: visible;
 }
 
 .dt-stat-cards-single-row .dt-stat-card-label {
@@ -3194,7 +2490,8 @@ function exportStatsData() {
   margin-top: 6px;
   color: var(--color-text-3, #86909C);
   font-size: 11px;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .dt-stat-card-progress-value {
@@ -3205,14 +2502,14 @@ function exportStatsData() {
 
 .dt-department-chart-grid {
   display: grid;
-  grid-template-columns: minmax(0, 2.25fr) minmax(300px, 1fr);
+  grid-template-columns: minmax(0, var(--engineering-chart-width, 2fr)) minmax(0, var(--product-chart-width, 1fr));
   gap: 16px;
   margin-bottom: 24px;
 }
 
 .dt-department-chart-card {
   min-width: 0;
-  padding: 24px;
+  padding: 12px;
 }
 
 .dt-department-chart-card h3 {
@@ -3221,6 +2518,10 @@ function exportStatsData() {
   font-size: 15px;
   font-weight: 600;
 }
+
+.dt-chart-card-heading { min-height: 32px; display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 6px; }
+.dt-chart-card-heading h3 { margin-bottom: 0; }
+.dt-chart-card-heading h3 { flex: 1 1 220px; margin: 0; }
 
 .dt-product-demand-header {
   display: flex;
@@ -3249,103 +2550,6 @@ function exportStatsData() {
   color: var(--color-text-2, #4E5969);
   font-size: 12px;
   white-space: nowrap;
-}
-
-.dt-product-manager-chart {
-  min-height: 260px;
-  padding: 8px 16px 34px;
-  border-bottom: 1px solid var(--color-border, #E5E6EB);
-}
-
-.dt-product-manager-legend {
-  display: flex;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 14px;
-  margin-bottom: 8px;
-  color: var(--color-text-2, #4E5969);
-  font-size: 12px;
-}
-
-.dt-product-manager-legend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.dt-product-manager-legend i {
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
-}
-
-.dt-product-manager-chart-groups {
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
-  min-height: 220px;
-}
-
-.dt-product-manager-group {
-  flex: 1 1 0;
-  min-width: 120px;
-  padding: 8px 6px 0;
-  border-radius: 6px;
-  text-align: center;
-  transition: background-color .2s ease;
-}
-
-.dt-product-manager-group:hover,
-.dt-product-manager-group.is-selected {
-  background: var(--color-primary-light, #E8F3FF);
-}
-
-.dt-product-manager-bars {
-  height: 190px;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 4px;
-  border-bottom: 1px solid var(--color-border, #E5E6EB);
-}
-
-.dt-product-manager-bar {
-  position: relative;
-  width: clamp(18px, 2.5vw, 34px);
-  min-height: 0;
-  border-radius: 4px 4px 0 0;
-  transition: height .2s ease;
-}
-
-.dt-product-manager-bar span {
-  position: absolute;
-  left: 50%;
-  top: -20px;
-  transform: translateX(-50%);
-  color: var(--color-text-1, #1D2129);
-  font-size: 10px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.dt-product-manager-total-bar {
-  margin-left: 4px;
-}
-
-.dt-product-manager-label {
-  margin-top: 10px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--color-text-2, #4E5969);
-  cursor: pointer;
-  font-size: 13px;
-  white-space: nowrap;
-}
-
-.dt-product-manager-label:hover {
-  color: var(--color-primary, #165DFF);
-  text-decoration: underline;
 }
 
 .dt-product-demand-chart {
@@ -3405,45 +2609,10 @@ function exportStatsData() {
   white-space: nowrap;
 }
 
-.dt-product-demand-tip {
-  margin-top: 12px;
-  color: var(--color-text-3, #86909C);
-  font-size: 12px;
-}
-
-@media (max-width: 900px) {
+@media (max-width: 1100px) {
   .dt-department-chart-grid {
     grid-template-columns: minmax(0, 1fr);
   }
-}
-
-.dt-pm-chart-stage {
-  position: relative;
-  width: 100%;
-  min-width: 0;
-}
-
-.dt-pm-chart-stage canvas {
-  display: block;
-  width: 100%;
-}
-
-.dt-pm-chart-zero-toggle {
-  position: absolute;
-  top: 2px;
-  right: 30px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 24px;
-  color: var(--color-text-2, #4E5969);
-  font-size: 12px;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-.dt-pm-chart-zero-toggle :deep(.el-switch) {
-  height: 22px;
 }
 
 .dt-stats-actions {
@@ -3639,7 +2808,11 @@ function exportStatsData() {
 @media (max-width: 900px) {
   .dt-period-filter-row {
     gap: 10px;
+    flex-wrap: wrap;
   }
+
+  .dt-year-select, .dt-quarter-select { flex-shrink: 0; }
+  .dt-week-selector { flex-basis: 100%; justify-content: flex-start; }
 
   .dt-task-period-select {
     flex-basis: 240px;
@@ -3689,20 +2862,20 @@ function exportStatsData() {
   box-shadow: 0 0 0 2px rgba(22, 93, 255, .10);
 }
 
-.dt-analysis-kpi span {
+.dt-analysis-kpi > span {
   display: block;
   color: var(--color-text-3, #86909C);
   font-size: 12px;
   margin-bottom: 6px;
 }
 
-.dt-analysis-kpi strong {
+.dt-analysis-kpi > strong {
   font-size: 24px;
   font-weight: 800;
   color: var(--color-text-1, #1D2129);
 }
 
-.dt-analysis-kpi em {
+.dt-analysis-kpi > em {
   margin-left: 4px;
   font-style: normal;
   color: var(--color-text-3, #86909C);
@@ -3777,6 +2950,9 @@ function exportStatsData() {
 
 .dt-analysis-pagination {
   justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px 0;
+  max-width: 100%;
   margin: 12px 0 4px;
 }
 
@@ -4335,5 +3511,19 @@ function exportStatsData() {
 }
 .dt-analysis-scope-row span:first-child { flex: 1; }
 .dt-progress-value { color: #165DFF; font-weight: 600; }
-.dt-progress-completed { color: #16883B; background: #E8F7EE; padding: 3px 8px; border-radius: 4px; font-weight: 700; }
+.dt-progress-completed { color: #16883B !important; background: #E8F7EE; padding: 3px 8px; border-radius: 4px; font-weight: 700; }
+@media (max-width: 900px) {
+  .dt-analysis-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .dt-analysis-scope-row { flex-wrap: wrap; }
+}
+@media (max-width: 600px) {
+  .dt-page-header { flex-wrap: wrap; gap: 12px; }
+  .dt-page-header > div { min-width: 0; max-width: 100%; }
+  .dt-page-title { flex: 1 1 auto; width: auto; min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; line-height: 1.5; }
+  .dt-analysis-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dt-analysis-kpi { padding: 10px 8px; }
+  .dt-analysis-role-strip { grid-template-columns: 1fr; }
+  .dt-stat-cards.dt-stat-cards-single-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dt-stat-cards-single-row .dt-stat-card-label { white-space: normal; }
+}
 </style>

@@ -1,0 +1,291 @@
+{
+  "errors": [],
+  "writes": [
+    {
+      "path": "/fill/REQ064-fixture/editing",
+      "method": "PUT",
+      "body": {
+        "task_id": "REQ064-week"
+      },
+      "intercepted": true
+    },
+    {
+      "path": "/fill/REQ064-fixture/submit",
+      "method": "POST",
+      "body": {
+        "records": [
+          {
+            "draft_row_id": "9f002d38-f367-4519-8d72-116a9d766a23",
+            "automatic_version_date": "2026-09-17",
+            "requirement_title": "公司会议",
+            "version": "v260917",
+            "product_managers": [],
+            "demand_sources": [],
+            "delivery_progress": null,
+            "hours": 3.5
+          }
+        ]
+      },
+      "intercepted": true
+    },
+    {
+      "path": "/fill/REQ064-fixture/editing",
+      "method": "PUT",
+      "body": {
+        "task_id": "REQ064-week"
+      },
+      "intercepted": true
+    },
+    {
+      "path": "/fill/REQ064-fixture/submit",
+      "method": "POST",
+      "body": {
+        "records": [
+          {
+            "draft_row_id": "96155080-afac-4899-94f1-7fdad9c1af0d",
+            "automatic_version_date": "2026-09-17",
+            "requirement_title": "公司会议",
+            "version": "v260917",
+            "product_managers": [],
+            "demand_sources": [],
+            "demand_source_weights": {},
+            "delivery_progress": null,
+            "hours": 3.5
+          }
+        ]
+      },
+      "intercepted": true
+    },
+    {
+      "path": "/fill/REQ064-fixture/editing",
+      "method": "PUT",
+      "body": {
+        "task_id": "REQ064-week"
+      },
+      "intercepted": true
+    },
+    {
+      "path": "/fill/REQ064-fixture/submit",
+      "method": "POST",
+      "body": {
+        "records": [
+          {
+            "existing_record_id": "REQ064-1",
+            "draft_row_id": "2d5add6b-1587-42a1-a507-a4309df37d72",
+            "requirement_title": "普通需求甲",
+            "version": "v4.1.0",
+            "product_managers": [
+              "REQ064归属产品"
+            ],
+            "demand_sources": [],
+            "delivery_progress": null,
+            "hours": 16
+          }
+        ]
+      },
+      "intercepted": true
+    },
+    {
+      "path": "/fill/REQ064-fixture/editing",
+      "method": "PUT",
+      "body": {
+        "task_id": "REQ064-week"
+      },
+      "intercepted": true
+    },
+    {
+      "path": "/fill/REQ064-fixture/editing",
+      "method": "PUT",
+      "body": {
+        "task_id": "REQ064-week"
+      },
+      "intercepted": true
+    }
+  ],
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/index.js"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture"
+    },
+    {
+      "method": "GET",
+      "path": "/pm"
+    },
+    {
+      "method": "PUT",
+      "path": "/fill/REQ064-fixture/editing"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture/history"
+    },
+    {
+      "method": "POST",
+      "path": "/fill/REQ064-fixture/submit"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture/history"
+    },
+    {
+      "method": "GET",
+      "path": "/index.js"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture"
+    },
+    {
+      "method": "GET",
+      "path": "/pm"
+    },
+    {
+      "method": "PUT",
+      "path": "/fill/REQ064-fixture/editing"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture/history"
+    },
+    {
+      "method": "POST",
+      "path": "/fill/REQ064-fixture/submit"
+    },
+    {
+      "method": "GET",
+      "path": "/index.js"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture"
+    },
+    {
+      "method": "GET",
+      "path": "/pm"
+    },
+    {
+      "method": "PUT",
+      "path": "/fill/REQ064-fixture/editing"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture/history"
+    },
+    {
+      "method": "POST",
+      "path": "/fill/REQ064-fixture/submit"
+    },
+    {
+      "method": "GET",
+      "path": "/index.js"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture"
+    },
+    {
+      "method": "GET",
+      "path": "/pm"
+    },
+    {
+      "method": "PUT",
+      "path": "/fill/REQ064-fixture/editing"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture/history"
+    },
+    {
+      "method": "GET",
+      "path": "/index.js"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture"
+    },
+    {
+      "method": "GET",
+      "path": "/pm"
+    },
+    {
+      "method": "PUT",
+      "path": "/fill/REQ064-fixture/editing"
+    },
+    {
+      "method": "GET",
+      "path": "/fill/REQ064-fixture/history"
+    },
+    {
+      "method": "GET",
+      "path": "/index.js"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/tasks"
+    },
+    {
+      "method": "GET",
+      "path": "/pm"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/stats"
+    },
+    {
+      "method": "GET",
+      "path": "/index.js"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/tasks"
+    },
+    {
+      "method": "GET",
+      "path": "/pm"
+    },
+    {
+      "method": "GET",
+      "path": "/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/stats"
+    }
+  ]
+}

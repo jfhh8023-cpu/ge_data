@@ -1,0 +1,14 @@
+PASS version eligibility trims whitespace and excludes only empty values and a lone hyphen
+PASS 32 versioned hours at manual 0% plus 16 blank hours at manual 100% deliver 32h and 80%
+PASS recorded manual progress and historical flags cannot override delivery hours or rate
+PASS 40/40 and 48/40 yield 100% and 120% without a cap
+PASS unversioned rows preserve recorded hours and the same capacity while contributing zero delivered hours
+PASS people without records in the selected scope do not enter the denominator
+PASS different calendar capacities weight by person-workdays rather than averaging percentages
+PASS duplicate records and overlapping periods do not duplicate delivered hours or capacity
+PASS allocated demand-source hours are used instead of original record hours
+PASS zero-workday holiday week preserves delivered hours and returns a null rate
+PASS an invalid mixed period cannot claim a definitive rate
+PASS missing calendars stay explicitly estimated and empty scopes have no capacity
+PASS out-of-scope people or tasks cannot contribute to the numerator
+Verified 13 delivery-summary scenarios.

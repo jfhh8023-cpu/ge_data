@@ -15,6 +15,10 @@ import { broadcastDataChange, SYNC_EVENTS } from '../utils/sync'
 import { parseExcelFile, validateHeaders, generateAndDownloadExcel, uploadExcelToServer, downloadTemplate } from '../utils/excel'
 import { roleLabel } from '../utils/roles'
 import { useDemandSourceStore } from '../stores/demandSources'
+import HoursCompletion from '../components/HoursCompletion.vue'
+import { summarizeWorkHours, WORK_HOURS_TIP, WORK_HOURS_SCOPE_TIP } from '../utils/workHours'
+import { sortRecordsByCreatedAt } from '../utils/recordOrder'
+import { FULL_CREDIT_NOTE, isFullCreditRecord, initializeSpecialRow, syncSpecialRow, normalizeProgress, summarizeDraftWeightedHours } from '../utils/effectiveHours'
 
 const route = useRoute()
 const demandSourceStore = useDemandSourceStore()
@@ -40,7 +44,6 @@ const currentTask = computed(() => editingHistoryTask.value ?? fillData.value?.t
 const isProductManager = computed(() => fillData.value?.staff?.role === 'ai_pm')
 const PROGRESS_OPTIONS = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
 const DEMAND_SOURCE_OPTIONS = computed(() => demandSourceStore.activeNames)
-const HISTORY_PROGRESS_DISPLAY = '100%'
 
 /** 是否有首选任务（用于显示"返回首选"按钮） */
 const hasPreferredTask = computed(() => !!fillData.value?.task)
@@ -61,7 +64,12 @@ const isEditable = computed(() => {
 
 /** 创建空行 */
 function createEmptyRow() {
-  return { requirement_title: '', version: '', product_managers: [], demand_sources: [], demand_source_weights: {}, hours: null, delivery_progress: null }
+  return { draft_row_id: crypto.randomUUID(), requirement_title: '', version: '', product_managers: [], demand_sources: [], demand_source_weights: {}, hours: null, delivery_progress: null }
+}
+
+function handleRequirementTitle(row, title) {
+  row.requirement_title = title
+  syncSpecialRow(row)
 }
 
 function defaultDemandSourceWeights(sources = []) {
@@ -139,7 +147,7 @@ onMounted(async () => {
   }
 })
 
-function normalizeRows(list) {
+function normalizeRows(list, { newRows = false } = {}) {
   return list.map(r => {
     // product_managers 可能是数组，也可能是 JSON 字符串（来自数据库原始返回）
     let pm = r.product_managers
@@ -147,8 +155,12 @@ function normalizeRows(list) {
       try { pm = JSON.parse(pm) } catch { pm = [] }
       if (!Array.isArray(pm)) pm = []
     }
-    return {
-      existing_record_id: r.id || '',
+    return initializeSpecialRow({
+      existing_record_id: r.id || r.existing_record_id || '',
+      draft_row_id: r.draft_row_id || crypto.randomUUID(),
+      created_at: r.created_at,
+      automatic_version_date: r.automatic_version_date,
+      _ordinary_fields: r._ordinary_fields,
       requirement_title: r.requirement_title || '',
       version: r.version || '',
       product_managers: pm,
@@ -156,9 +168,9 @@ function normalizeRows(list) {
       demand_source_weights: r.demand_source_weights && typeof r.demand_source_weights === 'object'
         ? { ...r.demand_source_weights }
         : (() => { try { return JSON.parse(r.demand_source_weights || '{}') } catch { return {} } })(),
-      delivery_progress: r.delivery_progress === null || r.delivery_progress === undefined || r.delivery_progress === '' ? null : Number(r.delivery_progress),
+      delivery_progress: normalizeProgress(r.delivery_progress),
       hours: (r.hours === null || r.hours === undefined || r.hours === '') ? null : parseFloat(r.hours)
-    }
+    }, new Date(), { newRow: newRows })
   })
 }
 
@@ -175,6 +187,16 @@ function removeRow(index) {
 const totalHours = computed(() =>
   rows.value.reduce((sum, r) => sum + (parseFloat(r.hours) || 0), 0).toFixed(2)
 )
+const draftWorkHours = computed(() => {
+  const baseline = currentTask.value?.workHours
+  if (!baseline || !Array.isArray(baseline.units)) return null
+  return {
+    ...baseline,
+    ...summarizeWorkHours(rows.value, baseline.units),
+    scopeNote: typeof baseline.scopeNote === 'string' ? baseline.scopeNote : ''
+  }
+})
+const draftWeightedHours = computed(() => summarizeDraftWeightedHours(rows.value, draftWorkHours.value?.standardHours))
 
 function hasSelectedProductManager(row) {
   return Array.isArray(row.product_managers)
@@ -228,18 +250,18 @@ async function handleSubmit() {
     ElMessage.warning('请至少填写一条完整的工时记录')
     return
   }
-  const missingPm = !isProductManager.value && validRows.find(({ row }) => !hasSelectedProductManager(row))
+  const missingPm = !isProductManager.value && validRows.find(({ row }) => !isFullCreditRecord(row) && !hasSelectedProductManager(row))
   if (missingPm) {
     ElMessage.warning(`第 ${missingPm.index + 1} 行请选择AI产品经理`)
     return
   }
-  const missingDemandSource = isProductManager.value && validRows.find(({ row }) => !Array.isArray(row.demand_sources) || row.demand_sources.length === 0)
+  const missingDemandSource = isProductManager.value && validRows.find(({ row }) => !isFullCreditRecord(row) && (!Array.isArray(row.demand_sources) || row.demand_sources.length === 0))
   if (missingDemandSource) {
     ElMessage.warning(`第 ${missingDemandSource.index + 1} 行请选择需求方`)
     return
   }
   const invalidDemandWeights = isProductManager.value && validRows.find(({ row }) => {
-    if (!row.demand_sources?.length) return false
+    if (isFullCreditRecord(row) || !row.demand_sources?.length) return false
     const total = demandSourceWeightTotal(row)
     return Math.abs(total - 100) > 0.01
   })
@@ -247,19 +269,21 @@ async function handleSubmit() {
     ElMessage.warning(`第 ${invalidDemandWeights.index + 1} 行需求方分配比例合计必须为100%`)
     return
   }
-  const missingProgress = validRows.find(({ row }) => !row.existing_record_id && (row.delivery_progress === null || row.delivery_progress === undefined || row.delivery_progress === ''))
+  const missingProgress = validRows.find(({ row }) => !isFullCreditRecord(row) && !row.existing_record_id && normalizeProgress(row.delivery_progress) === null)
   if (missingProgress) {
     ElMessage.warning(`第 ${missingProgress.index + 1} 行请选择交付进度`)
     return
   }
   const records = validRows.map(({ row }) => ({
     existing_record_id: row.existing_record_id || undefined,
+    draft_row_id: row.draft_row_id,
+    automatic_version_date: row.automatic_version_date,
     requirement_title: String(row.requirement_title || '').trim(),
     version: row.version || '',
     product_managers: row.product_managers,
     demand_sources: row.demand_sources,
     demand_source_weights: isProductManager.value ? normalizedDemandSourceWeights(row) : undefined,
-    delivery_progress: Number(row.delivery_progress),
+    delivery_progress: isFullCreditRecord(row) ? null : normalizeProgress(row.delivery_progress),
     hours: row.hours
   }))
 
@@ -298,11 +322,21 @@ async function handleSaveDraft() {
   if (savingDraft.value) return
   savingDraft.value = true
   try {
-    const payload = { draft_records: rows.value }
+    const draftSnapshot = rows.value.map(row => ({ ...row }))
+    const payload = { draft_records: draftSnapshot }
     if (fillData.value?.linkType === 'system' && currentTask.value) {
       payload.task_id = currentTask.value.id
     }
-    await api.put(`/fill/${route.params.token}/draft`, payload)
+    const response = await api.put(`/fill/${route.params.token}/draft`, payload)
+    // Reconcile the server's fixed date without replacing hours typed during the request.
+    for (const saved of response.data?.draft_records || []) {
+      const row = rows.value.find(item => item.draft_row_id === saved.draft_row_id)
+      const sent = draftSnapshot.find(item => item.draft_row_id === saved.draft_row_id)
+      if (row && sent && row.requirement_title === sent.requirement_title && isFullCreditRecord(row)) {
+        row.version = saved.version
+        row.automatic_version_date = saved.automatic_version_date
+      }
+    }
     ElMessage.success('草稿已暂存')
     broadcastDataChange(SYNC_EVENTS.WORK_RECORD_CHANGED, { token: route.params.token })
   } catch (err) {
@@ -322,7 +356,7 @@ async function loadHistoryForEdit(task) {
     const res = await api.get(`/fill/${route.params.token}/task/${task.id}/records`)
     const records = res.data?.records || []
     rows.value = records.length > 0 ? normalizeRows(records) : [createEmptyRow()]
-    editingHistoryTask.value = task
+    editingHistoryTask.value = { ...task, ...(res.data?.task || {}) }
     // v1.6.2: 进入编辑模式后立即通知后台，keep-alive 重新绑定新任务 id
     startEditingKeepAlive()
   } catch {
@@ -430,7 +464,8 @@ function parseRecognizeText() {
     }
   }
   if (parsed.length === 0) { ElMessage.warning('未识别到有效数据'); return }
-  if (rows.value.length === 1 && !rows.value[0].requirement_title && !rows.value[0].hours) { rows.value = parsed } else { rows.value.push(...parsed) }
+  const recognizedRows = normalizeRows(parsed, { newRows: true })
+  if (rows.value.length === 1 && !rows.value[0].requirement_title && !rows.value[0].hours) { rows.value = recognizedRows } else { rows.value.push(...recognizedRows) }
   recognizeText.value = ''
   ElMessage.success(`成功识别 ${parsed.length} 条记录`)
 }
@@ -475,7 +510,10 @@ async function loadHistory() {
   try {
     const res = await api.get(`/fill/${route.params.token}/history`)
     const data = res.data?.data || res.data || {}
-    historyTasks.value = data.tasks || []
+    historyTasks.value = (data.tasks || []).map(task => ({
+      ...task,
+      records: sortRecordsByCreatedAt(task.records)
+    }))
     const current = filteredHistory.value
     if (current.length > 0) historyExpanded.value[current[0].id] = true
   } catch { /* 静默 */ } finally {
@@ -525,7 +563,7 @@ async function handleFillImport(event) {
       return
     }
 
-    const parsed = excelRows.map(r => ({
+    const parsed = normalizeRows(excelRows.map(r => ({
       requirement_title: String(r['需求标题'] || '').trim(),
       version: String(r['版本号'] || '').trim(),
       product_managers: String(pickPmValue(r) || '').trim()
@@ -539,20 +577,20 @@ async function handleFillImport(event) {
         : {},
       delivery_progress: r['交付进度'] === '' || r['交付进度'] === undefined ? null : Number(String(r['交付进度']).replace('%', '')),
       hours: parseFloat(r['工时(小时)']) || 0
-    }))
+    })), { newRows: true })
 
     // 追加到当前行（若当前仅一空行则替换）
-    const missingPmIndex = !isProductManager.value && parsed.findIndex(r => r.requirement_title && r.hours > 0 && !hasSelectedProductManager(r))
+    const missingPmIndex = !isProductManager.value && parsed.findIndex(r => r.requirement_title && r.hours > 0 && !isFullCreditRecord(r) && !hasSelectedProductManager(r))
     if (missingPmIndex !== false && missingPmIndex >= 0) {
       ElMessage.warning(`Excel 第 ${missingPmIndex + 2} 行未填写AI产品经理`)
       return
     }
-    const missingSourceIndex = isProductManager.value && parsed.findIndex(r => r.requirement_title && r.hours > 0 && !r.demand_sources?.length)
+    const missingSourceIndex = isProductManager.value && parsed.findIndex(r => r.requirement_title && r.hours > 0 && !isFullCreditRecord(r) && !r.demand_sources?.length)
     if (missingSourceIndex !== false && missingSourceIndex >= 0) {
       ElMessage.warning(`Excel 第 ${missingSourceIndex + 2} 行未填写需求方`)
       return
     }
-    const missingProgressIndex = parsed.findIndex(r => r.requirement_title && r.hours > 0 && (r.delivery_progress === null || r.delivery_progress === undefined))
+    const missingProgressIndex = parsed.findIndex(r => r.requirement_title && r.hours > 0 && !isFullCreditRecord(r) && normalizeProgress(r.delivery_progress) === null)
     if (missingProgressIndex >= 0 && headers.includes('交付进度')) {
       ElMessage.warning(`Excel 第 ${missingProgressIndex + 2} 行未填写交付进度`)
       return
@@ -623,6 +661,32 @@ function exportHistory() {
     }
     sheets.push({ name: sheetName.slice(0, 31), data, colWidths: [30, 30, 14, 14, 10, 22] })
   }
+
+  const metricValue = value => value === null || value === undefined || value === '' || !Number.isFinite(Number(value)) ? '—' : Number(value)
+  sheets.push({
+    name: '周期工时完成度',
+    data: [
+      ['任务周期', '日期范围', '已填工时/h', '标准工时/h', '人工作日', '工时完成度/%', '超额/%', '日历状态', '统计范围'],
+      ...historyTasks.value.map(task => {
+        const metric = task.workHours
+        return [task.title, `${task.start_date || ''} ~ ${task.end_date || ''}`, metricValue(metric?.actualHours), metricValue(metric?.standardHours), metricValue(metric?.workingDays), metricValue(metric?.completionRate), metricValue(metric?.excessRate), metric?.calendarStatus || '未提供', metric?.scopeNote || '']
+      })
+    ],
+    colWidths: [30, 24, 14, 14, 12, 18, 14, 20, 70]
+  })
+  sheets.push({
+    name: '指标说明',
+    data: [
+      ['指标', '计算与展示说明'],
+      ['工时完成度', WORK_HOURS_TIP],
+      ['工作日与人员范围', WORK_HOURS_SCOPE_TIP],
+      ['预估加权工时完成度', '填写页仅按当前表单预估：[Σ(普通含版本工时×人工需求进度)＋五类有效工时]÷所属周应填工时×100%；普通无版本不计加权分子，普通有版本缺进度时显示待补进度。'],
+      ['五类有效工时', FULL_CREDIT_NOTE],
+      ['需求进度展示', '历史列表显示实际保存的需求进度；缺失显示未填写，五类有效工时显示不适用，不覆盖为100%。工时完成度见周期工时完成度表。'],
+      ['缺失值', '未取得标准工时、日历或指标时保留空缺，不按0%或100%替代。']
+    ],
+    colWidths: [20, 120]
+  })
 
   const staffName = fillData.value?.staff?.name || '用户'
   const filename = `${staffName}_${historyYear.value}年历史工时.xlsx`
@@ -724,6 +788,10 @@ function exportHistory() {
               🔒 该任务已停止收集，数据仅供查看，无法提交或修改
             </div>
 
+            <div class="fill-hours-summary">
+              <HoursCompletion v-if="draftWorkHours" :metric="draftWorkHours" :weighted-metric="draftWeightedHours" preview />
+            </div>
+
             <!-- 表格区 -->
             <div style="padding:20px 32px;">
               <!-- v2.0.0: Excel导入（仅可编辑时显示） -->
@@ -747,14 +815,16 @@ function exportHistory() {
                 <el-table-column type="index" label="#" width="45" align="center" />
                 <el-table-column label="需求标题" min-width="260">
                   <template #default="{ row }">
-                    <el-input v-model="row.requirement_title" placeholder="输入需求名称" size="small"
+                    <el-input :model-value="row.requirement_title" @update:model-value="value => handleRequirementTitle(row, value)" placeholder="输入需求名称" size="small"
                       :disabled="!isEditable" @focus="handleInputFocus" />
                   </template>
                 </el-table-column>
                 <el-table-column label="版本号" width="120">
                   <template #default="{ row }">
-                    <el-input v-model="row.version" placeholder="V4.633.0" size="small"
-                      :disabled="!isEditable" @focus="handleInputFocus" />
+                    <el-tooltip :disabled="!isFullCreditRecord(row)" content="五类有效工时的版本号按首次填报日期自动生成并锁定（vYYMMDD），工时仍由本人填写。" placement="top">
+                      <el-input v-model="row.version" :placeholder="isFullCreditRecord(row) ? '自动版本' : 'V4.633.0'" size="small"
+                        :readonly="isFullCreditRecord(row)" :class="{ 'fill-fixed-version': isFullCreditRecord(row) }" :disabled="!isEditable" @focus="handleInputFocus" />
+                    </el-tooltip>
                   </template>
                 </el-table-column>
                 <el-table-column v-if="!isProductManager" label="AI产品经理" width="160">
@@ -762,7 +832,8 @@ function exportHistory() {
                     <span>AI产品经理 <span style="color:#F53F3F;">*</span></span>
                   </template>
                   <template #default="{ row }">
-                    <el-select v-model="row.product_managers" multiple collapse-tags collapse-tags-tooltip
+                    <span v-if="isFullCreditRecord(row)" class="fill-not-applicable">不适用</span>
+                    <el-select v-else v-model="row.product_managers" multiple collapse-tags collapse-tags-tooltip
                       placeholder="必选PM" size="small" style="width:100%;" :disabled="!isEditable">
                       <el-option v-for="pm in pmOptions" :key="pm" :label="pm" :value="pm" />
                     </el-select>
@@ -773,7 +844,8 @@ function exportHistory() {
                     <span>需求方 <span style="color:#F53F3F;">*</span></span>
                   </template>
                   <template #default="{ row }">
-                    <div style="display:flex; align-items:center; gap:4px;">
+                    <span v-if="isFullCreditRecord(row)" class="fill-not-applicable">不适用</span>
+                    <div v-else style="display:flex; align-items:center; gap:4px;">
                     <el-select v-model="row.demand_sources" multiple collapse-tags collapse-tags-tooltip
                       placeholder="可多选" size="small" style="flex:1; min-width:0;" :disabled="!isEditable" @change="handleDemandSourcesChange(row)">
                       <el-option v-for="source in DEMAND_SOURCE_OPTIONS" :key="source" :label="source" :value="source" />
@@ -802,10 +874,13 @@ function exportHistory() {
                 </el-table-column>
                 <el-table-column label="交付进度" width="120">
                   <template #header>
-                    <span>交付进度 <span style="color:#F53F3F;">*</span></span>
+                    <el-tooltip content="普通需求进度由本人填写（0%—100%）；请假、培训、公司会议、出差、团建的进度不适用，按完整工时计入有效交付及加权工时。" placement="top">
+                      <span tabindex="0">交付进度 ⓘ <span style="color:#F53F3F;">*</span></span>
+                    </el-tooltip>
                   </template>
                   <template #default="{ row }">
-                    <el-select v-model="row.delivery_progress" placeholder="请选择" size="small" style="width:100%;" :disabled="!isEditable">
+                    <span v-if="isFullCreditRecord(row)" class="fill-not-applicable">不适用</span>
+                    <el-select v-else v-model="row.delivery_progress" placeholder="请选择" size="small" style="width:100%;" :disabled="!isEditable">
                       <el-option v-for="progress in PROGRESS_OPTIONS" :key="progress" :label="`${progress}%`" :value="progress" />
                     </el-select>
                   </template>
@@ -823,12 +898,12 @@ function exportHistory() {
             </div>
 
             <!-- 底部操作栏 -->
-            <div style="padding:14px 32px; border-top:1px solid var(--color-border-light); display:flex; align-items:center; justify-content:space-between; background:var(--color-bg-2);">
+            <div class="fill-submit-bar" style="padding:14px 32px; border-top:1px solid var(--color-border-light); display:flex; align-items:center; justify-content:space-between; background:var(--color-bg-2);">
               <span style="font-size:13px; color:var(--color-text-2);">
                 共 <strong>{{ rows.length }}</strong> 条，总工时
                 <strong style="color:var(--color-primary);">{{ totalHours }}</strong> 小时
               </span>
-              <div style="display:flex; gap:12px;">
+              <div class="fill-submit-actions" style="display:flex; gap:12px;">
                 <el-button
                   v-if="!editingHistoryTask && isEditable"
                   size="default"
@@ -891,6 +966,7 @@ function exportHistory() {
             </div>
 
             <div v-else class="fill-history-list">
+              <p class="fill-metric-note">需求进度显示原始填报值；五类有效工时不适用需求进度。工时完成度另按工作日计算。</p>
               <div v-for="task in filteredHistory" :key="task.id" class="fill-history-item">
                 <!-- 任务头（点击折叠） -->
                 <div class="fill-history-task-header" @click="toggleHistoryTask(task.id)">
@@ -911,13 +987,17 @@ function exportHistory() {
                     <div v-if="!task.records || task.records.length === 0" style="font-size:12px; color:var(--color-text-4); padding:8px 0;">
                       暂无提交记录
                     </div>
-                    <div v-for="(rec, ri) in task.records" :key="ri" class="fill-history-rec">
+                    <div v-for="(rec, ri) in task.records" :key="rec.id || ri" class="fill-history-rec">
                       <span class="fill-rec-title">{{ rec.requirement_title || '-' }}</span>
-                      <span class="fill-rec-progress fill-rec-progress-complete">{{ HISTORY_PROGRESS_DISPLAY }}</span>
+                      <span class="fill-rec-progress" :class="{ 'fill-rec-progress-complete': !isFullCreditRecord(rec) && normalizeProgress(rec.delivery_progress) === 100 }">{{ isFullCreditRecord(rec) ? '不适用' : normalizeProgress(rec.delivery_progress) === null ? '未填写' : `进度 ${normalizeProgress(rec.delivery_progress)}%` }}</span>
                       <span class="fill-rec-hours">{{ parseFloat(rec.hours || 0).toFixed(1) }}H</span>
                     </div>
                   </div>
                 </transition>
+
+                <div v-if="task.workHours" class="fill-history-hours">
+                  <HoursCompletion :metric="task.workHours" compact />
+                </div>
 
                 <!-- v1.6.1: 任务底部固定横行 — 工时 | 状态 | 编辑 -->
                 <div class="fill-history-task-footer">
@@ -970,6 +1050,12 @@ function exportHistory() {
 }
 .fill-left-panel { min-width: 0; }
 .fill-right-panel { position: sticky; top: 30px; }
+.fill-hours-summary { padding: 8px 18px 0; }
+.fill-fixed-version :deep(.el-input__wrapper) { background: var(--color-bg-2); }
+.fill-fixed-version :deep(input) { color: var(--color-text-3); cursor: default; }
+.fill-not-applicable { color: var(--color-text-3); font-size: 12px; }
+.fill-history-hours { padding: 8px 12px; border-top: 1px solid var(--color-border-light); }
+.fill-metric-note { margin: 6px 0; font-size: 12px; line-height: 1.6; color: var(--color-text-3); }
 
 /* v1.6.2: 任务已停止只读提示条 */
 .fill-readonly-bar {
@@ -1058,7 +1144,7 @@ function exportHistory() {
 .fill-rec-title { color: var(--color-text-2); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 8px; }
 .fill-rec-hours { font-weight: 600; color: var(--color-primary); flex-shrink: 0; margin-left: 10px; white-space: nowrap; }
 .fill-rec-progress { color: var(--color-text-2); min-width: 48px; text-align: right; flex-shrink: 0; margin-left: 10px; white-space: nowrap; }
-.fill-rec-progress-complete { color: #00B42A; font-weight: 600; }
+.fill-rec-progress-complete { color: #16883B; background: #E8F7EE; padding: 3px 6px; border-radius: 4px; font-weight: 600; }
 
 .fill-demand-allocation-button {
   min-width: 48px;
@@ -1101,5 +1187,11 @@ function exportHistory() {
 @media (max-width: 1024px) {
   .fill-dual-layout { grid-template-columns: 1fr; }
   .fill-right-panel { position: static; }
+}
+@media (max-width: 600px) {
+  .fill-submit-bar { padding: 14px 16px !important; flex-wrap: wrap; gap: 12px; }
+  .fill-submit-bar > span { flex: 1 1 100%; }
+  .fill-submit-actions { flex: 1 1 100%; min-width: 0; flex-wrap: wrap; }
+  .fill-submit-actions > .el-button { flex: 1 1 140px; max-width: 100%; margin-left: 0; }
 }
 </style>

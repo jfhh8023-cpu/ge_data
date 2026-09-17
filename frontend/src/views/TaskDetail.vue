@@ -15,6 +15,7 @@ import { useRoleStore } from '../stores/roles'
 
 import { ElMessage, ElMessageBox } from 'element-plus'
 import BackButton from '../components/BackButton.vue'
+import HoursCompletion from '../components/HoursCompletion.vue'
 import api from '../api'
 import { onDataChange, SYNC_EVENTS } from '../utils/sync'
 import { parseExcelFile, validateHeaders, uploadExcelToServer, downloadTemplate } from '../utils/excel'
@@ -159,8 +160,8 @@ async function saveEdit(row) {
     })
     editingRowId.value = ''
     ElMessage.success('记录已更新')
-    // 重新加载以获取最新的 staff 关联数据
-    await recordStore.fetchByTask(taskId.value)
+    // 同步刷新记录和对应的工时完成度。
+    await loadTaskData()
   } catch {
     ElMessage.error('更新失败')
   }
@@ -174,6 +175,7 @@ async function deleteRecord(row) {
       { confirmButtonText: '确认', cancelButtonText: '取消', type: 'warning' }
     )
     await recordStore.remove(row.id)
+    await loadTaskData()
     ElMessage.success('记录已删除')
   } catch {
     // 用户取消
@@ -229,7 +231,7 @@ async function handleImportFile(event) {
       filename: file.name
     }).catch(() => {})
 
-    await recordStore.fetchByTask(taskId.value)
+    await loadTaskData()
     ElMessage.success(res.message || `导入成功，共 ${rows.length} 条`)
   } catch (err) {
     ElMessage.error(err.response?.data?.message || err.message || '导入失败')
@@ -274,6 +276,10 @@ function handleDownloadTemplate() {
         <el-button v-if="authStore.hasPermission('btn:task_detail:template', 'view')" size="small" @click="handleDownloadTemplate">📋 模板</el-button>
         <el-button circle @click="loadTaskData" title="刷新数据" style="font-size:16px;">🔄</el-button>
       </div>
+    </div>
+
+    <div v-if="!loading" class="dt-data-card" style="padding:16px; margin-bottom:16px;">
+      <HoursCompletion v-if="taskDetail?.workHours" :metric="taskDetail.workHours" />
     </div>
 
     <el-skeleton v-if="loading" :rows="8" animated />

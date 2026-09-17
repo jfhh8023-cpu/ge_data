@@ -1,0 +1,8 @@
+PASS 40h: effective100%, weighted70%, requirement62.5%, coverage100%
+PASS latest selected period null stays unknown; no fallback or fake0/100
+PASS range eligibility preserves each included person entire selected weeks
+PASS duplicate source+ID counts once; separate sources may reuse ID
+PASS five categories empty/versioned count once, ordinary empty/dash excluded
+PASS zero/invalid capacity preserves hours with no false rates; over100 remains
+PASS same-period latest timestamp compares instants, not date string spelling
+7 passed; 0 failed

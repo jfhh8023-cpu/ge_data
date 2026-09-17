@@ -274,51 +274,63 @@ function collectPmNamesFromRecords(records = []) {
 }
 
 async function filterRecordsByStaffStatus(records = [], taskMap = new Map()) {
-  const staffIds = records.map(record => record.staff_id || record.staff?.id).filter(Boolean);
-  const historyMap = await getStaffHistoryMap(staffIds);
-  return records.filter(record => {
-    const staff = record.staff || {};
-    const staffId = record.staff_id || staff.id;
-    const task = taskMap.get(record.task_id) || record.task;
-    const businessDate = getTaskBusinessDate(task);
-    return !isResignedAt(
-      historyMap.get(staffId) || [],
-      businessDate,
-      normalizeEmploymentStatus(staff.employment_status, staff.is_active !== false)
-    );
-  });
+  const staffIds = [...new Set(records.map(record => record.staff_id || record.staff?.id).filter(Boolean))];
+  if (!staffIds.length) return [];
+  // Current status governs all periods; restore status without deleting any historical record.
+  const people = await Staff.findAll({ where: { id: { [Op.in]: staffIds } }, attributes: ['id', 'employment_status', 'is_active'] });
+  const visibleIds = new Set(people.filter(isNonResigned).map(person => String(person.id)));
+  return records.filter(record => visibleIds.has(String(record.staff_id || record.staff?.id)));
 }
 
 async function filterPmNamesForRecord(record, task, pmContextByName = null) {
   const pms = safeParseJsonArray(record.product_managers);
   if (pms.length === 0) return [];
   const context = pmContextByName || await getPmStatusContextByName(pms);
-  const businessDate = getTaskBusinessDate(task);
   return pms.filter(name => {
     const ctx = context.get(name);
     if (!ctx) return true;
-    return !isResignedAt(
-      ctx.histories,
-      businessDate,
-      normalizeEmploymentStatus(ctx.pm.employment_status, ctx.pm.is_active !== false)
-    );
+    return isNonResigned(ctx.pm);
   });
 }
 
 async function filterRecordsForPm(records = [], pm, taskMap = new Map()) {
-  const context = await getPmStatusContextByName([pm.name]);
-  const ctx = context.get(pm.name);
+  if (!isNonResigned(pm)) return [];
   return records.filter(record => {
     const pms = safeParseJsonArray(record.product_managers);
     if (!(pms.includes(pm.name) || (pm.name === PM_DEFAULT_NAME && pms.length === 0))) return false;
-    if (!ctx || pm.name === PM_DEFAULT_NAME) return true;
-    const task = taskMap.get(record.task_id) || record.task;
-    return !isResignedAt(
-      ctx.histories,
-      getTaskBusinessDate(task),
-      normalizeEmploymentStatus(ctx.pm.employment_status, ctx.pm.is_active !== false)
-    );
+    return true;
   });
+}
+
+/** Legacy match snapshots store names rather than author IDs. Read-filter only unambiguous resigned authors. */
+async function filterMatchGroupsByStaffStatus(groups = []) {
+  const { normalizeStaffRole } = require('./RoleService');
+  const staff = await Staff.findAll({ attributes: ['name', 'role', 'employment_status', 'is_active'] });
+  const byIdentity = new Map();
+  for (const person of staff) {
+    const key = JSON.stringify([String(person.name || '').trim(), normalizeStaffRole(person.role)]);
+    byIdentity.set(key, (byIdentity.get(key) || false) || isNonResigned(person));
+  }
+  const result = [];
+  for (const value of groups) {
+    const group = value.toJSON ? value.toJSON() : { ...value };
+    let hadPeople = false, hasPeople = false;
+    const filter = (entries, role) => safeParseJsonArray(entries).filter(entry => {
+      hadPeople = true;
+      const name = typeof entry === 'string' ? entry : entry.staffName || entry.name;
+      const keep = byIdentity.get(JSON.stringify([String(name || '').trim(), normalizeStaffRole(role)])) !== false;
+      hasPeople ||= keep;
+      return keep;
+    });
+    for (const [field, role] of Object.entries({ frontend: 'ai_dev', backend: 'ai_dev', voip: 'voip', test_role: 'ai_quality' })) {
+      group[field] = filter(group[field], role);
+    }
+    let buckets = group.role_buckets;
+    if (typeof buckets === 'string') { try { buckets = JSON.parse(buckets); } catch { buckets = {}; } }
+    if (buckets && typeof buckets === 'object') group.role_buckets = Object.fromEntries(Object.entries(buckets).map(([role, entries]) => [role, filter(entries, role)]));
+    if (!hadPeople || hasPeople) result.push(group);
+  }
+  return result;
 }
 
 function assertStaffCanWrite(staff) {
@@ -362,6 +374,7 @@ module.exports = {
   filterRecordsByStaffStatus,
   filterPmNamesForRecord,
   filterRecordsForPm,
+  filterMatchGroupsByStaffStatus,
   assertStaffCanWrite,
   assertPmCanView,
   toDateKey,

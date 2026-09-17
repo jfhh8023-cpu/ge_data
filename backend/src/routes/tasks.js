@@ -10,14 +10,16 @@
 const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
-const { CollectionTask, FillLink, WorkRecord, MatchGroup, Staff, StaffFillLink } = require('../models');
+const { CollectionTask, FillLink, WorkRecord, ProductManagerWorkRecord, MatchGroup, Staff, StaffFillLink } = require('../models');
 const { Op } = require('sequelize');
 const { createPreferredTask } = require('../services/TaskService');
+const { buildWorkHours, loadWorkHoursContext } = require('../services/WorkHoursCompletionService');
 const {
   RESIGNED_STATUS,
   collectPmNamesFromRecords,
   filterPmNamesForRecord,
   filterRecordsByStaffStatus,
+  filterMatchGroupsByStaffStatus,
   getPmStatusContextByName,
   isNonResigned
 } = require('../services/PersonStatusService');
@@ -36,7 +38,16 @@ router.get('/', async (req, res, next) => {
       group: ['collection_tasks.id'],
       subQuery: false
     });
-    res.json({ code: 0, data: tasks });
+    const taskIds = tasks.map(task => task.id);
+    const [engineering, product, context] = await Promise.all([
+      taskIds.length ? WorkRecord.findAll({ where: { task_id: { [Op.in]: taskIds } }, attributes: ['id', 'task_id', 'staff_id', 'hours'] }) : [],
+      taskIds.length ? ProductManagerWorkRecord.findAll({ where: { task_id: { [Op.in]: taskIds } }, attributes: ['id', 'task_id', 'staff_id', 'hours'] }) : [],
+      loadWorkHoursContext({ tasks })
+    ]);
+    const records = [...engineering.map(row => ({ ...row.toJSON(), source_type: 'engineering' })),
+      ...product.map(row => ({ ...row.toJSON(), source_type: 'product_manager' }))];
+    res.json({ code: 0, data: tasks.map(task => ({ ...task.toJSON(),
+      workHours: buildWorkHours({ ...context, tasks: [task], records }) })) });
   } catch (err) { next(err); }
 });
 
@@ -74,8 +85,13 @@ router.get('/:id', async (req, res, next) => {
       include: [{ model: Staff, as: 'staff', attributes: ['name', 'role', 'employment_status', 'is_active'] }]
     });
     const links = allLinks.filter(link => isNonResigned(link.staff));
-    const matchGroups = await MatchGroup.findAll({ where: { task_id: req.params.id } });
-    res.json({ code: 0, data: { task, records, links, matchGroups } });
+    const matchGroups = await filterMatchGroupsByStaffStatus(await MatchGroup.findAll({ where: { task_id: req.params.id } }));
+    const [productRecords, workHoursContext] = await Promise.all([
+      ProductManagerWorkRecord.findAll({ where: { task_id: task.id } }),
+      loadWorkHoursContext({ tasks: [task] })
+    ]);
+    const workHours = buildWorkHours({ ...workHoursContext, records: [...allRecords, ...productRecords] });
+    res.json({ code: 0, data: { task: { ...task.toJSON(), workHours }, records, links, matchGroups, workHours } });
   } catch (err) { next(err); }
 });
 

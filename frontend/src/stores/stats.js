@@ -27,8 +27,11 @@ export const useStatsStore = defineStore('stats', {
     productManagerRecords: [],
     productDemandDistribution: [],
     demandSources: [],
+    workHours: null,
+    deliverySummary: null,
     progressDetails: null,
     progressDetailsLoading: false,
+    progressDetailsRequestId: 0,
     loading: false,
     /* 个人统计 */
     personalData: null,
@@ -61,6 +64,8 @@ export const useStatsStore = defineStore('stats', {
         this.productManagerRecords = data.productManagerRecords || []
         this.productDemandDistribution = data.productDemandDistribution || []
         this.demandSources = data.demandSources || []
+        this.workHours = data.workHours || null
+        this.deliverySummary = data.deliverySummary || null
       } finally { this.loading = false }
     },
     /** 个人统计 */
@@ -76,12 +81,21 @@ export const useStatsStore = defineStore('stats', {
       } finally { this.personalLoading = false }
     },
     async fetchProgressDetails(params = {}) {
+      const requestId = ++this.progressDetailsRequestId
+      this.progressDetails = null
       this.progressDetailsLoading = true
       try {
         const res = await api.get('/stats/progress-details', { params })
-        this.progressDetails = res.data.data || res.data || null
+        if (requestId !== this.progressDetailsRequestId) return null
+        this.progressDetails = res?.data?.data || res?.data || null
         return this.progressDetails
-      } finally { this.progressDetailsLoading = false }
+      } catch (error) {
+        if (requestId !== this.progressDetailsRequestId) return null
+        this.progressDetails = null
+        throw error
+      } finally {
+        if (requestId === this.progressDetailsRequestId) this.progressDetailsLoading = false
+      }
     },
     /** PM 聚焦统计 */
     async fetchPmFocus(pmId, { year, quarter, taskId } = {}) {
