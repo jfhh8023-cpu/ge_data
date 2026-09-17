@@ -9,7 +9,7 @@ const sequelize = require('../src/config/database');
 const { QueryTypes, Transaction } = require('sequelize');
 const phase = process.argv.find(arg => arg.startsWith('--phase='))?.slice(8) || 'before';
 assert.ok(['before', 'after'].includes(phase));
-const OUT = path.resolve(__dirname, '../../docs/@test/effective_hours_20260917');
+const OUT = path.resolve(__dirname, '../..', process.argv.find(arg => arg.startsWith('--out='))?.slice(6) || 'docs/@test/effective_hours_20260917');
 const tables = ['collection_tasks', 'staff', 'product_managers', 'work_records', 'product_manager_work_records', 'match_groups', 'staff_status_history', 'product_manager_status_history'];
 const quote = value => '`' + value.replaceAll('`', '``') + '`';
 const safeColumn = column => !/token|pass(word)?|secret|credential|webhook|url/i.test(column);

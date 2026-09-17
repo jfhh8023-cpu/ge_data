@@ -16,7 +16,7 @@ const { FillLink, CollectionTask, Staff, WorkRecord, ProductManagerWorkRecord, M
 const { matchRecords } = require('../services/MatchService');
 const { getDemandSourceDefinitions, resolveDemandSources } = require('../services/DemandSourceService');
 const { buildWorkHours, getWorkHours, loadWorkHoursContext } = require('../services/WorkHoursCompletionService');
-const { isFullCreditRecord, normalizeFullCreditRecord, normalizeProgress, validateManualHours } = require('../services/EffectiveHoursService');
+const { isFullCreditRecord, normalizeFullCreditRecord, normalizeProgress, validateManualHours, VALID_PROGRESS: VALID_DELIVERY_PROGRESS } = require('../services/EffectiveHoursService');
 const { Op } = require('sequelize');
 const {
   STAFF_RESIGNED_MESSAGE,
@@ -28,7 +28,6 @@ const {
 
 const EDITING_TIMEOUT_MS = 30000;
 const PRODUCT_MANAGER_ROLE = 'ai_pm';
-const VALID_DELIVERY_PROGRESS = new Set([0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]);
 
 function isProductManagerStaff(staff) {
   return String(staff?.role || '').trim() === PRODUCT_MANAGER_ROLE;
@@ -68,13 +67,13 @@ function validateDeliveryProgress(records) {
   for (let i = 0; i < records.length; i += 1) {
     if (isFullCreditRecord(records[i])) { records[i].delivery_progress = null; continue; }
     const progress = records[i]?.delivery_progress;
-    // 带 existing_record_id 的历史记录允许保留空值；新行必须填写。
-    const isHistory = Boolean(records[i]?.existing_record_id);
-    if (!isHistory && (normalizeProgress(progress) === null || !VALID_DELIVERY_PROGRESS.has(Number(progress)))) {
-      return `第 ${i + 1} 条记录请选择交付进度`;
+    // These flags are derived from this author's saved row, never trusted from the request.
+    if (records[i]._preserveOriginalProgress) { records[i].delivery_progress = normalizeProgress(progress); continue; }
+    if (!records[i]._allowMissingProgress && (normalizeProgress(progress) === null || !VALID_DELIVERY_PROGRESS.has(Number(progress)))) {
+      return `第 ${i + 1} 条记录请选择10%–100%的交付进度`;
     }
     if (progress !== null && progress !== undefined && progress !== '' && (normalizeProgress(progress) === null || !VALID_DELIVERY_PROGRESS.has(Number(progress)))) {
-      return `第 ${i + 1} 条记录的交付进度无效`;
+      return `第 ${i + 1} 条记录请选择10%–100%的交付进度（每档10%）`;
     }
     records[i].delivery_progress = normalizeProgress(progress);
   }
@@ -88,14 +87,13 @@ async function validateProductManagerRecords(records) {
     const sources = resolved.names;
     if (sources.length === 0) return `第 ${i + 1} 条记录请选择需求方`;
     const progress = records[i]?.delivery_progress;
-    const isHistory = Boolean(records[i]?.existing_record_id);
-    if (!isHistory && (normalizeProgress(progress) === null || !VALID_DELIVERY_PROGRESS.has(Number(progress)))) {
-      return `第 ${i + 1} 条记录请选择交付进度`;
+    if (!records[i]._preserveOriginalProgress && !records[i]._allowMissingProgress && (normalizeProgress(progress) === null || !VALID_DELIVERY_PROGRESS.has(Number(progress)))) {
+      return `第 ${i + 1} 条记录请选择10%–100%的交付进度`;
     }
     records[i].demand_sources = resolved.names;
     records[i].demand_source_ids = resolved.ids;
     records[i].demand_source_weights = normalizeDemandSourceWeights(records[i]?.demand_source_weights, sources);
-    if (progress != null && progress !== '' && (normalizeProgress(progress) === null || !VALID_DELIVERY_PROGRESS.has(Number(progress)))) return `第 ${i + 1} 条记录的交付进度无效`;
+    if (!records[i]._preserveOriginalProgress && progress != null && progress !== '' && (normalizeProgress(progress) === null || !VALID_DELIVERY_PROGRESS.has(Number(progress)))) return `第 ${i + 1} 条记录请选择10%–100%的交付进度（每档10%）`;
     records[i].delivery_progress = normalizeProgress(progress);
   }
   return '';
@@ -150,7 +148,12 @@ function normalizeSavedRows(rows, existingRecords = [], savedDrafts = []) {
     const original = originals.get(row.existing_record_id);
     const draft = drafts.get(row.draft_row_id);
     const previous = original && isFullCreditRecord(original) ? original : draft;
-    return { ...normalizeFullCreditRecord(row, previous), existing_record_id: original?.id || '',
+    const originalOrdinary = original && !isFullCreditRecord(original);
+    const preserveOriginalProgress = Boolean(originalOrdinary && !isFullCreditRecord(row) && !Object.prototype.hasOwnProperty.call(row, 'delivery_progress'));
+    const input = preserveOriginalProgress ? { ...row, delivery_progress: original.delivery_progress } : row;
+    return { ...normalizeFullCreditRecord(input, previous), existing_record_id: original?.id || '',
+      _allowMissingProgress: Boolean(originalOrdinary && normalizeProgress(original.delivery_progress) === null),
+      _preserveOriginalProgress: preserveOriginalProgress,
       _savedCreatedAt: original?.created_at || null };
   });
 }

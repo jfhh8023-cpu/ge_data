@@ -1,0 +1,5 @@
+WR4-E-003-API: PASS
+WR4-E-003-GROUP: PASS
+WR4-E-003-LAYOUT: PASS
+WR4-E-002-FILL: PASS
+{"run":"2026-09-17T05-11-15-291Z","evidence":"D:\\PythonTEST\\My_Other_Tool_System\\get_data\\get_data_cursor\\docs\\@test\\weighted_delivery_refinement_20260917\\evidence\\2026-09-17T05-11-15-291Z","results":[{"id":"WR4-E-003-API","status":"PASS"},{"id":"WR4-E-003-GROUP","status":"PASS"},{"id":"WR4-E-003-LAYOUT","status":"PASS"},{"id":"WR4-E-002-FILL","status":"PASS"}],"interceptedWriteCount":5}

@@ -1,0 +1,11 @@
+PASS 40h: effective100%, weighted70%, requirement62.5%, coverage100%
+PASS latest selected period null uses 100 only for weighted calculation; raw null and coverage remain unchanged
+PASS range eligibility preserves each included person entire selected weeks
+PASS duplicate source+ID counts once; separate sources may reuse ID
+PASS five categories empty/versioned count once, ordinary empty/dash excluded
+PASS weighted rate uses effective hours independently of invalid/zero capacity; effective delivery can exceed100
+PASS department merges8h at100% and32h at50% to60%, rather than averaging personal rates
+PASS historical null defaults100, explicit0 stays0, special stays full and ordinary unversioned stays excluded
+PASS no effective hours returns an em dash and never divides by zero
+PASS same-period latest timestamp compares instants, not date string spelling
+10 passed; 0 failed

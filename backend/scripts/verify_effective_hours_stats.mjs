@@ -1,4 +1,4 @@
-// REQ-064 independent hand-calculated regressions; no API, database or business writes.
+// REQ-064/065 independent hand-calculated regressions; no API, database or business writes.
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { summarizeDelivery, summarizeStaffDelivery, groupRequirementProgress, weightedRateText } from '../../frontend/src/utils/deliverySummary.js'
@@ -15,7 +15,7 @@ const week37 = { id: 'w37', title: 'W37', start_date: '2026-09-07', end_date: '2
 const week38 = { id: 'w38', title: 'W38', start_date: '2026-09-14', end_date: '2026-09-20', time_dimension: 'week' }
 const record = (id, title, hours, progress, extra = {}) => ({ id, requirement_title: title, hours, delivery_progress: progress, version: 'v4.1', staff_id: 's1', task_id: 'w38', source_type: 'engineering', ...extra })
 const capacityFor = (records, people = staff, tasks = [week38]) => buildWorkHours({ records, staff: people, tasks })
-const fields = ['recordedHours', 'deliveredHours', 'unversionedHours', 'standardHours', 'deliveryRate', 'fullCreditHours', 'versionedHours', 'weightedDeliveredHours', 'weightedDeliveryRate', 'missingProgressHours', 'missingProgressCount', 'progressKnownHours', 'requirementProgress', 'progressCoverage']
+const fields = ['recordedHours', 'deliveredHours', 'unversionedHours', 'standardHours', 'deliveryRate', 'fullCreditHours', 'versionedHours', 'weightedDeliveredHours', 'knownWeightedDeliveredHours', 'weightedDeliveryRate', 'missingProgressHours', 'missingProgressCount', 'progressKnownHours', 'requirementProgress', 'progressCoverage']
 function compare(records, capacity) {
   const front = summarizeDelivery(records, capacity), back = buildDeliverySummary(records, capacity)
   for (const key of fields) assert.equal(front[key], back[key], `frontend/backend ${key}: ${front[key]} versus ${back[key]}`)
@@ -28,12 +28,14 @@ check('40h: effective100%, weighted70%, requirement62.5%, coverage100%', () => {
   assert.equal(m.deliveryRate, 100); assert.equal(m.weightedDeliveryRate, 70); assert.equal(m.weightedDeliveredHours, 28)
   assert.equal(m.requirementProgress, 62.5); assert.equal(m.progressCoverage, 100)
 })
-check('latest selected period null stays unknown; no fallback or fake0/100', () => {
+check('latest selected period null uses 100 only for weighted calculation; raw null and coverage remain unchanged', () => {
   const rows = [record('a1', '同需求', 16, 50, { task_id: 'w37', created_at: '2026-10-01T00:00:00Z' }), record('a2', '同需求', 8, null), record('l', '请假', 8, null, { version: '' })]
   const capacity = capacityFor(rows, staff, [week37, week38]), m = summarizeDelivery(rows, capacity)
   assert.equal(m.standardHours, 80); assert.equal(m.deliveredHours, 32); assert.equal(m.deliveryRate, 40)
-  assert.equal(m.missingProgressHours, 24); assert.equal(m.missingProgressCount, 1); assert.equal(m.weightedDeliveryRate, null)
-  assert.equal(m.requirementProgress, null); assert.equal(m.progressCoverage, 0); assert.equal(weightedRateText(m), '待补进度')
+  assert.equal(m.missingProgressHours, 24); assert.equal(m.missingProgressCount, 1); assert.equal(m.weightedDeliveryRate, 100)
+  assert.equal(m.weightedDeliveredHours, 32); assert.equal(m.knownWeightedDeliveredHours, 8)
+  assert.equal(m.requirementProgress, null); assert.equal(m.progressCoverage, 0); assert.equal(weightedRateText(m), '100%')
+  assert.equal(rows[1].delivery_progress, null)
   assert.equal(groupRequirementProgress(rows, capacity)[0].progress, null)
   compare(rows, capacity)
 })
@@ -42,7 +44,7 @@ check('range eligibility preserves each included person entire selected weeks', 
   const rows = [record('a', '甲周37', 32, 50, { task_id: 'w37' }), record('b', '甲周38', 16, 100), record('c', '乙周38', 16, 100, { staff_id: 's2', source_type: 'product_manager' }), record('d', '离职记录', 40, 100, { staff_id: 's4' })]
   const capacity = capacityFor(rows, people, [week37, week38]), m = compare(rows, capacity)
   assert.equal(capacity.standardHours, 160); assert.deepEqual([...new Set(capacity.units.map(x => x.staffId))], ['s1', 's2'])
-  assert.equal(m.recordedHours, 64); assert.equal(m.deliveryRate, 40); assert.equal(m.weightedDeliveryRate, 30)
+  assert.equal(m.recordedHours, 64); assert.equal(m.deliveryRate, 40); assert.equal(m.weightedDeliveryRate, 75)
   const perPerson = summarizeStaffDelivery(rows, capacity)
   assert.equal(perPerson.length, 2); assert.deepEqual(perPerson.map(x => x.standardHours), [80, 80])
   assert.equal(perPerson.reduce((n, x) => n + x.deliveredHours, 0), m.deliveredHours)
@@ -55,7 +57,7 @@ check('range eligibility preserves each included person entire selected weeks', 
 check('duplicate source+ID counts once; separate sources may reuse ID', () => {
   const engineering = record('same', '研发', 16, 50), product = record('same', '产品', 8, 100, { source_type: 'product_manager' })
   const rows = [engineering, { ...engineering }, product], m = compare(rows, capacityFor(rows))
-  assert.equal(m.recordedHours, 24); assert.equal(m.weightedDeliveredHours, 16); assert.equal(m.weightedDeliveryRate, 40)
+  assert.equal(m.recordedHours, 24); assert.equal(m.weightedDeliveredHours, 16); assert.equal(m.weightedDeliveryRate, 66.67)
   assert.equal(summarizeStaffDelivery(rows, capacityFor(rows))[0].recordCount, 2)
 })
 check('five categories empty/versioned count once, ordinary empty/dash excluded', () => {
@@ -63,15 +65,40 @@ check('five categories empty/versioned count once, ordinary empty/dash excluded'
   rows.push(record('u', '日常', 4, 100, { version: '' }), record('u2', '日常2', 4, 100, { version: '-' }))
   const m = compare(rows, capacityFor(rows))
   assert.equal(m.recordedHours, 18); assert.equal(m.deliveredHours, 10); assert.equal(m.fullCreditHours, 10); assert.equal(m.unversionedHours, 8)
-  assert.equal(m.weightedDeliveryRate, 25); assert.equal(m.requirementProgress, null); assert.equal(m.progressCoverage, null)
+  assert.equal(m.weightedDeliveryRate, 100); assert.equal(m.requirementProgress, null); assert.equal(m.progressCoverage, null)
   assert.equal(summarizeStaffDelivery(rows, capacityFor(rows))[0].requirementCount, 2)
 })
-check('zero/invalid capacity preserves hours with no false rates; over100 remains', () => {
+check('weighted rate uses effective hours independently of invalid/zero capacity; effective delivery can exceed100', () => {
   const rows = [record('a', '出差', 48, null)], normal = capacityFor(rows)
   for (const cap of [{ ...normal, standardHours: 0 }, { ...normal, calendarStatus: 'invalid_period' }]) {
-    const m = compare(rows, cap); assert.equal(m.recordedHours, 48); assert.equal(m.deliveryRate, null); assert.equal(m.weightedDeliveryRate, null); assert.equal(weightedRateText(m), '—')
+    const m = compare(rows, cap); assert.equal(m.recordedHours, 48); assert.equal(m.deliveryRate, null); assert.equal(m.weightedDeliveryRate, 100); assert.equal(weightedRateText(m), '100%')
   }
-  assert.equal(compare(rows, normal).weightedDeliveryRate, 120)
+  assert.equal(compare(rows, normal).weightedDeliveryRate, 100)
+  assert.equal(compare(rows, normal).deliveryRate, 120)
+})
+check('department merges8h at100% and32h at50% to60%, rather than averaging personal rates', () => {
+  const people = [...staff, { id: 's2', name: '乙', role: 'ai_dev', employment_status: 'active' }]
+  const rows = [record('a', '需求甲', 8, 100), record('b', '需求乙', 32, 50, { staff_id: 's2' })]
+  const capacity = capacityFor(rows, people), m = compare(rows, capacity)
+  assert.equal(m.weightedDeliveryRate, 60); assert.equal(m.weightedDeliveredHours, 24); assert.equal(m.deliveredHours, 40)
+  assert.deepEqual(summarizeStaffDelivery(rows, capacity).map(person => person.weightedDeliveryRate), [100, 50])
+  for (const row of rows) row.delivery_progress = 100
+  assert.equal(compare(rows, capacity).weightedDeliveryRate, 100)
+  assert.deepEqual(summarizeStaffDelivery(rows, capacity).map(person => person.weightedDeliveryRate), [100, 100])
+})
+check('historical null defaults100, explicit0 stays0, special stays full and ordinary unversioned stays excluded', () => {
+  const rows = [record('unknown', '旧未知', 8, null), record('zero', '旧零', 8, 0), record('half', '新需求', 8, 50),
+    record('leave', '请假', 8, null, { version: '' }), record('raw', '仅记录', 8, 100, { version: '-' })]
+  const m = compare(rows, capacityFor(rows))
+  assert.equal(m.recordedHours, 40); assert.equal(m.deliveredHours, 32); assert.equal(m.weightedDeliveredHours, 20)
+  assert.equal(m.weightedDeliveryRate, 62.5); assert.equal(m.knownWeightedDeliveredHours, 12)
+  assert.equal(m.requirementProgress, 25); assert.equal(m.progressCoverage, 66.67)
+  assert.equal(rows[0].delivery_progress, null); assert.equal(rows[1].delivery_progress, 0)
+})
+check('no effective hours returns an em dash and never divides by zero', () => {
+  const rows = [record('raw', '普通无版本', 8, 100, { version: '' }), record('zero', '零工时', 0, null)]
+  const m = compare(rows, capacityFor(rows))
+  assert.equal(m.deliveredHours, 0); assert.equal(m.weightedDeliveryRate, null); assert.equal(weightedRateText(m), '—')
 })
 check('same-period latest timestamp compares instants, not date string spelling', () => {
   const rows = [record('a', '需求', 8, 100, { updated_at: '2026-09-18T03:00:00Z' }), record('b', '需求', 8, 0, { updated_at: '2026-09-18T09:30:00+08:00' })]

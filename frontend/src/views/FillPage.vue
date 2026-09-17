@@ -18,7 +18,7 @@ import { useDemandSourceStore } from '../stores/demandSources'
 import HoursCompletion from '../components/HoursCompletion.vue'
 import { summarizeWorkHours, WORK_HOURS_TIP, WORK_HOURS_SCOPE_TIP } from '../utils/workHours'
 import { sortRecordsByCreatedAt } from '../utils/recordOrder'
-import { FULL_CREDIT_NOTE, isFullCreditRecord, initializeSpecialRow, syncSpecialRow, normalizeProgress, summarizeDraftWeightedHours } from '../utils/effectiveHours'
+import { FULL_CREDIT_NOTE, POSITIVE_PROGRESS_OPTIONS, isValidSubmittedProgress, isFullCreditRecord, initializeSpecialRow, syncSpecialRow, normalizeProgress, summarizeDraftWeightedHours } from '../utils/effectiveHours'
 
 const route = useRoute()
 const demandSourceStore = useDemandSourceStore()
@@ -42,7 +42,7 @@ const editingHistoryTask = ref(null)
 /** 当前表单对应的任务 */
 const currentTask = computed(() => editingHistoryTask.value ?? fillData.value?.task ?? null)
 const isProductManager = computed(() => fillData.value?.staff?.role === 'ai_pm')
-const PROGRESS_OPTIONS = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+const PROGRESS_OPTIONS = POSITIVE_PROGRESS_OPTIONS
 const DEMAND_SOURCE_OPTIONS = computed(() => demandSourceStore.activeNames)
 
 /** 是否有首选任务（用于显示"返回首选"按钮） */
@@ -149,6 +149,11 @@ onMounted(async () => {
 
 function normalizeRows(list, { newRows = false } = {}) {
   return list.map(r => {
+    const existingId = newRows ? '' : r.id || r.existing_record_id || ''
+    const original = r.id ? r : (fillData.value?.records || []).find(saved => saved.id === existingId)
+    const originalProgressMissing = !newRows && Boolean(existingId) && (original
+      ? !isFullCreditRecord(original) && normalizeProgress(original.delivery_progress) === null
+      : r._original_progress_missing === true)
     // product_managers 可能是数组，也可能是 JSON 字符串（来自数据库原始返回）
     let pm = r.product_managers
     if (!Array.isArray(pm)) {
@@ -156,7 +161,8 @@ function normalizeRows(list, { newRows = false } = {}) {
       if (!Array.isArray(pm)) pm = []
     }
     return initializeSpecialRow({
-      existing_record_id: r.id || r.existing_record_id || '',
+      existing_record_id: existingId,
+      _original_progress_missing: originalProgressMissing,
       draft_row_id: r.draft_row_id || crypto.randomUUID(),
       created_at: r.created_at,
       automatic_version_date: r.automatic_version_date,
@@ -269,9 +275,9 @@ async function handleSubmit() {
     ElMessage.warning(`第 ${invalidDemandWeights.index + 1} 行需求方分配比例合计必须为100%`)
     return
   }
-  const missingProgress = validRows.find(({ row }) => !isFullCreditRecord(row) && !row.existing_record_id && normalizeProgress(row.delivery_progress) === null)
-  if (missingProgress) {
-    ElMessage.warning(`第 ${missingProgress.index + 1} 行请选择交付进度`)
+  const invalidProgress = validRows.find(({ row }) => !isValidSubmittedProgress(row))
+  if (invalidProgress) {
+    ElMessage.warning(`第 ${invalidProgress.index + 1} 行请选择10%至100%的交付进度，普通需求提交时不能为0%`)
     return
   }
   const records = validRows.map(({ row }) => ({
@@ -295,6 +301,10 @@ async function handleSubmit() {
       payload.task_id = currentTask.value.id
     }
     await api.post(`/fill/${route.params.token}/submit`, payload)
+    // A formerly empty historical progress loses its exception once a real value is saved.
+    rows.value.forEach(row => {
+      if (isFullCreditRecord(row) || normalizeProgress(row.delivery_progress) !== null) row._original_progress_missing = false
+    })
 
     const isEdit = !!editingHistoryTask.value
     ElMessage.success(isEdit
@@ -590,9 +600,9 @@ async function handleFillImport(event) {
       ElMessage.warning(`Excel 第 ${missingSourceIndex + 2} 行未填写需求方`)
       return
     }
-    const missingProgressIndex = parsed.findIndex(r => r.requirement_title && r.hours > 0 && !isFullCreditRecord(r) && normalizeProgress(r.delivery_progress) === null)
-    if (missingProgressIndex >= 0 && headers.includes('交付进度')) {
-      ElMessage.warning(`Excel 第 ${missingProgressIndex + 2} 行未填写交付进度`)
+    const invalidProgressIndex = parsed.findIndex(r => r.requirement_title && r.hours > 0 && !isValidSubmittedProgress(r))
+    if (invalidProgressIndex >= 0 && headers.includes('交付进度')) {
+      ElMessage.warning(`Excel 第 ${invalidProgressIndex + 2} 行请选择10%至100%的交付进度，不能为0%`)
       return
     }
 
@@ -680,7 +690,7 @@ function exportHistory() {
       ['指标', '计算与展示说明'],
       ['工时完成度', WORK_HOURS_TIP],
       ['工作日与人员范围', WORK_HOURS_SCOPE_TIP],
-      ['预估加权工时完成度', '填写页仅按当前表单预估：[Σ(普通含版本工时×人工需求进度)＋五类有效工时]÷所属周应填工时×100%；普通无版本不计加权分子，普通有版本缺进度时显示待补进度。'],
+      ['预估加权工时完成度', '填写页仅按当前表单预估：[Σ(普通含版本工时×人工需求进度)＋五类有效工时]÷所属周应填工时×100%；与统计加权交付率的有效工时分母不同。普通无版本不计分子；已有历史空进度只在计算时按100%，明确0仍按0，新行未填进度显示待补进度，正式提交须10%至100%。'],
       ['五类有效工时', FULL_CREDIT_NOTE],
       ['需求进度展示', '历史列表显示实际保存的需求进度；缺失显示未填写，五类有效工时显示不适用，不覆盖为100%。工时完成度见周期工时完成度表。'],
       ['缺失值', '未取得标准工时、日历或指标时保留空缺，不按0%或100%替代。']
@@ -874,13 +884,14 @@ function exportHistory() {
                 </el-table-column>
                 <el-table-column label="交付进度" width="120">
                   <template #header>
-                    <el-tooltip content="普通需求进度由本人填写（0%—100%）；请假、培训、公司会议、出差、团建的进度不适用，按完整工时计入有效交付及加权工时。" placement="top">
+                    <el-tooltip content="普通需求提交时须选择10%至100%的进度（每10%一档），不能为0%；已有历史空进度可原样保留，计算按100%。五类有效工时进度不适用，按完整工时计入。" placement="top">
                       <span tabindex="0">交付进度 ⓘ <span style="color:#F53F3F;">*</span></span>
                     </el-tooltip>
                   </template>
                   <template #default="{ row }">
                     <span v-if="isFullCreditRecord(row)" class="fill-not-applicable">不适用</span>
                     <el-select v-else v-model="row.delivery_progress" placeholder="请选择" size="small" style="width:100%;" :disabled="!isEditable">
+                      <el-option v-if="row.existing_record_id && normalizeProgress(row.delivery_progress) === 0" label="0%（历史，提交前修改）" :value="0" disabled />
                       <el-option v-for="progress in PROGRESS_OPTIONS" :key="progress" :label="`${progress}%`" :value="progress" />
                     </el-select>
                   </template>

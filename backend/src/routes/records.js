@@ -11,7 +11,7 @@ const { v4: uuidv4 } = require('uuid');
 const { Op } = require('sequelize');
 const { WorkRecord, Staff, CollectionTask } = require('../models');
 const { safeParseJsonArray } = require('../utils/parseJson');
-const { isFullCreditRecord, normalizeFullCreditRecord, normalizeProgress, validateManualHours } = require('../services/EffectiveHoursService');
+const { isFullCreditRecord, normalizeFullCreditRecord, normalizeProgress, validateManualHours, VALID_PROGRESS } = require('../services/EffectiveHoursService');
 const {
   STAFF_RESIGNED_MESSAGE,
   collectPmNamesFromRecords,
@@ -48,12 +48,11 @@ function requireProductManagers(value, label = '记录') {
   return productManagers;
 }
 
-const VALID_PROGRESS = new Set([0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]);
 function requireDeliveryProgress(value, label = '记录', allowMissing = false) {
   const progress = normalizeProgress(value);
   if (allowMissing && (value == null || value === '')) return null;
   if (progress === null || !VALID_PROGRESS.has(progress)) {
-    const err = new Error(`${label}：请选择交付进度`);
+    const err = new Error(`${label}：请选择10%–100%的交付进度（每档10%）`);
     err.status = 400;
     throw err;
   }
@@ -159,7 +158,10 @@ router.put('/:id', async (req, res, next) => {
     else if (req.body.product_managers !== undefined || isFullCreditRecord(previous)) {
       rec.product_managers = requireProductManagers(input.product_managers);
     }
-    if (!isFullCreditRecord(input) && req.body.delivery_progress !== undefined) rec.delivery_progress = requireDeliveryProgress(input.delivery_progress, '记录', true);
+    if (!isFullCreditRecord(input) && (req.body.delivery_progress !== undefined || isFullCreditRecord(previous))) {
+      const preserveHistoricalNull = !isFullCreditRecord(previous) && normalizeProgress(previous.delivery_progress) === null;
+      rec.delivery_progress = requireDeliveryProgress(input.delivery_progress, '记录', preserveHistoricalNull);
+    }
     const normalizedPms = safeParseJsonArray(rec.product_managers);
     await assertRecordParticipantsWritable({
       task_id: rec.task_id,

@@ -345,6 +345,27 @@ async function verifyReadRoutes() {
     assert.equal(rows[0].工时, 16);
     assert.equal(rows[0].有效已交付, 0);
   });
+  engineering.splice(0, engineering.length, ...[
+    { id: 'unknown', requirement_title: '历史未知', delivery_progress: null, version: 'v1' },
+    { id: 'zero', requirement_title: '历史零值', delivery_progress: 0, version: 'v2' },
+    { id: 'half', requirement_title: '普通需求', delivery_progress: 50, version: 'v3' },
+    { id: 'leave', requirement_title: '请假', delivery_progress: null, version: '' },
+    { id: 'raw', requirement_title: '仅记录', delivery_progress: 100, version: '' }
+  ].map(value => new EngineeringRow({ ...record(8, value), staff: people[0] })));
+  const weightedDetails = await invoke('/progress-details', { ...sortQuery, role: 'ai_dev' });
+  const weightedExport = XLSX.read(await invoke('/export.xlsx', { ...sortQuery, role: 'ai_dev' }), { type: 'buffer' });
+  check('export and actual detail share effective-hour weighted denominator with read-only historical-null fallback', () => {
+    const meta = XLSX.utils.sheet_to_json(weightedExport.Sheets['导出说明'], { header: 1 });
+    const rows = XLSX.utils.sheet_to_json(weightedExport.Sheets['进度明细']);
+    assert.equal(weightedDetails.data.deliverySummary.weightedDeliveryRate, 62.5);
+    assert.equal(meta.find(row => row[0] === '加权交付率')[1], '62.5%');
+    assert.equal(meta.find(row => row[0] === '加权有效已交付')[1], 20);
+    assert.match(meta.find(row => row[0] === '历史空进度兼容')[1], /按100%/);
+    assert.equal(rows.find(row => row.需求名称 === '历史未知').需求填报进度, '未填写');
+    assert.equal(rows.find(row => row.需求名称 === '历史零值').需求填报进度, '0%');
+    assert.equal(engineering[0].delivery_progress, null);
+    assert.equal(XLSX.utils.sheet_to_json(weightedExport.Sheets['人员周期容量'])[0].加权交付率, 62.5);
+  });
   const emptyPersonal = await invoke('/personal/:staffId', { year: '1900' }, { staffId: 's1' });
   const emptyPm = await invoke('/pm/:pmId', { year: '1900' }, { pmId: 'pm-owner' });
   check('empty filter ranges return no person or PM identity and no capacity', () => {

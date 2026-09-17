@@ -1,5 +1,5 @@
 const { isFullCreditRecord, normalizeProgress, FULL_CREDIT_TITLES } = require('./EffectiveHoursService');
-const DELIVERY_FORMULA = `有效已交付＝普通含版本号工时＋${FULL_CREDIT_TITLES.join('、')}工时（只计一次）；有效交付率＝有效已交付÷应交付工时×100%。加权交付率＝[Σ(同一人员、版本、标题累计工时×所选范围最新周期填报进度)＋五类有效工时]÷应交付工时×100%。普通含版本号缺进度时显示待补进度；无版本普通记录不计交付。应交付按当前非离职且范围有记录的人员、完整所选周期工作日×8小时计算。`;
+const DELIVERY_FORMULA = `有效已交付＝普通含版本号工时＋${FULL_CREDIT_TITLES.join('、')}工时（只计一次）；有效交付率＝有效已交付÷应交付工时×100%。加权交付率＝[Σ(同一人员、版本、标题累计有效工时×所选范围最新周期填报进度)＋五类有效工时]÷有效已交付工时×100%。历史空进度仅在加权交付计算中按100%，原值仍为空；明确0%仍按0%。部门、岗位合并有效工时计算，不平均个人百分比；个人仅算本人。无版本普通记录不计交付；有效工时为0显示“—”。应交付按当前非离职且范围有记录的人员、完整所选周期工作日×8小时计算。`;
 
 function hasValidVersion(value) {
   const version = String(value ?? '').trim();
@@ -15,7 +15,7 @@ const nonNegativeHours = value => Number.isFinite(Number(value)) && Number(value
 const unitKey = (staffId, taskId) => JSON.stringify([String(staffId || ''), String(taskId || '')]);
 const groupKey = record => JSON.stringify([String(record.staff_id || record.staff?.id || ''), String(record.version || '').trim(), String(record.requirement_title || '').trim()]);
 const emptyTotals = () => ({ deliveredHours: 0, recordedHours: 0, unversionedHours: 0, versionedHours: 0,
-  fullCreditHours: 0, weightedDeliveredHours: 0, progressKnownHours: 0, missingProgressHours: 0 });
+  fullCreditHours: 0, weightedDeliveredHours: 0, knownWeightedDeliveredHours: 0, progressKnownHours: 0, missingProgressHours: 0 });
 const roundedTotals = totals => Object.fromEntries(Object.entries(totals).map(([key, value]) => [key, round(value)]));
 const rate = (deliveredHours, standardHours, calendarStatus) => standardHours > 0 && calendarStatus !== 'invalid_period'
   ? round(deliveredHours * 100 / standardHours) : null;
@@ -57,10 +57,11 @@ function buildDeliverySummary(records = [], workHours = {}) {
     const key = unitKey(record.staff_id || record.staff?.id, record.task_id);
     if (!perUnit.has(key)) perUnit.set(key, emptyTotals());
     const hours = nonNegativeHours(record.hours), unit = perUnit.get(key), additions = { recordedHours: hours };
-    if (isFullCreditRecord(record)) Object.assign(additions, { deliveredHours: hours, fullCreditHours: hours, weightedDeliveredHours: hours });
+    if (isFullCreditRecord(record)) Object.assign(additions, { deliveredHours: hours, fullCreditHours: hours, weightedDeliveredHours: hours, knownWeightedDeliveredHours: hours });
     else if (hasValidVersion(record.version)) {
       Object.assign(additions, { deliveredHours: hours, versionedHours: hours });
       const progress = normalizeProgress(groups.get(groupKey(record))?.delivery_progress);
+      additions.weightedDeliveredHours = hours * (progress ?? 100) / 100;
       if (progress === null && hours > 0) {
         additions.missingProgressHours = hours;
         missing.add(groupKey(record));
@@ -68,19 +69,17 @@ function buildDeliverySummary(records = [], workHours = {}) {
         perUnitMissing.get(key).add(groupKey(record));
       } else if (progress !== null) {
         additions.progressKnownHours = hours;
-        additions.weightedDeliveredHours = hours * progress / 100;
+        additions.knownWeightedDeliveredHours = hours * progress / 100;
       }
     } else additions.unversionedHours = hours;
     for (const [name, value] of Object.entries(additions)) { totals[name] += value; unit[name] += value; }
   }
   function finish(values, standardHours, calendarStatus, missingCount) {
     return { ...roundedTotals(values), standardHours,
-      knownWeightedDeliveredHours: round(values.weightedDeliveredHours),
-      weightedDeliveredHours: missingCount ? null : round(values.weightedDeliveredHours),
       deliveryRate: rate(values.deliveredHours, standardHours, calendarStatus),
-      weightedDeliveryRate: missingCount ? null : rate(values.weightedDeliveredHours, standardHours, calendarStatus),
+      weightedDeliveryRate: values.deliveredHours > 0 ? round(values.weightedDeliveredHours * 100 / values.deliveredHours) : null,
       missingProgressCount: missingCount,
-      requirementProgress: values.progressKnownHours > 0 ? round((values.weightedDeliveredHours - values.fullCreditHours) * 100 / values.progressKnownHours) : null,
+      requirementProgress: values.progressKnownHours > 0 ? round((values.knownWeightedDeliveredHours - values.fullCreditHours) * 100 / values.progressKnownHours) : null,
       progressCoverage: values.versionedHours > 0 ? round(values.progressKnownHours * 100 / values.versionedHours) : null };
   }
   const standardHours = nonNegativeHours(workHours.standardHours);

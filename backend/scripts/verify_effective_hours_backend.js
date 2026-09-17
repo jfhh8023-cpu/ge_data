@@ -67,7 +67,8 @@ async function run() {
     assert.equal(m.units.reduce((sum, unit) => sum + unit.weightedDeliveredHours, 0), 20);
     records[1].delivery_progress = null;
     const pending = metric(records, { tasks });
-    assert.equal(pending.weightedDeliveredHours, null); assert.equal(pending.weightedDeliveryRate, null);
+    assert.equal(pending.weightedDeliveredHours, 40); assert.equal(pending.weightedDeliveryRate, 100);
+    assert.equal(pending.knownWeightedDeliveredHours, 0); assert.equal(records[1].delivery_progress, null);
     assert.equal(pending.missingProgressHours, 40); assert.equal(pending.missingProgressCount, 1); assert.equal(pending.progressCoverage, 0);
   });
   await check('all five special categories count once, unversioned ordinary hours stay raw, explicit zero stays known', () => {
@@ -87,11 +88,11 @@ async function run() {
     assert.equal(capacity([]).standardHours, 0);
     assert.equal(capacity([], { staff: [staff[0]], includeEmptyStaff: true }).standardHours, 40);
   });
-  await check('overlapping dates deduplicate capacity, excess rates are uncapped and invalid calendars give null', () => {
+  await check('overlapping dates deduplicate capacity, effective excess rates are uncapped and weighted rate ignores invalid calendars', () => {
     const records = [row('a', 48, 100)];
     assert.equal(metric(records).deliveryRate, 120);
     assert.equal(metric(records, { tasks: [tasks[1], { ...tasks[1], id: 'duplicate' }] }).standardHours, 40);
-    assert.equal(metric(records, { tasks: [{ ...tasks[1], start_date: 'invalid' }] }).weightedDeliveryRate, null);
+    assert.equal(metric(records, { tasks: [{ ...tasks[1], start_date: 'invalid' }] }).weightedDeliveryRate, 100);
   });
   await check('actual status service hides resigned historical authors and read-filters old snapshots without rewriting', async () => {
     const currentPeople = staff.map(value => ({ ...value }));
@@ -158,7 +159,7 @@ async function run() {
     '../models': models, uuid: { v4: () => `new-${++nextId}` }, sequelize: { Op: { in: 'in' } },
     '../services/EffectiveHoursService': effective, '../services/MatchService': { matchRecords: () => [] },
     '../services/PersonStatusService': personService,
-    '../services/DemandSourceService': { getDemandSourceDefinitions: async () => [], resolveDemandSources: async () => ({ names: [], ids: [] }) },
+    '../services/DemandSourceService': { getDemandSourceDefinitions: async () => [], resolveDemandSources: async sources => ({ names: Array.isArray(sources) ? sources : [], ids: [] }) },
     '../services/WorkHoursCompletionService': { buildWorkHours, getWorkHours: async options => buildWorkHours({ ...options, snapshots: calendar }), loadWorkHoursContext: async options => options },
     '../utils/parseJson': { safeParseJsonArray: value => Array.isArray(value) ? value : [] }
   };
@@ -196,6 +197,39 @@ async function run() {
     const forged = await invoke(fill, 'post /:token/submit', { task_id: 'now', records: [{ existing_record_id: 'someone-else', requirement_title: '新需求', hours: 1, product_managers: ['PM'], delivery_progress: null }] });
     assert.equal(forged.status, 400);
   });
+  await check('actual fill ordinary inputs require positive10-step progress in engineering and product flows', async () => {
+    for (const role of ['ai_dev', 'ai_pm']) {
+      person.role = role;
+      for (const progress of [null, 0, -10, 5, 110]) {
+        const response = await invoke(fill, 'post /:token/submit', { task_id: 'now', records: [
+          { requirement_title: '新普通需求', version: 'v1', hours: 8, product_managers: ['PM'], demand_sources: ['需求方'], delivery_progress: progress }
+        ] });
+        assert.equal(response.status, 400, `${role} rejects ${progress}`);
+        assert.match(response.result.message, /10%–100%/);
+      }
+      const accepted = await invoke(fill, 'post /:token/submit', { task_id: 'now', records: [
+        { requirement_title: '新普通需求', version: 'v1', hours: 8, product_managers: ['PM'], demand_sources: ['需求方'], delivery_progress: 10 }
+      ] });
+      assert.ifError(accepted.error); assert.equal(accepted.status, 200);
+    }
+    person.role = 'ai_dev';
+  });
+  await check('actual fill cannot clear known progress to gain100; true historical null and omitted historical0 remain unchanged', async () => {
+    entries.engineering = [{ id: 'half', task_id: 'now', staff_id: 'a', requirement_title: '旧需求', hours: 8, version: 'v1', delivery_progress: 50, product_managers: ['PM'] }];
+    const rejected = await invoke(fill, 'post /:token/submit', { task_id: 'now', records: [
+      { existing_record_id: 'half', requirement_title: '旧需求', hours: 8, version: 'v1', product_managers: ['PM'], delivery_progress: null, _allowMissingProgress: true }
+    ] });
+    assert.equal(rejected.status, 400); assert.equal(entries.engineering[0].delivery_progress, 50);
+    entries.engineering[0].delivery_progress = 0;
+    const explicitZero = await invoke(fill, 'post /:token/submit', { task_id: 'now', records: [
+      { existing_record_id: 'half', requirement_title: '旧需求', hours: 8, version: 'v1', product_managers: ['PM'], delivery_progress: 0 }
+    ] });
+    assert.equal(explicitZero.status, 400); assert.equal(entries.engineering[0].delivery_progress, 0);
+    const omitted = await invoke(fill, 'post /:token/submit', { task_id: 'now', records: [
+      { existing_record_id: 'half', requirement_title: '旧需求', hours: 8, version: 'v1', product_managers: ['PM'] }
+    ] });
+    assert.ifError(omitted.error); assert.equal(omitted.status, 200); assert.equal(entries.engineering[0].delivery_progress, 0);
+  });
   await check('actual draft reuses server first version, ignores submitted date, and returns canonical rows', async () => {
     sfl.draft_task_id = 'now'; sfl.draft_data = [{ draft_row_id: 'd', requirement_title: '培训', version: 'v260901', hours: 2 }];
     const response = await invoke(fill, 'put /:token/draft', { task_id: 'now', draft_records: [{ draft_row_id: 'd', requirement_title: '公司会议', version: 'v000000', automatic_version_date: '2000-01-01', hours: null, _ordinary_fields: { version: 'v2' } }] });
@@ -210,7 +244,8 @@ async function run() {
     assert.match(response.error.message, /fixture/); assert.deepEqual(entries.engineering, previous); failure = false;
     legacy = true; person.role = 'ai_pm';
     const legacyResponse = await invoke(fill, 'post /:token/submit', { records: [{ requirement_title: '团建', hours: 2.5 }] });
-    assert.ifError(legacyResponse.error); assert.equal(entries.product[0].hours, 2.5); assert.deepEqual(Array.from(entries.product[0].demand_sources), []);
+    const legacyRow = entries.product.find(row => row.link_id === 'legacy');
+    assert.ifError(legacyResponse.error); assert.equal(legacyRow.hours, 2.5); assert.deepEqual(Array.from(legacyRow.demand_sources), []);
     legacy = false; person.role = 'ai_dev';
   });
   await check('actual CRUD create/update/import enforce date versions, preserve null and rollback partially invalid imports', async () => {
@@ -220,14 +255,38 @@ async function run() {
     assert.ifError(edited.error); assert.equal(edited.result.data.version, effective.dateVersion()); assert.equal(edited.result.data.delivery_progress, null);
     const missingPm = await invoke(crud, 'put /:id', { requirement_title: '普通需求' }, { id });
     assert.match(missingPm.error.message, /请选择AI产品经理/);
-    const ordinary = await invoke(crud, 'put /:id', { requirement_title: '普通需求', product_managers: ['PM'], delivery_progress: null }, { id });
-    assert.ifError(ordinary.error); assert.equal(ordinary.result.data.version, ''); assert.equal(ordinary.result.data.delivery_progress, null);
+    const ordinaryNull = await invoke(crud, 'put /:id', { requirement_title: '普通需求', product_managers: ['PM'], delivery_progress: null }, { id });
+    assert.match(ordinaryNull.error.message, /10%–100%/);
+    const ordinary = await invoke(crud, 'put /:id', { requirement_title: '普通需求', product_managers: ['PM'], delivery_progress: 10 }, { id });
+    assert.ifError(ordinary.error); assert.equal(ordinary.result.data.version, ''); assert.equal(ordinary.result.data.delivery_progress, 10);
     const previous = plain(entries.engineering);
     const imported = await invoke(crud, 'post /import', { task_id: 'now', rows: [
       { staff_name: '甲', requirement_title: '培训', hours: 2 }, { staff_name: '甲', requirement_title: '请假', hours: '' }
     ] });
     assert.match(imported.error.message, /手动填写/); assert.deepEqual(entries.engineering, previous);
   });
-  console.log(`Verified ${checked} REQ-064 backend scenarios without external data writes.`);
+  await check('actual CRUD and import reject zero; editing cannot clear known progress while omitted progress preserves historical0', async () => {
+    const input = { task_id: 'now', staff_id: 'a', requirement_title: '普通需求', version: 'v1', hours: 8, product_managers: ['PM'] };
+    for (const progress of [null, 0, -10, 5, 110]) {
+      const response = await invoke(crud, 'post /', { ...input, delivery_progress: progress });
+      assert.match(response.error.message, /10%–100%/);
+    }
+    const saved = await invoke(crud, 'post /', { ...input, delivery_progress: 50 });
+    assert.ifError(saved.error); const id = saved.result.data.id;
+    const cleared = await invoke(crud, 'put /:id', { delivery_progress: null }, { id });
+    assert.match(cleared.error.message, /10%–100%/); assert.equal(entries.engineering.find(row => row.id === id).delivery_progress, 50);
+    entries.engineering.find(row => row.id === id).delivery_progress = 0;
+    const omitted = await invoke(crud, 'put /:id', { hours: 4 }, { id });
+    assert.ifError(omitted.error); assert.equal(omitted.result.data.delivery_progress, 0);
+    const explicit = await invoke(crud, 'put /:id', { delivery_progress: 0 }, { id });
+    assert.match(explicit.error.message, /10%–100%/);
+    const before = plain(entries.engineering);
+    const imported = await invoke(crud, 'post /import', { task_id: 'now', rows: [
+      { staff_name: '甲', requirement_title: '第一条', version: 'v1', hours: 8, product_managers: ['PM'], delivery_progress: 10 },
+      { staff_name: '甲', requirement_title: '第二条', version: 'v2', hours: 8, product_managers: ['PM'], delivery_progress: 0 }
+    ] });
+    assert.match(imported.error.message, /10%–100%/); assert.deepEqual(entries.engineering, before);
+  });
+  console.log(`Verified ${checked} REQ-064/065 backend scenarios without external data writes.`);
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

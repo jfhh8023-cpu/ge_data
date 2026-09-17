@@ -1,4 +1,4 @@
-/* REQ-064: read-only live GET + browser-owned fixtures; every API write is intercepted. */
+/* REQ-064 regression cases with REQ-065 expectations: live GET + browser fixtures; API writes intercepted. */
 const fs = require('node:fs');
 const path = require('node:path');
 const assert = require('node:assert/strict');
@@ -6,7 +6,8 @@ const { pathToFileURL } = require('node:url');
 const { chromium } = require('playwright');
 const XLSX = require('xlsx');
 const ROOT = path.resolve(__dirname, '../..');
-const OUT = path.join(ROOT, 'docs/@test/effective_hours_20260917');
+const outputArgument = process.argv.find(arg => arg.startsWith('--out='))?.slice(6);
+const OUT = path.resolve(ROOT, outputArgument || 'docs/@test/weighted_delivery_refinement_20260917/reused_effective_hours');
 const APP = process.env.APP_URL || 'http://localhost:5176';
 const API = process.env.API_URL || 'http://127.0.0.1:3001/api';
 const RUN = new Date().toISOString().replace(/[:.]/g, '-');
@@ -50,8 +51,9 @@ async function main() {
     const f = fixture();
     assert.equal(f.summary.recordedHours, 48); assert.equal(f.summary.deliveredHours, 40); assert.equal(f.summary.deliveryRate, 100);
     assert.equal(f.summary.weightedDeliveryRate, 70); assert.equal(f.summary.requirementProgress, 62.5); assert.equal(f.summary.progressCoverage, 100);
-    const unknown = fixture({ missing: true }).summary;
-    assert.equal(unknown.weightedDeliveryRate, null); assert.ok(unknown.missingProgressHours > 0); assert.equal(unknown.deliveryRate, 100);
+    const missingFixture = fixture({ missing: true }), unknown = missingFixture.summary;
+    assert.equal(unknown.weightedDeliveryRate, 90); assert.equal(unknown.missingProgressHours, 16); assert.equal(unknown.deliveryRate, 100);
+    assert.equal(unknown.progressCoverage, 50); assert.equal(missingFixture.records[0].delivery_progress, null);
     return { known: f.summary, unknown };
   });
   await check('R4-P-001-MATH', () => {
@@ -63,9 +65,9 @@ async function main() {
     const recent = { ...f.records[0], id: 'REQ064-later', hours: 8, delivery_progress: 100, updated_at: '2026-09-15T10:00:00Z' };
     const records = [old, recent]; const capacity = workHours.summarizeWorkHours(records, [earlier, later, noRecord]);
     const people = delivery.summarizeStaffDelivery(records, capacity);
-    assert.equal(people.length, 1); assert.equal(people[0].standardHours, 80); assert.equal(people[0].requirementProgress, 100); assert.equal(people[0].weightedDeliveryRate, 20);
+    assert.equal(people.length, 1); assert.equal(people[0].standardHours, 80); assert.equal(people[0].requirementProgress, 100); assert.equal(people[0].weightedDeliveryRate, 100);
     const unknown = delivery.summarizeStaffDelivery([old, { ...recent, delivery_progress: null }], capacity)[0];
-    assert.equal(unknown.weightedDeliveryRate, null); assert.equal(unknown.missingProgressHours, 16);
+    assert.equal(unknown.weightedDeliveryRate, 100); assert.equal(unknown.missingProgressHours, 16); assert.equal(unknown.progressCoverage, 0);
     const resigned = records.map(row => ({ ...row, staff: { ...row.staff, employment_status: 'resigned' } }));
     assert.equal(delivery.summarizeStaffDelivery(resigned, capacity).length, 0);
     const restored = resigned.map(row => ({ ...row, staff: { ...row.staff, employment_status: 'long_leave' } }));
@@ -106,7 +108,7 @@ async function main() {
   if (!cases || cases.some(id => /UI|FILL/.test(id))) await browserChecks();
   const latest = new Map();
   for (const line of fs.readFileSync(path.join(OUT, 'results.jsonl'), 'utf8').trim().split('\n').filter(Boolean)) { const row = JSON.parse(line); latest.set(row.id, row); }
-  fs.writeFileSync(path.join(OUT, 'execution.md'), `# REQ-064 运行验证\n\n最新批次：${RUN}。复现：\`node backend/scripts/verify_effective_hours_ui.js${cases ? ' --case=' + cases.join(',') : ''}\`。\n\n## 每个用例最近结果（完整历史保留）\n\n| 用例 | 最近结果 | 证据批次 | 说明 |\n| --- | --- | --- | --- |\n${[...latest.values()].sort((a, b) => a.id.localeCompare(b.id)).map(row => `| ${row.id} | ${row.status} | [${row.run}](evidence/${row.run}/) | ${(row.message || '见 results.jsonl').replace(/\|/g, '/')} |`).join('\n')}\n\n证据：evidence/；完整历史追加保留在 results.jsonl。浏览器请求中所有非 GET API 均被拦截，不写业务、不发通知。四轮冻结设计中未执行的用例不能据此标记通过。初期定位器超时和开发未集成失败保留；1280图表可见及手机人员区实际截图反馈后已收紧断言，最新结果以此矩阵为准。\n`, 'utf8');
+  fs.writeFileSync(path.join(OUT, 'execution.md'), `# REQ-064 复用回归（REQ-065 计算口径）\n\n最新批次：${RUN}。复现：\`node backend/scripts/verify_effective_hours_ui.js --out=${JSON.stringify(path.relative(ROOT, OUT).replaceAll('\\', '/'))}${cases ? ' --case=' + cases.join(',') : ''}\`。\n\n## 每个用例最近结果（完整历史保留）\n\n| 用例 | 最近结果 | 证据批次 | 说明 |\n| --- | --- | --- | --- |\n${[...latest.values()].sort((a, b) => a.id.localeCompare(b.id)).map(row => `| ${row.id} | ${row.status} | [${row.run}](evidence/${row.run}/) | ${(row.message || '见 results.jsonl').replace(/\|/g, '/')} |`).join('\n')}\n\n证据：evidence/；本目录完整历史追加保留在 results.jsonl，旧 REQ-064 归档不修改。浏览器请求中所有非 GET API 均被拦截，不写业务、不发通知。未执行用例不据此标记通过。\n`, 'utf8');
   console.log(JSON.stringify({ run: RUN, evidence: DIR, results: results.map(({ id, status }) => ({ id, status })) }));
   process.exitCode = results.some(row => row.status === 'FAIL') ? 1 : 0;
 }
@@ -163,7 +165,7 @@ async function browserChecks() {
       const dialogBox = await dialog().boundingBox(); assert.ok(spotlight.height < dialogBox.height * .42, 'desktop summary consumes too much dialog');
       await snapshot('stats-dialog-desktop');
       await dialog().locator('.el-dialog__headerbtn').click();
-      await loadStats({ missing: true }); assert.match(await card().getByTestId('weighted-delivery-rate').innerText(), /待补进度/);
+      await loadStats({ missing: true }); assert.equal(number(await card().getByTestId('weighted-delivery-rate').innerText()), 90);
       return { text, chart, tips, spotlight, dialogBox, unknown: await card().innerText() };
     });
     await check('R4-E-001-FILL', async () => {
@@ -223,8 +225,9 @@ async function browserChecks() {
       }
       f = fixture({ missing: true }); f.fillRecords = [f.records[0]];
       await page.goto(`${APP}/fill/REQ064-fixture`, { waitUntil: 'networkidle' });
-      assert.match(await page.getByTestId('fill-preview-weighted').innerText(), /待补进度/);
-      assert.match(await page.locator('.fill-hours-summary').innerText(), /缺进度\s*16h/);
+      assert.equal(await page.getByTestId('fill-preview-weighted').innerText(), '40%');
+      assert.match(await page.locator('.fill-hours-summary').innerText(), /加权\s*16h/);
+      assert.doesNotMatch(await page.locator('.fill-hours-summary').innerText(), /待补进度/);
       assert.doesNotMatch(await page.locator('.fill-hours-summary').innerText(), /加权\s*0h/);
       const saved = page.waitForRequest(req => req.url().endsWith('/fill/REQ064-fixture/submit') && req.method() === 'POST');
       await page.getByRole('button', { name: '🚀 提交', exact: true }).click();
@@ -232,8 +235,12 @@ async function browserChecks() {
       f = fixture(); f.fillRecords = [{ ...f.records[0], delivery_progress: 0 }];
       await page.goto(`${APP}/fill/REQ064-fixture`, { waitUntil: 'networkidle' });
       assert.equal(await page.getByTestId('fill-preview-weighted').innerText(), '0%');
+      const submissionsBefore = writes.filter(write => write.path.endsWith('/submit')).length;
+      await page.getByRole('button', { name: '🚀 提交', exact: true }).click();
+      await page.locator('.el-message__content').filter({ hasText: '不能为0%' }).waitFor();
+      assert.equal(writes.filter(write => write.path.endsWith('/submit')).length, submissionsBefore);
       await snapshot('fill-zero-progress');
-      return { specialSaves: evidence, legacyProgressPreserved: legacy.records[0].delivery_progress, explicitZeroValid: true };
+      return { specialSaves: evidence, legacyProgressPreserved: legacy.records[0].delivery_progress, explicitZeroReadAsZero: true, explicitZeroSubmitRejected: true };
     });
     await check('R4-E-003-UI', async () => {
       await page.setViewportSize({ width: 390, height: 844 }); const evidence = [];
@@ -278,7 +285,7 @@ async function browserChecks() {
       assert.equal(number(await card().getByTestId('delivered-hours').innerText()), data.deliverySummary.deliveredHours);
       assert.equal(number(await card().getByTestId('expected-hours').innerText()), data.deliverySummary.standardHours);
       assert.equal(number(await card().getByTestId('delivery-rate').innerText()), data.deliverySummary.deliveryRate);
-      if (data.deliverySummary.missingProgressHours > 0) assert.match(await card().getByTestId('weighted-delivery-rate').innerText(), /待补进度/);
+      assert.equal((await card().getByTestId('weighted-delivery-rate').innerText()).trim(), delivery.weightedRateText(data.deliverySummary));
       await snapshot('live-stats-desktop');
       await card().locator('.stats-hours-heading').click(); await dialog().waitFor();
       assert.equal(number(await dialog().getByTestId('delivered-hours').first().innerText()), data.deliverySummary.deliveredHours);

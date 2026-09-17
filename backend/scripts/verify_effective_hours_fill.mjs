@@ -1,6 +1,6 @@
 // REQ-064 pure frontend rules: no API, database or business-data writes.
 import assert from 'node:assert/strict'
-import { FULL_CREDIT_TITLES, isFullCreditRecord, dateVersion, initializeSpecialRow, syncSpecialRow, summarizeDraftWeightedHours } from '../../frontend/src/utils/effectiveHours.js'
+import { FULL_CREDIT_TITLES, POSITIVE_PROGRESS_OPTIONS, isValidSubmittedProgress, isFullCreditRecord, dateVersion, initializeSpecialRow, syncSpecialRow, summarizeDraftWeightedHours } from '../../frontend/src/utils/effectiveHours.js'
 
 let checked = 0
 function check(name, fn) { fn(); checked++; console.log(`PASS ${name}`) }
@@ -48,5 +48,28 @@ check('unknown progress differs from 0, invalid capacity and overfill remain exp
   assert.equal(summarizeDraftWeightedHours([{ requirement_title: '请假', hours: 48 }], 40).weightedDeliveryRate, 120)
   assert.equal(summarizeDraftWeightedHours([{ requirement_title: '请假', hours: 48 }], 0).weightedDeliveryRate, null)
   assert.equal(summarizeDraftWeightedHours([{ version: 'v1', hours: 0, delivery_progress: null }], 40).missingProgressHours, 0)
+})
+check('REQ065 historic null defaults to100 in preview while standard hours remain denominator and stored null stays unchanged', () => {
+  const historical = { existing_record_id: 'old-row', _original_progress_missing: true, version: 'v1', hours: 8, delivery_progress: null }
+  const current = { version: 'v2', hours: 8, delivery_progress: 50 }
+  const result = summarizeDraftWeightedHours([historical, current], 40)
+  assert.equal(result.weightedDeliveredHours, 12); assert.equal(result.weightedDeliveryRate, 30)
+  assert.equal(result.historicalDefaultHours, 8); assert.equal(result.knownWeightedDeliveredHours, 4)
+  assert.equal(historical.delivery_progress, null)
+  assert.equal(summarizeDraftWeightedHours([{ ...historical, delivery_progress: 0 }], 40).weightedDeliveryRate, 0)
+  assert.equal(summarizeDraftWeightedHours([{ ...historical, existing_record_id: '' }], 40).weightedDeliveryRate, null)
+  assert.equal(summarizeDraftWeightedHours([{ ...historical, _original_progress_missing: false }], 40).weightedDeliveryRate, null)
+  assert.equal(summarizeDraftWeightedHours([{ version: 'v1', hours: 8, delivery_progress: null, existing_record_id: 'fake-old-id' }], 40).weightedDeliveryRate, null)
+})
+check('REQ065 ordinary explicit submissions require10..100; saved null and special categories retain exceptions', () => {
+  assert.deepEqual([...POSITIVE_PROGRESS_OPTIONS], [10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
+  for (const value of [null, undefined, '', ' ', 0, -10, 5, 101, false, true]) assert.equal(isValidSubmittedProgress({ delivery_progress: value }), false)
+  for (const value of POSITIVE_PROGRESS_OPTIONS) assert.equal(isValidSubmittedProgress({ delivery_progress: value }), true)
+  assert.equal(isValidSubmittedProgress({ existing_record_id: 'old', _original_progress_missing: true, delivery_progress: null }), true)
+  assert.equal(isValidSubmittedProgress({ existing_record_id: 'old', _original_progress_missing: false, delivery_progress: null }), false)
+  assert.equal(isValidSubmittedProgress({ existing_record_id: 'fake-old-id', delivery_progress: null }), false)
+  assert.equal(isValidSubmittedProgress({ existing_record_id: 'old', delivery_progress: 0 }), false)
+  assert.equal(isValidSubmittedProgress({ existing_record_id: 'old', delivery_progress: 101 }), false)
+  for (const requirement_title of FULL_CREDIT_TITLES) assert.equal(isValidSubmittedProgress({ requirement_title, delivery_progress: null }), true)
 })
 console.log(`${checked} checks passed`)

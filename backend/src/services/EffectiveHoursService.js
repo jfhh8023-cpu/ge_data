@@ -2,7 +2,8 @@ const { getBeijingParts } = require('../utils/beijingTime');
 
 const FULL_CREDIT_TITLES = Object.freeze(['请假', '培训', '公司会议', '出差', '团建']);
 const fullCreditTitles = new Set(FULL_CREDIT_TITLES);
-const VALID_PROGRESS = new Set([0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]);
+// Input validation is stricter than historical read normalization (which still accepts explicit 0%).
+const VALID_PROGRESS = new Set([10, 20, 30, 40, 50, 60, 70, 80, 90, 100]);
 
 function isFullCreditRecord(record) {
   return fullCreditTitles.has(String(record?.requirement_title ?? record ?? '').trim());

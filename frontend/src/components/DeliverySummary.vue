@@ -24,7 +24,7 @@ const number = value => Number(value || 0).toLocaleString('zh-CN', { maximumFrac
     </div>
     <div v-if="showWeighted && !unversioned" class="delivery-metric" :title="deliveryMetricTip(metric, 'weightedDeliveryRate')">
       <span>加权交付率</span>
-      <strong data-testid="weighted-delivery-rate" :class="{ 'is-complete': metric?.weightedDeliveryRate != null && metric.weightedDeliveryRate >= 100, 'is-pending': metric?.missingProgressHours > 0 }">{{ weightedRateText(metric) }}</strong>
+      <strong data-testid="weighted-delivery-rate" :class="{ 'is-complete': metric?.weightedDeliveryRate != null && metric.weightedDeliveryRate >= 100 }">{{ weightedRateText(metric) }}</strong>
     </div>
     <span v-if="unversioned" class="delivery-record-only">仅记录，不计交付率</span>
     <div v-if="showProgress && !unversioned" class="delivery-progress-foot">
@@ -37,8 +37,9 @@ const number = value => Number(value || 0).toLocaleString('zh-CN', { maximumFrac
 <style scoped>
 .delivery-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 18px; min-width: 0; }
 .delivery-summary.has-expected-hours { gap: 8px 16px; max-width: 100%; }
+.delivery-summary.has-expected-hours.has-weighted { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .delivery-summary.has-compact-labels { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
-.delivery-summary.has-compact-labels.has-weighted { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 10px; }
+.delivery-summary.has-compact-labels.has-weighted { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px 4px; }
 .delivery-summary.has-compact-labels .delivery-metric > span { font-size: 10px; white-space: normal; }
 .delivery-summary.has-compact-labels .delivery-metric strong small { margin-left: 1px; font-size: 10px; }
 .delivery-metric { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
@@ -46,7 +47,6 @@ const number = value => Number(value || 0).toLocaleString('zh-CN', { maximumFrac
 .delivery-metric strong { color: var(--delivery-color, #165dff); font-size: 21px; line-height: 1.3; font-weight: 700; white-space: nowrap; }
 .delivery-metric strong small { color: #86909c; font-size: 11px; margin-left: 3px; font-weight: 400; }
 .is-complete { color: #146c2e !important; background: #e8f7ee; border-radius: 4px; padding: 0 4px; }
-.delivery-metric strong.is-pending { font-size: 13px; color: #a66b13; }
 .delivery-record-only { color: #86909c; font-size: 12px; }
 .delivery-progress-foot { display: flex; flex-wrap: wrap; gap: 3px 10px; flex-basis: 100%; grid-column: 1 / -1; color: #667085; font-size: 11px; border-top: 1px solid #e8edf3; padding-top: 5px; }
 .delivery-progress-foot b { color: #475467; font-weight: 600; white-space: nowrap; }

@@ -2184,7 +2184,7 @@ function exportStatsData() {
       <div class="dt-analysis-spotlight" :class="{ 'is-custom-period': analysisRecordScope === 'custom' }" data-testid="analysis-spotlight" v-loading="analysisUsesRemoteScope && statsStore.progressDetailsLoading">
       <section class="dt-delivery-dialog-summary">
         <h3>{{ analysisScopeLabel }}<span>{{ analysisPeriodModeLabel }}</span></h3>
-        <DeliverySummary :metric="deliveryDialogSummary" :unversioned="analysisShowsUnversioned" show-expected-hours show-weighted show-progress :all-periods="analysisRecordScope === 'all'" :period-label="analysisRecordScope === 'custom' ? '所选周期' : ''" />
+        <DeliverySummary :metric="deliveryDialogSummary" :unversioned="analysisShowsUnversioned" show-expected-hours show-weighted show-progress compact-labels :all-periods="analysisRecordScope === 'all'" :period-label="analysisRecordScope === 'custom' ? '所选周期' : ''" />
         <div class="dt-analysis-inline-kpis">
           <button type="button" :title="deliveryMetricTip(deliveryDialogSummary, 'recordedHours')" @click="openProgressList()">总工时 <strong>{{ analysisData.total.toFixed(1) }}h</strong></button>
           <button type="button" title="当前范围已保存记录数，按来源和记录ID去重，包含五类和普通无版本记录。" @click="openProgressList()">记录 <strong>{{ analysisData.recordCount }}</strong></button>
@@ -2323,7 +2323,7 @@ function exportStatsData() {
 .dt-main-records-totals { display:flex; flex-wrap:wrap; gap:6px 18px; padding:0 16px 12px; font-size:12px; color:#667085; }
 .dt-main-records .dt-analysis-pagination { padding:0 12px 12px; }
 .dt-delivery-card.is-selected-scope { outline:2px solid #165dff; outline-offset:-2px; }
-.dt-summary-strip { display: grid; grid-template-columns: repeat(var(--delivery-card-count, 6), minmax(0, 1fr)) 224px; grid-auto-rows: 1fr; align-items: stretch; gap: 10px; margin-bottom: 6px; }
+.dt-summary-strip { display: grid; grid-template-columns: repeat(var(--delivery-card-count, 6), minmax(0, 1fr)) 192px; grid-auto-rows: 1fr; align-items: stretch; gap: 8px; margin-bottom: 6px; }
 .dt-delivery-cards { display: contents; }
 .dt-delivery-cards-product { grid-template-columns: minmax(250px, 330px); }
 .dt-delivery-brief { margin: 0 0 10px; color: #86909c; font-size: 11px; line-height: 16px; }
@@ -2335,8 +2335,9 @@ function exportStatsData() {
 .dt-delivery-dialog-summary h3, .dt-analysis-people h3 { margin: 0; font-size: 14px; color: #1d2939; }
 .dt-delivery-dialog-summary h3 { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .dt-delivery-dialog-summary h3 span { font-size: 11px; color: #667085; font-weight: 400; white-space: nowrap; }
-.dt-delivery-dialog-summary :deep(.delivery-summary) { gap: 10px 22px; flex-shrink: 0; }
-.dt-delivery-dialog-summary :deep(.delivery-metric strong) { font-size: 28px; }
+.dt-delivery-dialog-summary :deep(.delivery-summary) { gap: 10px 8px; flex-shrink: 0; }
+.dt-delivery-dialog-summary :deep(.delivery-metric strong) { font-size: clamp(18px, 1.55vw, 26px); }
+.dt-delivery-dialog-summary :deep(.delivery-metric > span) { font-size: 11px; }
 .dt-delivery-dialog-summary p { margin: 0; color: #667085; font-size: 11px; line-height: 1.5; }
 .dt-analysis-people { display: flex; flex-direction: column; min-height: 0; min-width: 0; padding: 10px 14px; border: 1px solid #e4eaf1; border-radius: 9px; background: #fff; overflow: hidden; }
 .dt-analysis-people-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 6px; flex-shrink: 0; }
@@ -2371,26 +2372,25 @@ function exportStatsData() {
 .dt-staff-delivery-complete { color: #146c2e; background: #e8f7ee; padding: 2px 5px; border-radius: 4px; font-weight: 700; }
 .dt-restored-analysis-tabs :deep(.el-tab-pane) { min-width: 0; }
 .dt-delivery-records { width: 100%; }
-@media (max-width: 1400px) {
+@media (max-width: 1580px) {
   .dt-summary-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .dt-delivery-cards-product { grid-template-columns: minmax(250px, 330px); }
   .dt-summary-strip :deep(.delivery-summary.has-compact-labels) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 @media (max-width: 900px) {
   .dt-summary-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .dt-summary-strip :deep(.delivery-summary.has-compact-labels) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .dt-analysis-spotlight { grid-template-columns: minmax(270px, 1fr) minmax(0, 1fr); gap: 8px; }
+  .dt-analysis-spotlight { grid-template-columns: minmax(290px, 1fr) minmax(0, 1fr); gap: 8px; }
   .dt-delivery-dialog-summary { padding: 10px; }
-  .dt-delivery-dialog-summary :deep(.delivery-metric strong) { font-size: 23px; }
+  .dt-delivery-dialog-summary :deep(.delivery-metric strong) { font-size: 18px; }
 }
 @media (max-width: 600px) {
-  .dt-summary-strip { gap: 8px; }
+  .dt-summary-strip { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .dt-delivery-cards-product { grid-template-columns: minmax(0, 1fr); }
   .dt-analysis-spotlight { grid-template-columns: minmax(0, 1fr); grid-template-rows: min-content minmax(105px, 1fr); flex-basis: 38vh; overflow-y: auto; gap: 6px; margin-bottom: 8px; }
   .dt-analysis-spotlight.is-custom-period { flex-basis: 34vh; }
   .dt-delivery-dialog-summary { gap: 6px; padding: 8px 10px; }
-  .dt-delivery-dialog-summary :deep(.delivery-summary.has-weighted) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 12px; }
-  .dt-delivery-dialog-summary :deep(.delivery-metric strong) { font-size: 20px; }
+  .dt-delivery-dialog-summary :deep(.delivery-summary.has-weighted) { gap: 5px 4px; }
+  .dt-delivery-dialog-summary :deep(.delivery-metric strong) { font-size: 17px; }
   .dt-analysis-people { padding: 6px 10px; }
   .dt-analysis-people :deep(.staff-delivery-table) { font-size: 11px; }
   .dt-analysis-people :deep(.staff-delivery-table th), .dt-analysis-people :deep(.staff-delivery-table td) { padding: 3px 2px; }
