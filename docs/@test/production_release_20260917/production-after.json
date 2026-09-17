@@ -1,0 +1,825 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-09-17T09:56:33.181Z",
+  "readOnly": true,
+  "isolationLevel": "REPEATABLE READ",
+  "baselineApplied": true,
+  "tables": {
+    "access_links": {
+      "count": 1,
+      "columns": [
+        "created_at",
+        "id",
+        "is_active",
+        "name",
+        "token",
+        "updated_at"
+      ],
+      "availableColumns": [
+        "created_at",
+        "id",
+        "is_active",
+        "name",
+        "token",
+        "updated_at"
+      ],
+      "sha256": "f9ff6c4940b4627ad9e6e8a7eb7ac78cca53bdaf231e0d96f24f6f1d58164648",
+      "addedColumns": []
+    },
+    "auto_task_child_notifications": {
+      "count": 2,
+      "columns": [
+        "activated_at",
+        "activation_scheduled_at",
+        "activation_token",
+        "attempt_count",
+        "created_at",
+        "enabled",
+        "execute_time",
+        "id",
+        "last_attempt_at",
+        "last_error",
+        "last_scheduled_at",
+        "last_sent_at",
+        "message",
+        "month_days",
+        "next_retry_at",
+        "rule_id",
+        "schedule_type",
+        "status",
+        "updated_at",
+        "webhook_ids",
+        "webhook_target_mode",
+        "week_days"
+      ],
+      "availableColumns": [
+        "activated_at",
+        "activation_scheduled_at",
+        "activation_token",
+        "attempt_count",
+        "created_at",
+        "enabled",
+        "execute_time",
+        "id",
+        "last_attempt_at",
+        "last_error",
+        "last_scheduled_at",
+        "last_sent_at",
+        "message",
+        "month_days",
+        "next_retry_at",
+        "rule_id",
+        "schedule_type",
+        "status",
+        "updated_at",
+        "webhook_ids",
+        "webhook_target_mode",
+        "week_days"
+      ],
+      "sha256": "a40d414acd3bd485c24b687d15856c1323b9270436e4b87b21492c8ccc2adf56",
+      "addedColumns": []
+    },
+    "auto_task_messages": {
+      "count": 375,
+      "columns": [
+        "action",
+        "created_at",
+        "id",
+        "level",
+        "message",
+        "rule_id"
+      ],
+      "availableColumns": [
+        "action",
+        "created_at",
+        "id",
+        "level",
+        "message",
+        "rule_id"
+      ],
+      "sha256": "3ed33a46e04217a4c0b12f6c0893e7842774b92613f3cfabf3bff0f06d6b4506",
+      "addedColumns": []
+    },
+    "auto_task_rules": {
+      "count": 3,
+      "columns": [
+        "action_mode",
+        "created_at",
+        "dingtalk_message",
+        "dingtalk_recipients",
+        "dingtalk_webhook",
+        "duty_config",
+        "enabled",
+        "execute_time",
+        "id",
+        "month_days",
+        "name",
+        "notify_enabled",
+        "schedule_type",
+        "schedule_year",
+        "task_type",
+        "updated_at",
+        "week_days"
+      ],
+      "availableColumns": [
+        "action_mode",
+        "created_at",
+        "dingtalk_message",
+        "dingtalk_recipients",
+        "dingtalk_webhook",
+        "duty_config",
+        "enabled",
+        "execute_time",
+        "id",
+        "month_days",
+        "name",
+        "notify_enabled",
+        "schedule_type",
+        "schedule_year",
+        "task_type",
+        "updated_at",
+        "week_days"
+      ],
+      "sha256": "daa72cff219fb427f8f429aa20965b11ce6d9b7736b1a24a62f9ad0532194d97",
+      "addedColumns": []
+    },
+    "auto_task_run_logs": {
+      "count": 160,
+      "columns": [
+        "attempt_count",
+        "created_at",
+        "created_task_id",
+        "event_type",
+        "id",
+        "last_attempt_at",
+        "message",
+        "next_retry_at",
+        "notify_error",
+        "notify_status",
+        "retry_payload",
+        "rule_id",
+        "scheduled_at",
+        "status"
+      ],
+      "availableColumns": [
+        "attempt_count",
+        "created_at",
+        "created_task_id",
+        "event_type",
+        "id",
+        "last_attempt_at",
+        "message",
+        "next_retry_at",
+        "notify_error",
+        "notify_status",
+        "retry_payload",
+        "rule_id",
+        "scheduled_at",
+        "status"
+      ],
+      "sha256": "6a1c6508b73d829a8a738e42768383a687b9d12a782188fe901ba95c5da38e14",
+      "addedColumns": []
+    },
+    "collection_tasks": {
+      "count": 34,
+      "columns": [
+        "created_at",
+        "end_date",
+        "id",
+        "is_preferred",
+        "start_date",
+        "status",
+        "time_dimension",
+        "title",
+        "updated_at",
+        "week_number",
+        "year"
+      ],
+      "availableColumns": [
+        "created_at",
+        "end_date",
+        "id",
+        "is_preferred",
+        "start_date",
+        "status",
+        "time_dimension",
+        "title",
+        "updated_at",
+        "week_number",
+        "year"
+      ],
+      "sha256": "e58625078217a4c1352cdc166706128e9cadeab6c29b2184edb824b6b7f6e539",
+      "addedColumns": []
+    },
+    "demand_sources": {
+      "count": 4,
+      "columns": [
+        "color",
+        "created_at",
+        "id",
+        "is_active",
+        "is_system",
+        "name",
+        "sort_order",
+        "updated_at"
+      ],
+      "availableColumns": [
+        "color",
+        "created_at",
+        "id",
+        "is_active",
+        "is_system",
+        "name",
+        "sort_order",
+        "updated_at"
+      ],
+      "sha256": "30afc425e9818ed35a0e1182b6cf6dba4e218eaae1e9f56340bf09a32df0c2d1",
+      "addedColumns": []
+    },
+    "duty_calendar_revisions": {
+      "count": 2,
+      "columns": [
+        "audit_summary",
+        "calendar_year",
+        "created_at",
+        "effective_from",
+        "id",
+        "is_active",
+        "manual_overrides",
+        "official_days",
+        "revision_no",
+        "source_title",
+        "source_url",
+        "source_verified_at",
+        "source_version",
+        "updated_at"
+      ],
+      "availableColumns": [
+        "audit_summary",
+        "calendar_year",
+        "created_at",
+        "effective_from",
+        "id",
+        "is_active",
+        "manual_overrides",
+        "official_days",
+        "revision_no",
+        "source_title",
+        "source_url",
+        "source_verified_at",
+        "source_version",
+        "updated_at"
+      ],
+      "sha256": "f11412179c9631eaab04ab587f2ba510112f1e6b9125cbd41524dd10b629239a",
+      "addedColumns": []
+    },
+    "duty_holiday_snapshots": {
+      "count": 2,
+      "columns": [
+        "calendar_year",
+        "checksum",
+        "created_at",
+        "error_message",
+        "last_checked_at",
+        "next_retry_at",
+        "official_days",
+        "published_at",
+        "source_document_no",
+        "source_title",
+        "source_url",
+        "source_version",
+        "sync_status",
+        "updated_at",
+        "verified_at"
+      ],
+      "availableColumns": [
+        "calendar_year",
+        "checksum",
+        "created_at",
+        "error_message",
+        "last_checked_at",
+        "next_retry_at",
+        "official_days",
+        "published_at",
+        "source_document_no",
+        "source_title",
+        "source_url",
+        "source_version",
+        "sync_status",
+        "updated_at",
+        "verified_at"
+      ],
+      "sha256": "72651cdeb686b6bb8d6302aac14c9ffb23356fb1a048d6e78e17f20cfb233290",
+      "addedColumns": []
+    },
+    "duty_schedule_exceptions": {
+      "count": 0,
+      "columns": [
+        "calendar_date",
+        "created_at",
+        "id",
+        "notice_at_mode",
+        "notice_enabled",
+        "notice_message",
+        "notice_staff_ids",
+        "notice_time",
+        "notice_webhook_ids",
+        "revision",
+        "rule_id",
+        "skip_staff_ids",
+        "status",
+        "updated_at"
+      ],
+      "availableColumns": [
+        "calendar_date",
+        "created_at",
+        "id",
+        "notice_at_mode",
+        "notice_enabled",
+        "notice_message",
+        "notice_staff_ids",
+        "notice_time",
+        "notice_webhook_ids",
+        "revision",
+        "rule_id",
+        "skip_staff_ids",
+        "status",
+        "updated_at"
+      ],
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "addedColumns": []
+    },
+    "duty_schedule_swaps": {
+      "count": 2,
+      "columns": [
+        "created_at",
+        "date_a",
+        "date_b",
+        "id",
+        "revision",
+        "rule_id",
+        "staff_a_id",
+        "staff_b_id",
+        "status",
+        "updated_at"
+      ],
+      "availableColumns": [
+        "created_at",
+        "date_a",
+        "date_b",
+        "id",
+        "revision",
+        "rule_id",
+        "staff_a_id",
+        "staff_b_id",
+        "status",
+        "updated_at"
+      ],
+      "sha256": "bc1e2db96d58cf4d34256f4f216fe865640657b02c330fe14f340624a743b416",
+      "addedColumns": []
+    },
+    "duty_special_notification_logs": {
+      "count": 0,
+      "columns": [
+        "attempt_count",
+        "created_at",
+        "exception_id",
+        "id",
+        "last_attempt_at",
+        "next_retry_at",
+        "notify_error",
+        "rule_id",
+        "scheduled_at",
+        "status",
+        "updated_at"
+      ],
+      "availableColumns": [
+        "attempt_count",
+        "created_at",
+        "exception_id",
+        "id",
+        "last_attempt_at",
+        "next_retry_at",
+        "notify_error",
+        "rule_id",
+        "scheduled_at",
+        "status",
+        "updated_at"
+      ],
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "addedColumns": []
+    },
+    "excel_files": {
+      "count": 30,
+      "columns": [
+        "created_at",
+        "file_data",
+        "file_size",
+        "filename",
+        "id",
+        "source_page",
+        "staff_id",
+        "task_id",
+        "updated_at",
+        "upload_type"
+      ],
+      "availableColumns": [
+        "created_at",
+        "file_data",
+        "file_size",
+        "filename",
+        "id",
+        "source_page",
+        "staff_id",
+        "task_id",
+        "updated_at",
+        "upload_type"
+      ],
+      "sha256": "93916999b82988c82787a7f7df5e98e81446c107afdc10f228eebc61d1cf45c5",
+      "addedColumns": []
+    },
+    "fill_links": {
+      "count": 0,
+      "columns": [
+        "created_at",
+        "draft_data",
+        "draft_saved_at",
+        "editing_at",
+        "id",
+        "is_submitted",
+        "last_action",
+        "last_action_at",
+        "staff_id",
+        "task_id",
+        "token"
+      ],
+      "availableColumns": [
+        "created_at",
+        "draft_data",
+        "draft_saved_at",
+        "editing_at",
+        "id",
+        "is_submitted",
+        "last_action",
+        "last_action_at",
+        "staff_id",
+        "task_id",
+        "token"
+      ],
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "addedColumns": []
+    },
+    "link_permissions": {
+      "count": 43,
+      "columns": [
+        "can_create",
+        "can_delete",
+        "can_update",
+        "can_view",
+        "id",
+        "link_id",
+        "resource"
+      ],
+      "availableColumns": [
+        "can_create",
+        "can_delete",
+        "can_update",
+        "can_view",
+        "id",
+        "link_id",
+        "resource"
+      ],
+      "sha256": "ed44b5b10d674118b84985f9ddd4fbeed98be6425b48edfca58d6ca085390060",
+      "addedColumns": []
+    },
+    "match_groups": {
+      "count": 577,
+      "columns": [
+        "backend",
+        "confidence",
+        "created_at",
+        "frontend",
+        "id",
+        "merged_title",
+        "product_managers",
+        "remark",
+        "role_buckets",
+        "status",
+        "task_id",
+        "test_role",
+        "version",
+        "voip"
+      ],
+      "availableColumns": [
+        "backend",
+        "confidence",
+        "created_at",
+        "frontend",
+        "id",
+        "merged_title",
+        "product_managers",
+        "remark",
+        "role_buckets",
+        "status",
+        "task_id",
+        "test_role",
+        "version",
+        "voip"
+      ],
+      "sha256": "7809459154ae8b013f487bd3d379e6e86be98d924731c4b7344f0fce67e12cde",
+      "addedColumns": []
+    },
+    "product_manager_status_history": {
+      "count": 16,
+      "columns": [
+        "created_at",
+        "ended_at",
+        "id",
+        "product_manager_id",
+        "started_at",
+        "status"
+      ],
+      "availableColumns": [
+        "created_at",
+        "ended_at",
+        "id",
+        "product_manager_id",
+        "started_at",
+        "status"
+      ],
+      "sha256": "dbafdd7f3e22ac11d8dfd5f271553f268146eac5f91170e95939e0677fa761b1",
+      "addedColumns": []
+    },
+    "product_manager_work_records": {
+      "count": 0,
+      "columns": [
+        "created_at",
+        "delivery_progress",
+        "demand_source_ids",
+        "demand_source_weights",
+        "demand_sources",
+        "edit_count",
+        "hours",
+        "id",
+        "is_active",
+        "link_id",
+        "requirement_title",
+        "staff_id",
+        "submit_count",
+        "task_id",
+        "updated_at",
+        "version"
+      ],
+      "availableColumns": [
+        "created_at",
+        "delivery_progress",
+        "demand_source_ids",
+        "demand_source_weights",
+        "demand_sources",
+        "edit_count",
+        "hours",
+        "id",
+        "is_active",
+        "link_id",
+        "requirement_title",
+        "staff_id",
+        "submit_count",
+        "task_id",
+        "updated_at",
+        "version"
+      ],
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "hours": 0,
+      "nullProgress": 0,
+      "zeroProgress": 0,
+      "nonZeroProgress": 0,
+      "addedColumns": []
+    },
+    "product_managers": {
+      "count": 14,
+      "columns": [
+        "created_at",
+        "employment_status",
+        "id",
+        "is_active",
+        "name",
+        "sort_order",
+        "status_changed_at",
+        "token",
+        "updated_at"
+      ],
+      "availableColumns": [
+        "created_at",
+        "employment_status",
+        "id",
+        "is_active",
+        "name",
+        "sort_order",
+        "status_changed_at",
+        "token",
+        "updated_at"
+      ],
+      "sha256": "37c2202a319ba96cc9704e250b088c7b67567a225cd7432211035fbf215aaf51",
+      "addedColumns": []
+    },
+    "quote_configs": {
+      "count": 1,
+      "columns": [
+        "candidate_queue",
+        "created_at",
+        "enabled",
+        "id",
+        "no_repeat_count",
+        "rule_id",
+        "updated_at",
+        "used_history"
+      ],
+      "availableColumns": [
+        "candidate_queue",
+        "created_at",
+        "enabled",
+        "id",
+        "no_repeat_count",
+        "rule_id",
+        "updated_at",
+        "used_history"
+      ],
+      "sha256": "cabb9923cedd2684fef9ea8646004287d8b83e60eb945816bd0767ae9b40aeac",
+      "addedColumns": []
+    },
+    "quotes": {
+      "count": 387,
+      "columns": [
+        "content",
+        "created_at",
+        "id",
+        "sort_order",
+        "updated_at"
+      ],
+      "availableColumns": [
+        "content",
+        "created_at",
+        "id",
+        "sort_order",
+        "updated_at"
+      ],
+      "sha256": "4c70e49f9a7619056f5d09f6d6ee76b2316dc2ea98e2b9a83113659ccb24ec0b",
+      "addedColumns": []
+    },
+    "staff": {
+      "count": 13,
+      "columns": [
+        "created_at",
+        "employment_status",
+        "id",
+        "is_active",
+        "name",
+        "phone",
+        "role",
+        "sort_order",
+        "status_changed_at"
+      ],
+      "availableColumns": [
+        "created_at",
+        "employment_status",
+        "id",
+        "is_active",
+        "name",
+        "phone",
+        "role",
+        "sort_order",
+        "status_changed_at"
+      ],
+      "sha256": "cbb0d10dcbf2d67d907a3691f6031d1a941d8eda32acd9878f51eb833e42213b",
+      "addedColumns": []
+    },
+    "staff_fill_links": {
+      "count": 13,
+      "columns": [
+        "created_at",
+        "draft_data",
+        "draft_saved_at",
+        "draft_task_id",
+        "editing_at",
+        "editing_task_id",
+        "id",
+        "last_action",
+        "last_action_at",
+        "staff_id",
+        "token",
+        "updated_at"
+      ],
+      "availableColumns": [
+        "created_at",
+        "draft_data",
+        "draft_saved_at",
+        "draft_task_id",
+        "editing_at",
+        "editing_task_id",
+        "id",
+        "last_action",
+        "last_action_at",
+        "staff_id",
+        "token",
+        "updated_at"
+      ],
+      "sha256": "e714bceb75d5210685c39d946f6c53c8d39237cd3bf7a1e81f351e916dd6454d",
+      "addedColumns": []
+    },
+    "staff_roles": {
+      "count": 5,
+      "columns": [
+        "color",
+        "created_at",
+        "is_active",
+        "is_system",
+        "key",
+        "name",
+        "short_name",
+        "sort_order",
+        "updated_at"
+      ],
+      "availableColumns": [
+        "color",
+        "created_at",
+        "is_active",
+        "is_system",
+        "key",
+        "name",
+        "short_name",
+        "sort_order",
+        "updated_at"
+      ],
+      "sha256": "8b87c907c7dab54c9fcc56376559ea3daa6a294bdb3caa37062de623f5125e80",
+      "addedColumns": []
+    },
+    "staff_status_history": {
+      "count": 16,
+      "columns": [
+        "created_at",
+        "ended_at",
+        "id",
+        "staff_id",
+        "started_at",
+        "status"
+      ],
+      "availableColumns": [
+        "created_at",
+        "ended_at",
+        "id",
+        "staff_id",
+        "started_at",
+        "status"
+      ],
+      "sha256": "0f755a009538278adc02bb27c90c8ec2e78f92772d4908445af08870d812137b",
+      "addedColumns": []
+    },
+    "work_records": {
+      "count": 880,
+      "columns": [
+        "created_at",
+        "edit_count",
+        "hours",
+        "id",
+        "is_active",
+        "link_id",
+        "product_managers",
+        "requirement_title",
+        "staff_id",
+        "submit_count",
+        "task_id",
+        "updated_at",
+        "version"
+      ],
+      "availableColumns": [
+        "created_at",
+        "delivery_progress",
+        "edit_count",
+        "hours",
+        "id",
+        "is_active",
+        "link_id",
+        "product_managers",
+        "requirement_title",
+        "staff_id",
+        "submit_count",
+        "task_id",
+        "updated_at",
+        "version"
+      ],
+      "sha256": "ca80c1792bad0bccf82a4703387118fda5daf8423d319d9c4c72c7ae591b956b",
+      "hours": 11273.5,
+      "nullProgress": 880,
+      "zeroProgress": 0,
+      "nonZeroProgress": 0,
+      "addedColumns": [
+        "delivery_progress"
+      ]
+    }
+  },
+  "newTables": [
+    "demand_sources",
+    "product_manager_work_records"
+  ],
+  "missingTables": []
+}

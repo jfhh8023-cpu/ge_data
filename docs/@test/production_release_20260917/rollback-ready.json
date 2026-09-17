@@ -1,0 +1,31 @@
+{
+  "script": "/opt/devtracker/.release-backups/20260917_094527/rollback.sh",
+  "check": "ROLLBACK_READY: code only; database preserved",
+  "targets": [
+    {
+      "path": "backend/src",
+      "existed": true
+    },
+    {
+      "path": "backend/package.json",
+      "existed": true
+    },
+    {
+      "path": "backend/package-lock.json",
+      "existed": true
+    },
+    {
+      "path": "backend/scripts/analyze_workload.js",
+      "existed": true
+    },
+    {
+      "path": "backend/scripts/workload_version_page.js",
+      "existed": false
+    },
+    {
+      "path": "frontend/dist",
+      "existed": true
+    }
+  ],
+  "databaseRestored": false
+}

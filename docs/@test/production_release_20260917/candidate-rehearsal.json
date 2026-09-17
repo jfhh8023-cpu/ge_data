@@ -1,0 +1,61 @@
+{
+  "candidateHealth": {
+    "code": 0,
+    "message": "DevTracker API is running",
+    "version": "3.4.0"
+  },
+  "endpoints": {
+    "/health": {
+      "code": 0
+    },
+    "/roles": {
+      "code": 0
+    },
+    "/demand-sources": {
+      "code": 0
+    },
+    "/stats?year=2026&quarter=Q3": {
+      "code": 0,
+      "deliverySummary": {
+        "deliveredHours": 2578,
+        "recordedHours": 4085,
+        "unversionedHours": 1507,
+        "versionedHours": 2578,
+        "fullCreditHours": 0,
+        "weightedDeliveredHours": 2578,
+        "knownWeightedDeliveredHours": 0,
+        "progressKnownHours": 0,
+        "missingProgressHours": 2578,
+        "standardHours": 4840,
+        "deliveryRate": 53.26,
+        "weightedDeliveryRate": 53.26,
+        "missingProgressCount": 142,
+        "requirementProgress": null,
+        "progressCoverage": 0,
+        "calendarStatus": "official",
+        "calendarNote": "工作日按官方节假日和调休补班计算。",
+        "workingDays": 605,
+        "formula": "有效已交付＝普通含版本号工时＋请假、培训、公司会议、出差、团建工时（只计一次）；有效交付率＝有效已交付÷应交付工时×100%。加权交付率＝[Σ(同一人员、版本、标题累计有效工时×所选范围最新周期填报进度)＋五类有效工时]÷当前范围应交付工时×100%。历史空进度仅在加权交付计算中按100%，原值仍为空；明确0%仍按0%，进度覆盖反映真实填报。部门、岗位合并加权工时及应交付工时计算，不平均个人百分比；个人仅算本人。无版本普通记录不计交付。应交付按当前非离职且范围有记录的人员、完整所选周期工作日×8小时计算；缺填周仍计应交付，该周加权工时为0。应交付大于0且日历有效时无加权工时显示0%；应交付为0或日历无效显示“—”；超过100%如实显示。",
+        "scopeNote": "当前非离职且所选范围有记录的人员计入；按完整所选周期工作日计算，未填周保留，同一人员同一工作日去重。"
+      },
+      "recordCount": 314
+    },
+    "/stats/progress-details?year=2026&quarter=Q3&scope=current": {
+      "code": 0
+    }
+  },
+  "changedExistingTables": [
+    "staff_roles"
+  ],
+  "newTables": [
+    "demand_sources",
+    "product_manager_work_records"
+  ],
+  "oldCodeOnNewSchemaHealth": {
+    "code": 0,
+    "message": "DevTracker API is running",
+    "version": "3.0.2"
+  },
+  "codeRollbackRehearsal": "PASS",
+  "notificationsDisabled": true
+}

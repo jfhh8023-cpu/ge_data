@@ -1,0 +1,43 @@
+{
+  "run": "2026-09-17T09-56-45-439Z",
+  "status": "PASS",
+  "version": "v3.4.0",
+  "mode": "GET/HEAD/OPTIONS only; all other methods blocked",
+  "results": [
+    {
+      "id": "PROD-UI-1920",
+      "status": "PASS",
+      "evidence": {
+        "width": 1920,
+        "cardCount": 6,
+        "matchingDialogs": 6,
+        "currentScope": true,
+        "overviewFirst": true,
+        "originalRecordTabs": 2,
+        "incompleteChecked": false,
+        "incompleteRowCount": null
+      }
+    },
+    {
+      "id": "PROD-UI-390",
+      "status": "PASS",
+      "evidence": {
+        "width": 390,
+        "cardCount": 6,
+        "matchingDialogs": 6,
+        "currentScope": true,
+        "overviewFirst": true,
+        "originalRecordTabs": 2,
+        "incompleteChecked": false,
+        "incompleteRowCount": null
+      }
+    }
+  ],
+  "pageErrors": [],
+  "failedApis": [],
+  "interceptedWrites": [],
+  "optionalFill": {
+    "status": "SKIP",
+    "reason": "No existing fill link read or created; avoid collecting link tokens."
+  }
+}

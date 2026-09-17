@@ -1,0 +1,49 @@
+{
+  "checkedAt": "2026-09-17T10:01:10Z",
+  "stableProcess": true,
+  "pid": 31937,
+  "uptimeSeconds": 289,
+  "logs": {
+    "error": {
+      "bytes": 50416,
+      "modifiedSinceProcessStart": false,
+      "lastModified": "2026-09-15T11:59:15Z",
+      "path": "/opt/devtracker/logs/error.log"
+    },
+    "output": {
+      "bytes": 179368,
+      "modifiedSinceProcessStart": true,
+      "lastModified": "2026-09-17T09:56:22Z",
+      "path": "/opt/devtracker/logs/out.log"
+    }
+  },
+  "public": {
+    "/api/health": {
+      "status": 200,
+      "bytes": 66
+    },
+    "/stats": {
+      "status": 200,
+      "bytes": 1596
+    },
+    "/api/stats/export.xlsx": {
+      "status": 200,
+      "bytes": 254068
+    }
+  },
+  "calendarSnapshotDifferenceVsIsolatedClone": [
+    {
+      "year": 2026,
+      "changedColumns": []
+    },
+    {
+      "year": 2027,
+      "changedColumns": [
+        "last_checked_at",
+        "next_retry_at",
+        "updated_at"
+      ]
+    }
+  ],
+  "rollbackReady": "ROLLBACK_READY: code only; database preserved"
+}

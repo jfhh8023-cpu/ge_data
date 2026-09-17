@@ -1,0 +1,43 @@
+{
+  "releasedAt": "2026-09-17T09:56:30Z",
+  "version": "3.4.0",
+  "commit": "c1b19af4adee04aae711d28c4167861002c06495",
+  "health": {
+    "code": 0,
+    "message": "DevTracker API is running",
+    "version": "3.4.0"
+  },
+  "artifactFilesMatched": 117,
+  "environmentUnchanged": true,
+  "nginxUnchanged": true,
+  "otherProcessesUnchanged": true,
+  "changedExistingTables": [
+    "duty_holiday_snapshots",
+    "staff_roles"
+  ],
+  "newTables": [
+    "demand_sources",
+    "product_manager_work_records"
+  ],
+  "existingRecordsPreserved": true,
+  "workRecords": {
+    "count": 880,
+    "hours": 11273.5,
+    "nullProgress": 880,
+    "zeroProgress": 0
+  },
+  "pm2": {
+    "name": "devtracker",
+    "pid": 31937,
+    "status": "online",
+    "restart_time": 2
+  },
+  "q3": {
+    "recordedHours": 4085,
+    "deliveredHours": 2578,
+    "standardHours": 4840,
+    "deliveryRate": 53.26,
+    "weightedDeliveryRate": 53.26
+  },
+  "rollbackScript": "/opt/devtracker/.release-backups/20260917_094527/rollback.sh"
+}
