@@ -34,13 +34,15 @@ export function groupRequirementProgress(records = [], capacity = {}) {
 }
 
 const display = value => Number(value || 0).toLocaleString('zh-CN', { maximumFractionDigits: 2 })
+export const requirementProgressText = metric => metric?.requirementProgress == null
+  ? (metric?.versionedHours > 0 ? '未填写' : '不适用') : `${display(metric.requirementProgress)}%`
 export function deliveryMetricTip(metric, key) {
   if (!metric) return '当前范围暂无数据。'
   const m = metric, f = display
   const people = '仅纳入当前非离职且所选范围有记录的人员；纳入后按完整所选周期计算，同人同日去重。'
   const five = FULL_CREDIT_TITLES.join('、')
   const calendar = m.calendarNote || ''
-  const actualProgress = m.requirementProgress == null ? '未填写' : `${f(m.requirementProgress)}%`
+  const actualProgress = requirementProgressText(m)
   const actualCoverage = m.progressCoverage == null ? '不适用（无普通版本工时）' : `${f(m.progressCoverage)}%`
   const texts = {
     recordedHours: `总工时＝全部已填原始工时，含有版本、普通无版本及${five}；当前${f(m.recordedHours)}h。`,

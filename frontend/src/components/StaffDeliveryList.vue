@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue'
-import { deliveryMetricTip, weightedRateText } from '../utils/deliverySummary'
+import { deliveryMetricTip, weightedRateText, requirementProgressText } from '../utils/deliverySummary'
 
 const props = defineProps({
   people: { type: Array, default: () => [] },
@@ -41,7 +41,7 @@ const rate = person => {
           <td :title="deliveryMetricTip(person, 'deliveredHours')">{{ number(person.deliveredHours) }}</td>
           <td :title="deliveryMetricTip(person, 'deliveryRate')"><span :class="{ 'is-complete': rate(person) !== null && rate(person) >= 100 }">{{ rate(person) === null ? '—' : `${number(rate(person))}%` }}</span></td>
           <td :title="deliveryMetricTip(person, 'weightedDeliveryRate')"><span :class="{ 'is-complete': person.weightedDeliveryRate != null && person.weightedDeliveryRate >= 100 }">{{ weightedRateText(person) }}</span></td>
-          <td :title="deliveryMetricTip(person, 'requirementProgress')"><span :class="{ 'is-complete': person.requirementProgress === 100 }">{{ person.requirementProgress == null ? '—' : `${number(person.requirementProgress)}%` }}</span></td>
+          <td :title="deliveryMetricTip(person, 'requirementProgress')"><span :class="{ 'is-complete': person.requirementProgress === 100 }">{{ requirementProgressText(person) }}</span></td>
         </tr></tbody>
       </table>
       <div v-else class="staff-delivery-empty">当前范围暂无应交付人员</div>

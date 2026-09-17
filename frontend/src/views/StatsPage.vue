@@ -38,7 +38,7 @@ import DepartmentPeopleDialog from '../components/DepartmentPeopleDialog.vue'
 import StatsGroupedRecordTable from '../components/StatsGroupedRecordTable.vue'
 import StatsRecordTable from '../components/StatsRecordTable.vue'
 import StatsProgressTable from '../components/StatsProgressTable.vue'
-import { DELIVERY_NOTE, hasDeliveryVersion, summarizeDelivery, summarizeStaffDelivery, deliveryMetricTip, weightedRateText } from '../utils/deliverySummary'
+import { DELIVERY_NOTE, hasDeliveryVersion, summarizeDelivery, summarizeStaffDelivery, deliveryMetricTip, weightedRateText, requirementProgressText } from '../utils/deliverySummary'
 import { isFullCreditRecord } from '../utils/effectiveHours'
 import { sortStatsRows, recordSource, recordStaffId, requirementIdentity, uniqueStatsRecords, recordTableRows } from '../utils/statsTable'
 
@@ -2246,7 +2246,7 @@ function exportStatsData() {
               <span :class="{ 'dt-staff-delivery-complete': row.deliveryRate != null && row.deliveryRate >= 100 }" :title="deliveryMetricTip(row, 'deliveryRate')">{{ row.deliveryRate == null ? '—' : `${row.deliveryRate}%` }}</span>
             </template></el-table-column>
             <el-table-column prop="weightedDeliveryRate" label="加权交付率" width="120" align="right" sortable="custom"><template #default="{ row }"><span :title="deliveryMetricTip(row, 'weightedDeliveryRate')" :class="{ 'dt-staff-delivery-complete': row.weightedDeliveryRate != null && row.weightedDeliveryRate >= 100 }">{{ weightedRateText(row) }}</span></template></el-table-column>
-            <el-table-column prop="requirementProgress" label="需求填报进度" width="125" align="right" sortable="custom"><template #default="{ row }"><span :title="deliveryMetricTip(row, 'requirementProgress')">{{ row.requirementProgress == null ? '—' : `${row.requirementProgress}%` }}</span></template></el-table-column>
+            <el-table-column prop="requirementProgress" label="需求填报进度" width="125" align="right" sortable="custom"><template #default="{ row }"><span :title="deliveryMetricTip(row, 'requirementProgress')">{{ requirementProgressText(row) }}</span></template></el-table-column>
             <el-table-column prop="total" label="已填总工时/h" min-width="130" align="right" sortable="custom" />
             <el-table-column prop="share" label="工时占比" width="110" align="right" sortable="custom"><template #default="{ row }">{{ row.share }}%</template></el-table-column>
             <el-table-column prop="recordCount" label="记录数" width="95" sortable="custom" />

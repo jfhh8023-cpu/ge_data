@@ -1,5 +1,5 @@
 <script setup>
-import { deliveryMetricTip, weightedRateText } from '../utils/deliverySummary'
+import { deliveryMetricTip, weightedRateText, requirementProgressText } from '../utils/deliverySummary'
 defineProps({
   metric: { type: Object, default: null }, unversioned: Boolean,
   showExpectedHours: Boolean, showWeighted: Boolean, showProgress: Boolean, allPeriods: Boolean,
@@ -27,9 +27,9 @@ const number = value => Number(value || 0).toLocaleString('zh-CN', { maximumFrac
       <strong data-testid="weighted-delivery-rate" :class="{ 'is-complete': metric?.weightedDeliveryRate != null && metric.weightedDeliveryRate >= 100 }">{{ weightedRateText(metric) }}</strong>
     </div>
     <span v-if="unversioned" class="delivery-record-only">仅记录，不计交付率</span>
-    <div v-if="showProgress && !unversioned && (metric?.missingProgressHours > 0 || metric?.requirementProgress != null)" class="delivery-progress-foot">
-      <span v-if="metric?.missingProgressHours > 0" data-testid="historical-progress-note" :title="deliveryMetricTip(metric, 'weightedDeliveryRate')">历史未填进度按100%计</span>
-      <span v-else :title="[deliveryMetricTip(metric, 'requirementProgress'), deliveryMetricTip(metric, 'progressCoverage')].join('\n')">需求填报进度 <b data-testid="requirement-progress" :class="{ 'is-complete': metric?.requirementProgress === 100 }">{{ `${number(metric.requirementProgress)}%` }}</b></span>
+    <div v-if="showProgress && !unversioned && metric?.versionedHours > 0" class="delivery-progress-foot">
+      <span :title="deliveryMetricTip(metric, 'requirementProgress')">需求填报进度 <b data-testid="requirement-progress" :class="{ 'is-complete': metric.requirementProgress === 100 }">{{ requirementProgressText(metric) }}</b></span>
+      <span :title="deliveryMetricTip(metric, 'progressCoverage')">覆盖 <b data-testid="progress-coverage">{{ metric.progressCoverage == null ? '不适用' : `${number(metric.progressCoverage)}%` }}</b></span>
     </div>
   </div>
 </template>

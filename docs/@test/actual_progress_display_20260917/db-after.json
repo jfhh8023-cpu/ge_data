@@ -1,0 +1,55 @@
+{
+  "capturedAt": "2026-09-17T05:56:04.679Z",
+  "phase": "after",
+  "localOnly": true,
+  "mode": "SELECT only; secret/token columns excluded",
+  "tables": {
+    "collection_tasks": {
+      "count": 34,
+      "sha256": "d1613f4def0fb38735651d454f597974379fab6ed7dba3fe419193f2052580db",
+      "columnCount": 11
+    },
+    "staff": {
+      "count": 15,
+      "sha256": "cb29b1943fe6cca6a4ddce95aff42ba7031f1a7707b9e1bd202b5caf61a1158a",
+      "columnCount": 9
+    },
+    "product_managers": {
+      "count": 14,
+      "sha256": "53446fdb56c8f0966148343da3babe01df8813334baa9995f6961df3adb23b46",
+      "columnCount": 8
+    },
+    "work_records": {
+      "count": 880,
+      "sha256": "dcd3655ae03557b4fcc9068683320d48ae9bb4ebcd09c486d07251f69d25919a",
+      "columnCount": 14,
+      "hours": 11273.5,
+      "nullProgress": 880,
+      "zeroProgress": 0
+    },
+    "product_manager_work_records": {
+      "count": 2,
+      "sha256": "7319fe160b93f37d81af819703e1126fc052fe84a2c65444995f73705955b8a5",
+      "columnCount": 16,
+      "hours": 39,
+      "nullProgress": 0,
+      "zeroProgress": 0
+    },
+    "match_groups": {
+      "count": 577,
+      "sha256": "07fce1dd906f41d3f4c8f259ecdd8a79b313d9f8a13bab2c4e78c82cba90d4c8",
+      "columnCount": 14
+    },
+    "staff_status_history": {
+      "count": 18,
+      "sha256": "94b8b3f89b0cc5c3681f28c47b7def1788bce876c8625a067266ccbee8e2c539",
+      "columnCount": 6
+    },
+    "product_manager_status_history": {
+      "count": 16,
+      "sha256": "2a3cf9836581e0dd06d7583a5e468cc235846ba3fae7c5018e3219068311cf3a",
+      "columnCount": 6
+    }
+  },
+  "comparison": "PASS: all selected business counts, raw-row hashes, hours and null/zero progress unchanged"
+}
