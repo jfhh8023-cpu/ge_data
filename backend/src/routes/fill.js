@@ -17,6 +17,7 @@ const { matchRecords } = require('../services/MatchService');
 const { getDemandSourceDefinitions, resolveDemandSources } = require('../services/DemandSourceService');
 const { buildWorkHours, getWorkHours, loadWorkHoursContext } = require('../services/WorkHoursCompletionService');
 const { isFullCreditRecord, normalizeFullCreditRecord, normalizeProgress, validateManualHours, VALID_PROGRESS: VALID_DELIVERY_PROGRESS } = require('../services/EffectiveHoursService');
+const { buildCarryOverRows } = require('../services/DeliverySummaryService');
 const { Op } = require('sequelize');
 const {
   STAFF_RESIGNED_MESSAGE,
@@ -172,6 +173,18 @@ async function replaceSavedRecords(Model, where, rows, baseFields, product = fal
 }
 
 /* ======================================================
+ * REQ-070：当前任务无记录且无草稿时，按 staff_id 只读汇总更早任务中最新进度 <100 的需求
+ * ====================================================== */
+async function loadCarryOverRows(Model, staffId, currentTask, { records, draftRecords }) {
+  if (!currentTask || records.length > 0 || (Array.isArray(draftRecords) && draftRecords.length > 0)) return [];
+  const history = await Model.findAll({ where: { staff_id: staffId, task_id: { [Op.ne]: currentTask.id } } });
+  if (history.length === 0) return [];
+  const taskIds = [...new Set(history.map(record => record.task_id).filter(Boolean))];
+  const tasks = await CollectionTask.findAll({ where: { id: { [Op.in]: taskIds } } });
+  return buildCarryOverRows(history, tasks, currentTask);
+}
+
+/* ======================================================
  * 工具函数：解析 token，返回 { type:'system'|'legacy', sfl?, link? }
  * ====================================================== */
 async function resolveToken(token) {
@@ -256,6 +269,8 @@ router.get('/:token', async (req, res, next) => {
       }
 
       const workHours = await getWorkHours({ tasks: currentTask ? [currentTask] : [], records, staff: [sfl.staff], includeEmptyStaff: true });
+      const carry_over_records = await loadCarryOverRows(isProductManagerStaff(sfl.staff) ? ProductManagerWorkRecord : WorkRecord,
+        sfl.staff_id, currentTask, { records, draftRecords: draft_records });
       return res.json({
         code: 0,
         data: {
@@ -266,7 +281,8 @@ router.get('/:token', async (req, res, next) => {
           records,
           draft_records,
           draft_saved_at,
-          is_submitted
+          is_submitted,
+          carry_over_records
           , demandSources
         }
       });
@@ -295,6 +311,7 @@ router.get('/:token', async (req, res, next) => {
     const Model = isProductManagerStaff(link.staff) ? ProductManagerWorkRecord : WorkRecord;
     const records = await Model.findAll({ where: { link_id: link.id } });
     const workHours = await getWorkHours({ tasks: [link.task], records, staff: [link.staff], includeEmptyStaff: true });
+    const carry_over_records = await loadCarryOverRows(Model, link.staff_id, link.task, { records, draftRecords: link.draft_data });
     return res.json({
       code: 0,
       data: {
@@ -306,7 +323,8 @@ router.get('/:token', async (req, res, next) => {
         records,
         draft_records: link.draft_data || null,
         draft_saved_at: link.draft_saved_at || null,
-        is_submitted: link.is_submitted || false
+        is_submitted: link.is_submitted || false,
+        carry_over_records
         , demandSources
       }
     });

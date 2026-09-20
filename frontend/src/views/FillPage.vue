@@ -133,6 +133,9 @@ onMounted(async () => {
         ElMessage.success('已恢复上次暂存的草稿')
       } else if (fillRes.data.records?.length > 0) {
         rows.value = normalizeRows(fillRes.data.records)
+      } else if (fillRes.data.carry_over_records?.length > 0) {
+        rows.value = normalizeRows(fillRes.data.carry_over_records, { newRows: true })
+        ElMessage.info(`已带出 ${rows.value.length} 条上周未完成需求，请填写本周工时并更新进度`)
       } else {
         rows.value = [createEmptyRow()]
       }
@@ -160,9 +163,13 @@ function normalizeRows(list, { newRows = false } = {}) {
       try { pm = JSON.parse(pm) } catch { pm = [] }
       if (!Array.isArray(pm)) pm = []
     }
+    const carryOver = r._carry_over && typeof r._carry_over === 'object'
+      ? { ...r._carry_over, original_title: r._carry_over.original_title ?? String(r.requirement_title || '').trim(), original_version: r._carry_over.original_version ?? String(r.version || '').trim() }
+      : undefined
     return initializeSpecialRow({
       existing_record_id: existingId,
       _original_progress_missing: originalProgressMissing,
+      ...(carryOver ? { _carry_over: carryOver } : {}),
       draft_row_id: r.draft_row_id || crypto.randomUUID(),
       created_at: r.created_at,
       automatic_version_date: r.automatic_version_date,
@@ -178,6 +185,18 @@ function normalizeRows(list, { newRows = false } = {}) {
       hours: (r.hours === null || r.hours === undefined || r.hours === '') ? null : parseFloat(r.hours)
     }, new Date(), { newRow: newRows })
   })
+}
+
+/** REQ-070: 带出行标签 */
+function carryOverSourceLabel(row) {
+  const info = row?._carry_over
+  if (!info) return ''
+  return info.source_week_number ? `第${info.source_week_number}周未完成` : `${info.source_task_title || '上周'}未完成`
+}
+function isCarryOverModified(row) {
+  const info = row?._carry_over
+  if (!info) return false
+  return String(row.requirement_title || '').trim() !== info.original_title || String(row.version || '').trim() !== info.original_version
 }
 
 /** 新增行 */
@@ -378,8 +397,12 @@ async function loadHistoryForEdit(task) {
 function returnToPreferred() {
   editingHistoryTask.value = null
   const preferred = fillData.value?.task
-  if (preferred && fillData.value?.records?.length > 0) {
+  if (preferred && Array.isArray(fillData.value?.draft_records) && fillData.value.draft_records.length > 0) {
+    rows.value = normalizeRows(fillData.value.draft_records)
+  } else if (preferred && fillData.value?.records?.length > 0) {
     rows.value = normalizeRows(fillData.value.records)
+  } else if (preferred && fillData.value.carry_over_records?.length > 0) {
+    rows.value = normalizeRows(fillData.value.carry_over_records, { newRows: true })
   } else {
     rows.value = [createEmptyRow()]
   }
@@ -827,6 +850,9 @@ function exportHistory() {
                   <template #default="{ row }">
                     <el-input :model-value="row.requirement_title" @update:model-value="value => handleRequirementTitle(row, value)" placeholder="输入需求名称" size="small"
                       :disabled="!isEditable" @focus="handleInputFocus" />
+                    <div v-if="row._carry_over" class="fill-carry-over-tag" :title="row._carry_over.source_task_title">
+                      {{ carryOverSourceLabel(row) }} · 上次进度 {{ row._carry_over.previous_progress }}%<span v-if="isCarryOverModified(row)">（已修改，将作为新需求统计）</span>
+                    </div>
                   </template>
                 </el-table-column>
                 <el-table-column label="版本号" width="120">
@@ -1065,6 +1091,7 @@ function exportHistory() {
 .fill-fixed-version :deep(.el-input__wrapper) { background: var(--color-bg-2); }
 .fill-fixed-version :deep(input) { color: var(--color-text-3); cursor: default; }
 .fill-not-applicable { color: var(--color-text-3); font-size: 12px; }
+.fill-carry-over-tag { margin-top: 4px; font-size: 11px; line-height: 1.4; color: var(--color-warning, #FF7D00); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fill-history-hours { padding: 8px 12px; border-top: 1px solid var(--color-border-light); }
 .fill-metric-note { margin: 6px 0; font-size: 12px; line-height: 1.6; color: var(--color-text-3); }
 

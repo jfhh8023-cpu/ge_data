@@ -157,8 +157,9 @@ async function run() {
     buildCurrentStatusPayload: () => ({}), getPmStatusContextByName: async () => new Map(), isNonResigned: p => p.employment_status !== 'resigned',
     collectPmNamesFromRecords: () => [], filterPmNamesForRecord: async () => [], filterRecordsByStaffStatus: async rows => rows };
   const dependencies = {
-    '../models': models, uuid: { v4: () => `new-${++nextId}` }, sequelize: { Op: { in: 'in' } },
+    '../models': models, uuid: { v4: () => `new-${++nextId}` }, sequelize: { Op: { in: 'in', ne: 'ne' } },
     '../services/EffectiveHoursService': effective, '../services/MatchService': { matchRecords: () => [] },
+    '../services/DeliverySummaryService': { buildCarryOverRows: () => [] },
     '../services/PersonStatusService': personService,
     '../services/DemandSourceService': { getDemandSourceDefinitions: async () => [], resolveDemandSources: async sources => ({ names: Array.isArray(sources) ? sources : [], ids: [] }) },
     '../services/WorkHoursCompletionService': { buildWorkHours, getWorkHours: async options => buildWorkHours({ ...options, snapshots: calendar }), loadWorkHoursContext: async options => options },

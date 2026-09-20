@@ -16,7 +16,11 @@ const StaffFillLink = sequelize.define('staff_fill_links', {
   last_action:      { type: DataTypes.STRING(20), allowNull: true },
   last_action_at:   { type: DataTypes.DATE, allowNull: true },
   // 草稿（仅保存当前首选任务的草稿数据）
-  draft_data:       { type: DataTypes.JSON, allowNull: true },
+  draft_data:       {
+    type: DataTypes.JSON, allowNull: true,
+    // MariaDB returns JSON columns as text; readers expect an array.
+    get() { const value = this.getDataValue('draft_data'); if (typeof value !== 'string') return value; try { return JSON.parse(value); } catch { return null; } }
+  },
   draft_task_id:    { type: DataTypes.CHAR(36), allowNull: true },
   draft_saved_at:   { type: DataTypes.DATE, allowNull: true },
   created_at:       { type: DataTypes.DATE, defaultValue: DataTypes.NOW },

@@ -101,4 +101,54 @@ function buildDeliverySummary(records = [], workHours = {}) {
   };
 }
 
-module.exports = { DELIVERY_FORMULA, hasValidVersion, versionTypeOf, buildDeliverySummary };
+const CARRY_OVER_MAX_PROGRESS = 100;
+const toPlain = value => (value?.toJSON ? value.toJSON() : value);
+const parseJsonColumn = value => { if (typeof value !== 'string') return value; try { return JSON.parse(value); } catch { return null; } };
+const plainArray = value => { const parsed = parseJsonColumn(value); return Array.isArray(parsed) ? parsed : []; };
+const plainObject = value => { const parsed = parseJsonColumn(value); return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}; };
+
+/** REQ-070, read-only: latest known 0..99 progress per (staff, version, title) among tasks earlier than currentTask. */
+function buildCarryOverRows(records = [], tasks = [], currentTask = null) {
+  const current = toPlain(currentTask);
+  if (!current || !current.start_date) return [];
+  const currentStart = String(current.start_date);
+  const earlierTasks = new Map();
+  for (const value of tasks) {
+    const task = toPlain(value);
+    if (task && String(task.id) !== String(current.id) && String(task.start_date || '') < currentStart) earlierTasks.set(String(task.id), task);
+  }
+  if (earlierTasks.size === 0) return [];
+  const periodByTask = new Map([...earlierTasks].map(([id, task]) => [id, { endDate: task.end_date }]));
+  const latest = new Map();
+  for (const value of records) {
+    const record = toPlain(value);
+    if (!record || !earlierTasks.has(String(record.task_id))) continue;
+    if (isFullCreditRecord(record) || !hasValidVersion(record.version)) continue;
+    const key = groupKey(record);
+    const existing = latest.get(key);
+    if (!existing || isLater(record, existing, periodByTask)) latest.set(key, record);
+  }
+  const rows = [];
+  for (const record of latest.values()) {
+    const previous = normalizeProgress(record.delivery_progress);
+    if (previous === null || previous >= CARRY_OVER_MAX_PROGRESS) continue;
+    const task = earlierTasks.get(String(record.task_id));
+    rows.push({
+      requirement_title: String(record.requirement_title || '').trim(),
+      version: String(record.version || '').trim(),
+      product_managers: plainArray(record.product_managers),
+      demand_sources: plainArray(record.demand_sources),
+      demand_source_ids: plainArray(record.demand_source_ids),
+      demand_source_weights: plainObject(record.demand_source_weights),
+      delivery_progress: previous === 0 ? null : previous,
+      _carry_over: {
+        source_task_id: task.id, source_task_title: task.title || '', source_task_end_date: task.end_date || '',
+        source_week_number: task.week_number ?? null, previous_progress: previous
+      }
+    });
+  }
+  return rows.sort((a, b) => String(b._carry_over.source_task_end_date).localeCompare(String(a._carry_over.source_task_end_date))
+    || a.requirement_title.localeCompare(b.requirement_title, 'zh-CN'));
+}
+
+module.exports = { DELIVERY_FORMULA, hasValidVersion, versionTypeOf, buildDeliverySummary, buildCarryOverRows };

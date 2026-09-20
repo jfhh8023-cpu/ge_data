@@ -12,7 +12,11 @@ const FillLink = sequelize.define('fill_links', {
   last_action:    { type: DataTypes.STRING(20), allowNull: true },
   last_action_at: { type: DataTypes.DATE, allowNull: true },
   /* v1.3.0: 草稿持久化 */
-  draft_data:     { type: DataTypes.JSON, allowNull: true },
+  draft_data:     {
+    type: DataTypes.JSON, allowNull: true,
+    // MariaDB returns JSON columns as text; readers expect an array.
+    get() { const value = this.getDataValue('draft_data'); if (typeof value !== 'string') return value; try { return JSON.parse(value); } catch { return null; } }
+  },
   draft_saved_at: { type: DataTypes.DATE, allowNull: true },
   created_at:     { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
 });
