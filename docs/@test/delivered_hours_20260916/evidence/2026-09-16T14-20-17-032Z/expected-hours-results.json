@@ -1,0 +1,124 @@
+{
+  "run": "2026-09-16T14-20-17-032Z",
+  "results": [
+    {
+      "case": "department-current",
+      "status": "PASS",
+      "labels": [
+        "当前周期应交付工时",
+        "当前已交付工时",
+        "交付率"
+      ],
+      "standardHours": 4352,
+      "deliveredHours": 1673,
+      "deliveryRate": 38.44,
+      "geometry": {
+        "summary": {
+          "x": 80,
+          "y": 102,
+          "width": 1440,
+          "height": 69.578125
+        },
+        "firstRow": {
+          "x": 80,
+          "y": 352.859375,
+          "width": 1440,
+          "height": 55
+        }
+      }
+    },
+    {
+      "case": "all-periods",
+      "status": "PASS",
+      "labels": [
+        "全部周期应交付工时",
+        "全部周期已交付工时",
+        "交付率"
+      ],
+      "standardHours": 18432,
+      "deliveredHours": 7960.5,
+      "deliveryRate": 43.19
+    },
+    {
+      "case": "unversioned-only-recorded",
+      "status": "PASS",
+      "recordedHours": 1732
+    },
+    {
+      "case": "product-current",
+      "status": "PASS",
+      "labels": [
+        "当前周期应交付工时",
+        "当前已交付工时",
+        "交付率"
+      ],
+      "standardHours": 1400,
+      "deliveredHours": 132,
+      "deliveryRate": 9.43
+    },
+    {
+      "case": "role-current",
+      "status": "PASS",
+      "labels": [
+        "当前周期应交付工时",
+        "当前已交付工时",
+        "交付率"
+      ],
+      "standardHours": 1552,
+      "deliveredHours": 708,
+      "deliveryRate": 45.62
+    },
+    {
+      "case": "engineering-current",
+      "status": "PASS",
+      "labels": [
+        "当前周期应交付工时",
+        "当前已交付工时",
+        "交付率"
+      ],
+      "standardHours": 2952,
+      "deliveredHours": 1541,
+      "deliveryRate": 52.2
+    },
+    {
+      "case": "mobile",
+      "status": "PASS",
+      "mobile": {
+        "viewport": 390,
+        "scrollWidth": 390,
+        "dialog": {
+          "x": 15.59375,
+          "width": 358.796875
+        },
+        "metric": {
+          "x": 42.59375,
+          "width": 285.359375,
+          "right": 327.953125
+        },
+        "items": [
+          {
+            "x": 42.59375,
+            "y": 108.1875,
+            "width": 99,
+            "right": 141.59375
+          },
+          {
+            "x": 157.59375,
+            "y": 108.1875,
+            "width": 77,
+            "right": 234.59375
+          },
+          {
+            "x": 250.59375,
+            "y": 108.1875,
+            "width": 77.359375,
+            "right": 327.953125
+          }
+        ]
+      }
+    }
+  ],
+  "errors": [],
+  "failures": [],
+  "writes": []
+}

@@ -1,0 +1,1214 @@
+{
+  "task": {
+    "id": "ORDER-task",
+    "title": "ORDER排序测试周",
+    "year": 2026,
+    "week_number": 38,
+    "start_date": "2026-09-14",
+    "end_date": "2026-09-20",
+    "time_dimension": "week",
+    "status": "active",
+    "is_preferred": true
+  },
+  "staff": [
+    {
+      "id": "ORDER-dev",
+      "name": "ORDER研发",
+      "role": "ai_dev",
+      "is_active": true,
+      "employment_status": "active"
+    },
+    {
+      "id": "ORDER-voip",
+      "name": "ORDER已完成人员",
+      "role": "voip",
+      "is_active": true,
+      "employment_status": "active"
+    },
+    {
+      "id": "ORDER-product",
+      "name": "ORDER产品",
+      "role": "ai_pm",
+      "is_active": true,
+      "employment_status": "active"
+    }
+  ],
+  "pm": {
+    "id": "ORDER-pm",
+    "name": "ORDER归属产品",
+    "is_active": true,
+    "employment_status": "active"
+  },
+  "records": [
+    {
+      "id": "ORDER-old",
+      "requirement_title": "ORDER-OLD",
+      "hours": 90,
+      "delivery_progress": 100,
+      "created_at": "2026-09-14T08:00:00Z",
+      "updated_at": "2026-09-14T08:00:00Z",
+      "task_id": "ORDER-task",
+      "staff_id": "ORDER-dev",
+      "staff": {
+        "id": "ORDER-dev",
+        "name": "ORDER研发",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staffName": "ORDER研发",
+      "role": "ai_dev",
+      "version": "ORDER-v1",
+      "product_managers": [
+        "ORDER归属产品"
+      ],
+      "is_product_manager_record": false,
+      "source_type": "engineering",
+      "demand_sources": []
+    },
+    {
+      "id": "ORDER-new",
+      "requirement_title": "ORDER-NEW",
+      "hours": 1,
+      "delivery_progress": 0,
+      "created_at": "2026-09-16T08:00:00Z",
+      "updated_at": "2026-09-16T08:00:00Z",
+      "task_id": "ORDER-task",
+      "staff_id": "ORDER-dev",
+      "staff": {
+        "id": "ORDER-dev",
+        "name": "ORDER研发",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staffName": "ORDER研发",
+      "role": "ai_dev",
+      "version": "ORDER-v1",
+      "product_managers": [
+        "ORDER归属产品"
+      ],
+      "is_product_manager_record": false,
+      "source_type": "engineering",
+      "demand_sources": []
+    },
+    {
+      "id": "ORDER-mid",
+      "requirement_title": "ORDER-MID",
+      "hours": 10,
+      "delivery_progress": 50,
+      "created_at": "2026-09-15T08:00:00Z",
+      "updated_at": "2026-09-15T08:00:00Z",
+      "task_id": "ORDER-task",
+      "staff_id": "ORDER-dev",
+      "staff": {
+        "id": "ORDER-dev",
+        "name": "ORDER研发",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staffName": "ORDER研发",
+      "role": "ai_dev",
+      "version": "ORDER-v1",
+      "product_managers": [
+        "ORDER归属产品"
+      ],
+      "is_product_manager_record": false,
+      "source_type": "engineering",
+      "demand_sources": []
+    },
+    {
+      "id": "ORDER-group-old",
+      "requirement_title": "ORDER-GROUP",
+      "hours": 2,
+      "delivery_progress": 100,
+      "created_at": "2026-09-14T09:00:00Z",
+      "updated_at": "2026-09-14T09:00:00Z",
+      "task_id": "ORDER-task",
+      "staff_id": "ORDER-dev",
+      "staff": {
+        "id": "ORDER-dev",
+        "name": "ORDER研发",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staffName": "ORDER研发",
+      "role": "ai_dev",
+      "version": "ORDER-v1",
+      "product_managers": [
+        "ORDER归属产品"
+      ],
+      "is_product_manager_record": false,
+      "source_type": "engineering",
+      "demand_sources": []
+    },
+    {
+      "id": "ORDER-group-new",
+      "requirement_title": "ORDER-GROUP",
+      "hours": 1,
+      "delivery_progress": 0,
+      "created_at": "2026-09-16T09:00:00Z",
+      "updated_at": "2026-09-16T09:00:00Z",
+      "task_id": "ORDER-task",
+      "staff_id": "ORDER-dev",
+      "staff": {
+        "id": "ORDER-dev",
+        "name": "ORDER研发",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staffName": "ORDER研发",
+      "role": "ai_dev",
+      "version": "ORDER-v1",
+      "product_managers": [
+        "ORDER归属产品"
+      ],
+      "is_product_manager_record": false,
+      "source_type": "engineering",
+      "demand_sources": []
+    },
+    {
+      "id": "ORDER-done",
+      "requirement_title": "ORDER-DONE",
+      "hours": 5,
+      "delivery_progress": 100,
+      "created_at": "2026-09-13T08:00:00Z",
+      "updated_at": "2026-09-13T08:00:00Z",
+      "task_id": "ORDER-task",
+      "staff_id": "ORDER-voip",
+      "staff": {
+        "id": "ORDER-voip",
+        "name": "ORDER已完成人员",
+        "role": "voip",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staffName": "ORDER已完成人员",
+      "role": "voip",
+      "version": "ORDER-v1",
+      "product_managers": [
+        "ORDER归属产品"
+      ],
+      "is_product_manager_record": false,
+      "source_type": "engineering",
+      "demand_sources": []
+    },
+    {
+      "id": "ORDER-p-old",
+      "requirement_title": "ORDER-P-OLD",
+      "hours": 10,
+      "delivery_progress": 100,
+      "created_at": "2026-09-14T10:00:00Z",
+      "updated_at": "2026-09-14T10:00:00Z",
+      "task_id": "ORDER-task",
+      "staff_id": "ORDER-product",
+      "staff": {
+        "id": "ORDER-product",
+        "name": "ORDER产品",
+        "role": "ai_pm",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staffName": "ORDER产品",
+      "role": "ai_pm",
+      "version": "ORDER-v1",
+      "product_managers": [
+        "ORDER归属产品"
+      ],
+      "is_product_manager_record": true,
+      "source_type": "product_manager",
+      "demand_sources": [
+        "ORDER需求方"
+      ]
+    },
+    {
+      "id": "ORDER-p-new",
+      "requirement_title": "ORDER-P-NEW",
+      "hours": 1,
+      "delivery_progress": 0,
+      "created_at": "2026-09-16T10:00:00Z",
+      "updated_at": "2026-09-16T10:00:00Z",
+      "task_id": "ORDER-task",
+      "staff_id": "ORDER-product",
+      "staff": {
+        "id": "ORDER-product",
+        "name": "ORDER产品",
+        "role": "ai_pm",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staffName": "ORDER产品",
+      "role": "ai_pm",
+      "version": "ORDER-v1",
+      "product_managers": [
+        "ORDER归属产品"
+      ],
+      "is_product_manager_record": true,
+      "source_type": "product_manager",
+      "demand_sources": [
+        "ORDER需求方"
+      ]
+    },
+    {
+      "id": "ORDER-p-mid",
+      "requirement_title": "ORDER-P-MID",
+      "hours": 2,
+      "delivery_progress": 50,
+      "created_at": "2026-09-15T10:00:00Z",
+      "updated_at": "2026-09-15T10:00:00Z",
+      "task_id": "ORDER-task",
+      "staff_id": "ORDER-product",
+      "staff": {
+        "id": "ORDER-product",
+        "name": "ORDER产品",
+        "role": "ai_pm",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staffName": "ORDER产品",
+      "role": "ai_pm",
+      "version": "ORDER-v1",
+      "product_managers": [
+        "ORDER归属产品"
+      ],
+      "is_product_manager_record": true,
+      "source_type": "product_manager",
+      "demand_sources": [
+        "ORDER需求方"
+      ]
+    }
+  ],
+  "engineering": [
+    {
+      "id": "ORDER-old",
+      "requirement_title": "ORDER-OLD",
+      "hours": 90,
+      "delivery_progress": 100,
+      "created_at": "2026-09-14T08:00:00Z",
+      "updated_at": "2026-09-14T08:00:00Z",
+      "task_id": "ORDER-task",
+      "staff_id": "ORDER-dev",
+      "staff": {
+        "id": "ORDER-dev",
+        "name": "ORDER研发",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staffName": "ORDER研发",
+      "role": "ai_dev",
+      "version": "ORDER-v1",
+      "product_managers": [
+        "ORDER归属产品"
+      ],
+      "is_product_manager_record": false,
+      "source_type": "engineering",
+      "demand_sources": []
+    },
+    {
+      "id": "ORDER-new",
+      "requirement_title": "ORDER-NEW",
+      "hours": 1,
+      "delivery_progress": 0,
+      "created_at": "2026-09-16T08:00:00Z",
+      "updated_at": "2026-09-16T08:00:00Z",
+      "task_id": "ORDER-task",
+      "staff_id": "ORDER-dev",
+      "staff": {
+        "id": "ORDER-dev",
+        "name": "ORDER研发",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staffName": "ORDER研发",
+      "role": "ai_dev",
+      "version": "ORDER-v1",
+      "product_managers": [
+        "ORDER归属产品"
+      ],
+      "is_product_manager_record": false,
+      "source_type": "engineering",
+      "demand_sources": []
+    },
+    {
+      "id": "ORDER-mid",
+      "requirement_title": "ORDER-MID",
+      "hours": 10,
+      "delivery_progress": 50,
+      "created_at": "2026-09-15T08:00:00Z",
+      "updated_at": "2026-09-15T08:00:00Z",
+      "task_id": "ORDER-task",
+      "staff_id": "ORDER-dev",
+      "staff": {
+        "id": "ORDER-dev",
+        "name": "ORDER研发",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staffName": "ORDER研发",
+      "role": "ai_dev",
+      "version": "ORDER-v1",
+      "product_managers": [
+        "ORDER归属产品"
+      ],
+      "is_product_manager_record": false,
+      "source_type": "engineering",
+      "demand_sources": []
+    },
+    {
+      "id": "ORDER-group-old",
+      "requirement_title": "ORDER-GROUP",
+      "hours": 2,
+      "delivery_progress": 100,
+      "created_at": "2026-09-14T09:00:00Z",
+      "updated_at": "2026-09-14T09:00:00Z",
+      "task_id": "ORDER-task",
+      "staff_id": "ORDER-dev",
+      "staff": {
+        "id": "ORDER-dev",
+        "name": "ORDER研发",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staffName": "ORDER研发",
+      "role": "ai_dev",
+      "version": "ORDER-v1",
+      "product_managers": [
+        "ORDER归属产品"
+      ],
+      "is_product_manager_record": false,
+      "source_type": "engineering",
+      "demand_sources": []
+    },
+    {
+      "id": "ORDER-group-new",
+      "requirement_title": "ORDER-GROUP",
+      "hours": 1,
+      "delivery_progress": 0,
+      "created_at": "2026-09-16T09:00:00Z",
+      "updated_at": "2026-09-16T09:00:00Z",
+      "task_id": "ORDER-task",
+      "staff_id": "ORDER-dev",
+      "staff": {
+        "id": "ORDER-dev",
+        "name": "ORDER研发",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staffName": "ORDER研发",
+      "role": "ai_dev",
+      "version": "ORDER-v1",
+      "product_managers": [
+        "ORDER归属产品"
+      ],
+      "is_product_manager_record": false,
+      "source_type": "engineering",
+      "demand_sources": []
+    },
+    {
+      "id": "ORDER-done",
+      "requirement_title": "ORDER-DONE",
+      "hours": 5,
+      "delivery_progress": 100,
+      "created_at": "2026-09-13T08:00:00Z",
+      "updated_at": "2026-09-13T08:00:00Z",
+      "task_id": "ORDER-task",
+      "staff_id": "ORDER-voip",
+      "staff": {
+        "id": "ORDER-voip",
+        "name": "ORDER已完成人员",
+        "role": "voip",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staffName": "ORDER已完成人员",
+      "role": "voip",
+      "version": "ORDER-v1",
+      "product_managers": [
+        "ORDER归属产品"
+      ],
+      "is_product_manager_record": false,
+      "source_type": "engineering",
+      "demand_sources": []
+    }
+  ],
+  "product": [
+    {
+      "id": "ORDER-p-old",
+      "requirement_title": "ORDER-P-OLD",
+      "hours": 10,
+      "delivery_progress": 100,
+      "created_at": "2026-09-14T10:00:00Z",
+      "updated_at": "2026-09-14T10:00:00Z",
+      "task_id": "ORDER-task",
+      "staff_id": "ORDER-product",
+      "staff": {
+        "id": "ORDER-product",
+        "name": "ORDER产品",
+        "role": "ai_pm",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staffName": "ORDER产品",
+      "role": "ai_pm",
+      "version": "ORDER-v1",
+      "product_managers": [
+        "ORDER归属产品"
+      ],
+      "is_product_manager_record": true,
+      "source_type": "product_manager",
+      "demand_sources": [
+        "ORDER需求方"
+      ]
+    },
+    {
+      "id": "ORDER-p-new",
+      "requirement_title": "ORDER-P-NEW",
+      "hours": 1,
+      "delivery_progress": 0,
+      "created_at": "2026-09-16T10:00:00Z",
+      "updated_at": "2026-09-16T10:00:00Z",
+      "task_id": "ORDER-task",
+      "staff_id": "ORDER-product",
+      "staff": {
+        "id": "ORDER-product",
+        "name": "ORDER产品",
+        "role": "ai_pm",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staffName": "ORDER产品",
+      "role": "ai_pm",
+      "version": "ORDER-v1",
+      "product_managers": [
+        "ORDER归属产品"
+      ],
+      "is_product_manager_record": true,
+      "source_type": "product_manager",
+      "demand_sources": [
+        "ORDER需求方"
+      ]
+    },
+    {
+      "id": "ORDER-p-mid",
+      "requirement_title": "ORDER-P-MID",
+      "hours": 2,
+      "delivery_progress": 50,
+      "created_at": "2026-09-15T10:00:00Z",
+      "updated_at": "2026-09-15T10:00:00Z",
+      "task_id": "ORDER-task",
+      "staff_id": "ORDER-product",
+      "staff": {
+        "id": "ORDER-product",
+        "name": "ORDER产品",
+        "role": "ai_pm",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staffName": "ORDER产品",
+      "role": "ai_pm",
+      "version": "ORDER-v1",
+      "product_managers": [
+        "ORDER归属产品"
+      ],
+      "is_product_manager_record": true,
+      "source_type": "product_manager",
+      "demand_sources": [
+        "ORDER需求方"
+      ]
+    }
+  ],
+  "stats": {
+    "tasks": [
+      {
+        "id": "ORDER-task",
+        "title": "ORDER排序测试周",
+        "year": 2026,
+        "week_number": 38,
+        "start_date": "2026-09-14",
+        "end_date": "2026-09-20",
+        "time_dimension": "week",
+        "status": "active",
+        "is_preferred": true,
+        "record_count": 9
+      }
+    ],
+    "records": [
+      {
+        "id": "ORDER-old",
+        "requirement_title": "ORDER-OLD",
+        "hours": 90,
+        "delivery_progress": 100,
+        "created_at": "2026-09-14T08:00:00Z",
+        "updated_at": "2026-09-14T08:00:00Z",
+        "task_id": "ORDER-task",
+        "staff_id": "ORDER-dev",
+        "staff": {
+          "id": "ORDER-dev",
+          "name": "ORDER研发",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staffName": "ORDER研发",
+        "role": "ai_dev",
+        "version": "ORDER-v1",
+        "product_managers": [
+          "ORDER归属产品"
+        ],
+        "is_product_manager_record": false,
+        "source_type": "engineering",
+        "demand_sources": []
+      },
+      {
+        "id": "ORDER-new",
+        "requirement_title": "ORDER-NEW",
+        "hours": 1,
+        "delivery_progress": 0,
+        "created_at": "2026-09-16T08:00:00Z",
+        "updated_at": "2026-09-16T08:00:00Z",
+        "task_id": "ORDER-task",
+        "staff_id": "ORDER-dev",
+        "staff": {
+          "id": "ORDER-dev",
+          "name": "ORDER研发",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staffName": "ORDER研发",
+        "role": "ai_dev",
+        "version": "ORDER-v1",
+        "product_managers": [
+          "ORDER归属产品"
+        ],
+        "is_product_manager_record": false,
+        "source_type": "engineering",
+        "demand_sources": []
+      },
+      {
+        "id": "ORDER-mid",
+        "requirement_title": "ORDER-MID",
+        "hours": 10,
+        "delivery_progress": 50,
+        "created_at": "2026-09-15T08:00:00Z",
+        "updated_at": "2026-09-15T08:00:00Z",
+        "task_id": "ORDER-task",
+        "staff_id": "ORDER-dev",
+        "staff": {
+          "id": "ORDER-dev",
+          "name": "ORDER研发",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staffName": "ORDER研发",
+        "role": "ai_dev",
+        "version": "ORDER-v1",
+        "product_managers": [
+          "ORDER归属产品"
+        ],
+        "is_product_manager_record": false,
+        "source_type": "engineering",
+        "demand_sources": []
+      },
+      {
+        "id": "ORDER-group-old",
+        "requirement_title": "ORDER-GROUP",
+        "hours": 2,
+        "delivery_progress": 100,
+        "created_at": "2026-09-14T09:00:00Z",
+        "updated_at": "2026-09-14T09:00:00Z",
+        "task_id": "ORDER-task",
+        "staff_id": "ORDER-dev",
+        "staff": {
+          "id": "ORDER-dev",
+          "name": "ORDER研发",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staffName": "ORDER研发",
+        "role": "ai_dev",
+        "version": "ORDER-v1",
+        "product_managers": [
+          "ORDER归属产品"
+        ],
+        "is_product_manager_record": false,
+        "source_type": "engineering",
+        "demand_sources": []
+      },
+      {
+        "id": "ORDER-group-new",
+        "requirement_title": "ORDER-GROUP",
+        "hours": 1,
+        "delivery_progress": 0,
+        "created_at": "2026-09-16T09:00:00Z",
+        "updated_at": "2026-09-16T09:00:00Z",
+        "task_id": "ORDER-task",
+        "staff_id": "ORDER-dev",
+        "staff": {
+          "id": "ORDER-dev",
+          "name": "ORDER研发",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staffName": "ORDER研发",
+        "role": "ai_dev",
+        "version": "ORDER-v1",
+        "product_managers": [
+          "ORDER归属产品"
+        ],
+        "is_product_manager_record": false,
+        "source_type": "engineering",
+        "demand_sources": []
+      },
+      {
+        "id": "ORDER-done",
+        "requirement_title": "ORDER-DONE",
+        "hours": 5,
+        "delivery_progress": 100,
+        "created_at": "2026-09-13T08:00:00Z",
+        "updated_at": "2026-09-13T08:00:00Z",
+        "task_id": "ORDER-task",
+        "staff_id": "ORDER-voip",
+        "staff": {
+          "id": "ORDER-voip",
+          "name": "ORDER已完成人员",
+          "role": "voip",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staffName": "ORDER已完成人员",
+        "role": "voip",
+        "version": "ORDER-v1",
+        "product_managers": [
+          "ORDER归属产品"
+        ],
+        "is_product_manager_record": false,
+        "source_type": "engineering",
+        "demand_sources": []
+      },
+      {
+        "id": "ORDER-p-old",
+        "requirement_title": "ORDER-P-OLD",
+        "hours": 10,
+        "delivery_progress": 100,
+        "created_at": "2026-09-14T10:00:00Z",
+        "updated_at": "2026-09-14T10:00:00Z",
+        "task_id": "ORDER-task",
+        "staff_id": "ORDER-product",
+        "staff": {
+          "id": "ORDER-product",
+          "name": "ORDER产品",
+          "role": "ai_pm",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staffName": "ORDER产品",
+        "role": "ai_pm",
+        "version": "ORDER-v1",
+        "product_managers": [
+          "ORDER归属产品"
+        ],
+        "is_product_manager_record": true,
+        "source_type": "product_manager",
+        "demand_sources": [
+          "ORDER需求方"
+        ]
+      },
+      {
+        "id": "ORDER-p-new",
+        "requirement_title": "ORDER-P-NEW",
+        "hours": 1,
+        "delivery_progress": 0,
+        "created_at": "2026-09-16T10:00:00Z",
+        "updated_at": "2026-09-16T10:00:00Z",
+        "task_id": "ORDER-task",
+        "staff_id": "ORDER-product",
+        "staff": {
+          "id": "ORDER-product",
+          "name": "ORDER产品",
+          "role": "ai_pm",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staffName": "ORDER产品",
+        "role": "ai_pm",
+        "version": "ORDER-v1",
+        "product_managers": [
+          "ORDER归属产品"
+        ],
+        "is_product_manager_record": true,
+        "source_type": "product_manager",
+        "demand_sources": [
+          "ORDER需求方"
+        ]
+      },
+      {
+        "id": "ORDER-p-mid",
+        "requirement_title": "ORDER-P-MID",
+        "hours": 2,
+        "delivery_progress": 50,
+        "created_at": "2026-09-15T10:00:00Z",
+        "updated_at": "2026-09-15T10:00:00Z",
+        "task_id": "ORDER-task",
+        "staff_id": "ORDER-product",
+        "staff": {
+          "id": "ORDER-product",
+          "name": "ORDER产品",
+          "role": "ai_pm",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staffName": "ORDER产品",
+        "role": "ai_pm",
+        "version": "ORDER-v1",
+        "product_managers": [
+          "ORDER归属产品"
+        ],
+        "is_product_manager_record": true,
+        "source_type": "product_manager",
+        "demand_sources": [
+          "ORDER需求方"
+        ]
+      }
+    ],
+    "staff": [
+      {
+        "id": "ORDER-dev",
+        "name": "ORDER研发",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      {
+        "id": "ORDER-voip",
+        "name": "ORDER已完成人员",
+        "role": "voip",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      {
+        "id": "ORDER-product",
+        "name": "ORDER产品",
+        "role": "ai_pm",
+        "is_active": true,
+        "employment_status": "active"
+      }
+    ],
+    "currentStaff": [
+      {
+        "id": "ORDER-dev",
+        "name": "ORDER研发",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      {
+        "id": "ORDER-voip",
+        "name": "ORDER已完成人员",
+        "role": "voip",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      {
+        "id": "ORDER-product",
+        "name": "ORDER产品",
+        "role": "ai_pm",
+        "is_active": true,
+        "employment_status": "active"
+      }
+    ],
+    "roleSummary": {
+      "ai_dev": 104,
+      "voip": 5,
+      "ai_quality": 0,
+      "embedded": 0,
+      "ai_pm": 13
+    },
+    "summary": {
+      "totalHours": 122,
+      "recordCount": 9,
+      "taskCount": 1,
+      "staffCount": 3
+    },
+    "pmDistribution": [
+      {
+        "id": "ORDER-pm",
+        "name": "ORDER归属产品",
+        "is_active": true,
+        "employment_status": "active",
+        "total": 109,
+        "ai_dev": 104,
+        "voip": 5,
+        "records": [
+          {
+            "id": "ORDER-old",
+            "requirement_title": "ORDER-OLD",
+            "hours": 90,
+            "delivery_progress": 100,
+            "created_at": "2026-09-14T08:00:00Z",
+            "updated_at": "2026-09-14T08:00:00Z",
+            "task_id": "ORDER-task",
+            "staff_id": "ORDER-dev",
+            "staff": {
+              "id": "ORDER-dev",
+              "name": "ORDER研发",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staffName": "ORDER研发",
+            "role": "ai_dev",
+            "version": "ORDER-v1",
+            "product_managers": [
+              "ORDER归属产品"
+            ],
+            "is_product_manager_record": false,
+            "source_type": "engineering",
+            "demand_sources": []
+          },
+          {
+            "id": "ORDER-new",
+            "requirement_title": "ORDER-NEW",
+            "hours": 1,
+            "delivery_progress": 0,
+            "created_at": "2026-09-16T08:00:00Z",
+            "updated_at": "2026-09-16T08:00:00Z",
+            "task_id": "ORDER-task",
+            "staff_id": "ORDER-dev",
+            "staff": {
+              "id": "ORDER-dev",
+              "name": "ORDER研发",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staffName": "ORDER研发",
+            "role": "ai_dev",
+            "version": "ORDER-v1",
+            "product_managers": [
+              "ORDER归属产品"
+            ],
+            "is_product_manager_record": false,
+            "source_type": "engineering",
+            "demand_sources": []
+          },
+          {
+            "id": "ORDER-mid",
+            "requirement_title": "ORDER-MID",
+            "hours": 10,
+            "delivery_progress": 50,
+            "created_at": "2026-09-15T08:00:00Z",
+            "updated_at": "2026-09-15T08:00:00Z",
+            "task_id": "ORDER-task",
+            "staff_id": "ORDER-dev",
+            "staff": {
+              "id": "ORDER-dev",
+              "name": "ORDER研发",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staffName": "ORDER研发",
+            "role": "ai_dev",
+            "version": "ORDER-v1",
+            "product_managers": [
+              "ORDER归属产品"
+            ],
+            "is_product_manager_record": false,
+            "source_type": "engineering",
+            "demand_sources": []
+          },
+          {
+            "id": "ORDER-group-old",
+            "requirement_title": "ORDER-GROUP",
+            "hours": 2,
+            "delivery_progress": 100,
+            "created_at": "2026-09-14T09:00:00Z",
+            "updated_at": "2026-09-14T09:00:00Z",
+            "task_id": "ORDER-task",
+            "staff_id": "ORDER-dev",
+            "staff": {
+              "id": "ORDER-dev",
+              "name": "ORDER研发",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staffName": "ORDER研发",
+            "role": "ai_dev",
+            "version": "ORDER-v1",
+            "product_managers": [
+              "ORDER归属产品"
+            ],
+            "is_product_manager_record": false,
+            "source_type": "engineering",
+            "demand_sources": []
+          },
+          {
+            "id": "ORDER-group-new",
+            "requirement_title": "ORDER-GROUP",
+            "hours": 1,
+            "delivery_progress": 0,
+            "created_at": "2026-09-16T09:00:00Z",
+            "updated_at": "2026-09-16T09:00:00Z",
+            "task_id": "ORDER-task",
+            "staff_id": "ORDER-dev",
+            "staff": {
+              "id": "ORDER-dev",
+              "name": "ORDER研发",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staffName": "ORDER研发",
+            "role": "ai_dev",
+            "version": "ORDER-v1",
+            "product_managers": [
+              "ORDER归属产品"
+            ],
+            "is_product_manager_record": false,
+            "source_type": "engineering",
+            "demand_sources": []
+          },
+          {
+            "id": "ORDER-done",
+            "requirement_title": "ORDER-DONE",
+            "hours": 5,
+            "delivery_progress": 100,
+            "created_at": "2026-09-13T08:00:00Z",
+            "updated_at": "2026-09-13T08:00:00Z",
+            "task_id": "ORDER-task",
+            "staff_id": "ORDER-voip",
+            "staff": {
+              "id": "ORDER-voip",
+              "name": "ORDER已完成人员",
+              "role": "voip",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staffName": "ORDER已完成人员",
+            "role": "voip",
+            "version": "ORDER-v1",
+            "product_managers": [
+              "ORDER归属产品"
+            ],
+            "is_product_manager_record": false,
+            "source_type": "engineering",
+            "demand_sources": []
+          }
+        ]
+      }
+    ],
+    "productManagerRecords": [
+      {
+        "id": "ORDER-p-old",
+        "requirement_title": "ORDER-P-OLD",
+        "hours": 10,
+        "delivery_progress": 100,
+        "created_at": "2026-09-14T10:00:00Z",
+        "updated_at": "2026-09-14T10:00:00Z",
+        "task_id": "ORDER-task",
+        "staff_id": "ORDER-product",
+        "staff": {
+          "id": "ORDER-product",
+          "name": "ORDER产品",
+          "role": "ai_pm",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staffName": "ORDER产品",
+        "role": "ai_pm",
+        "version": "ORDER-v1",
+        "product_managers": [
+          "ORDER归属产品"
+        ],
+        "is_product_manager_record": true,
+        "source_type": "product_manager",
+        "demand_sources": [
+          "ORDER需求方"
+        ]
+      },
+      {
+        "id": "ORDER-p-new",
+        "requirement_title": "ORDER-P-NEW",
+        "hours": 1,
+        "delivery_progress": 0,
+        "created_at": "2026-09-16T10:00:00Z",
+        "updated_at": "2026-09-16T10:00:00Z",
+        "task_id": "ORDER-task",
+        "staff_id": "ORDER-product",
+        "staff": {
+          "id": "ORDER-product",
+          "name": "ORDER产品",
+          "role": "ai_pm",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staffName": "ORDER产品",
+        "role": "ai_pm",
+        "version": "ORDER-v1",
+        "product_managers": [
+          "ORDER归属产品"
+        ],
+        "is_product_manager_record": true,
+        "source_type": "product_manager",
+        "demand_sources": [
+          "ORDER需求方"
+        ]
+      },
+      {
+        "id": "ORDER-p-mid",
+        "requirement_title": "ORDER-P-MID",
+        "hours": 2,
+        "delivery_progress": 50,
+        "created_at": "2026-09-15T10:00:00Z",
+        "updated_at": "2026-09-15T10:00:00Z",
+        "task_id": "ORDER-task",
+        "staff_id": "ORDER-product",
+        "staff": {
+          "id": "ORDER-product",
+          "name": "ORDER产品",
+          "role": "ai_pm",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staffName": "ORDER产品",
+        "role": "ai_pm",
+        "version": "ORDER-v1",
+        "product_managers": [
+          "ORDER归属产品"
+        ],
+        "is_product_manager_record": true,
+        "source_type": "product_manager",
+        "demand_sources": [
+          "ORDER需求方"
+        ]
+      }
+    ],
+    "productDemandDistribution": [],
+    "demandSources": [
+      {
+        "id": "ORDER-source",
+        "name": "ORDER需求方",
+        "color": "#165dff",
+        "is_active": true
+      }
+    ],
+    "matchGroups": [],
+    "workHours": {
+      "actualHours": 122,
+      "standardHours": 120,
+      "completionRate": 101.67,
+      "excessRate": 1.67,
+      "workingDays": 15,
+      "calendarStatus": "official",
+      "units": [
+        {
+          "staffId": "ORDER-dev",
+          "staffName": "ORDER研发",
+          "role": "ai_dev",
+          "taskId": "ORDER-task",
+          "workDates": [
+            "2026-09-14",
+            "2026-09-15",
+            "2026-09-16",
+            "2026-09-17",
+            "2026-09-18"
+          ],
+          "calendarStatus": "official"
+        },
+        {
+          "staffId": "ORDER-voip",
+          "staffName": "ORDER已完成人员",
+          "role": "voip",
+          "taskId": "ORDER-task",
+          "workDates": [
+            "2026-09-14",
+            "2026-09-15",
+            "2026-09-16",
+            "2026-09-17",
+            "2026-09-18"
+          ],
+          "calendarStatus": "official"
+        },
+        {
+          "staffId": "ORDER-product",
+          "staffName": "ORDER产品",
+          "role": "ai_pm",
+          "taskId": "ORDER-task",
+          "workDates": [
+            "2026-09-14",
+            "2026-09-15",
+            "2026-09-16",
+            "2026-09-17",
+            "2026-09-18"
+          ],
+          "calendarStatus": "official"
+        }
+      ]
+    }
+  },
+  "workHours": {
+    "actualHours": 122,
+    "standardHours": 120,
+    "completionRate": 101.67,
+    "excessRate": 1.67,
+    "workingDays": 15,
+    "calendarStatus": "official",
+    "units": [
+      {
+        "staffId": "ORDER-dev",
+        "staffName": "ORDER研发",
+        "role": "ai_dev",
+        "taskId": "ORDER-task",
+        "workDates": [
+          "2026-09-14",
+          "2026-09-15",
+          "2026-09-16",
+          "2026-09-17",
+          "2026-09-18"
+        ],
+        "calendarStatus": "official"
+      },
+      {
+        "staffId": "ORDER-voip",
+        "staffName": "ORDER已完成人员",
+        "role": "voip",
+        "taskId": "ORDER-task",
+        "workDates": [
+          "2026-09-14",
+          "2026-09-15",
+          "2026-09-16",
+          "2026-09-17",
+          "2026-09-18"
+        ],
+        "calendarStatus": "official"
+      },
+      {
+        "staffId": "ORDER-product",
+        "staffName": "ORDER产品",
+        "role": "ai_pm",
+        "taskId": "ORDER-task",
+        "workDates": [
+          "2026-09-14",
+          "2026-09-15",
+          "2026-09-16",
+          "2026-09-17",
+          "2026-09-18"
+        ],
+        "calendarStatus": "official"
+      }
+    ]
+  }
+}

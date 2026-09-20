@@ -1,0 +1,179 @@
+{
+  "arrays": [
+    {
+      "name": "stats.records",
+      "count": 131,
+      "firstCreatedAt": "2026-09-12T09:25:02.000Z",
+      "lastCreatedAt": "2026-07-06T01:17:28.000Z"
+    },
+    {
+      "name": "stats.productManagerRecords",
+      "count": 2,
+      "firstCreatedAt": "2026-09-12T09:25:02.000Z",
+      "lastCreatedAt": "2026-09-12T09:25:02.000Z"
+    },
+    {
+      "name": "stats.pmDistribution.records",
+      "count": 2,
+      "firstCreatedAt": "2026-08-07T12:29:26.000Z",
+      "lastCreatedAt": "2026-08-07T12:29:26.000Z"
+    },
+    {
+      "name": "stats.pmDistribution.records",
+      "count": 25,
+      "firstCreatedAt": "2026-08-09T13:55:16.000Z",
+      "lastCreatedAt": "2026-07-06T01:17:28.000Z"
+    },
+    {
+      "name": "stats.pmDistribution.records",
+      "count": 31,
+      "firstCreatedAt": "2026-08-07T08:49:03.000Z",
+      "lastCreatedAt": "2026-07-06T01:32:45.000Z"
+    },
+    {
+      "name": "stats.pmDistribution.records",
+      "count": 24,
+      "firstCreatedAt": "2026-08-07T08:11:01.000Z",
+      "lastCreatedAt": "2026-07-06T01:32:45.000Z"
+    },
+    {
+      "name": "stats.pmDistribution.records",
+      "count": 13,
+      "firstCreatedAt": "2026-08-07T09:35:48.000Z",
+      "lastCreatedAt": "2026-07-06T01:58:49.000Z"
+    },
+    {
+      "name": "stats.pmDistribution.records",
+      "count": 16,
+      "firstCreatedAt": "2026-08-07T09:35:48.000Z",
+      "lastCreatedAt": "2026-07-20T01:24:18.000Z"
+    },
+    {
+      "name": "stats.pmDistribution.records",
+      "count": 0
+    },
+    {
+      "name": "stats.pmDistribution.records",
+      "count": 0
+    },
+    {
+      "name": "stats.pmDistribution.records",
+      "count": 0
+    },
+    {
+      "name": "stats.pmDistribution.records",
+      "count": 0
+    },
+    {
+      "name": "stats.pmDistribution.records",
+      "count": 4,
+      "firstCreatedAt": "2026-08-03T06:12:26.000Z",
+      "lastCreatedAt": "2026-07-20T01:33:46.000Z"
+    },
+    {
+      "name": "stats.pmDistribution.records",
+      "count": 12,
+      "firstCreatedAt": "2026-07-20T02:40:00.000Z",
+      "lastCreatedAt": "2026-07-06T01:54:41.000Z"
+    },
+    {
+      "name": "stats.pmDistribution.records",
+      "count": 2,
+      "firstCreatedAt": "2026-07-13T06:15:24.000Z",
+      "lastCreatedAt": "2026-07-13T01:47:43.000Z"
+    },
+    {
+      "name": "personal.tasks.records",
+      "count": 0
+    },
+    {
+      "name": "personal.tasks.records",
+      "count": 2,
+      "firstCreatedAt": "2026-08-07T08:49:03.000Z",
+      "lastCreatedAt": "2026-08-07T08:49:03.000Z"
+    },
+    {
+      "name": "personal.tasks.records",
+      "count": 3,
+      "firstCreatedAt": "2026-08-04T01:53:52.000Z",
+      "lastCreatedAt": "2026-08-04T01:53:52.000Z"
+    },
+    {
+      "name": "personal.tasks.records",
+      "count": 2,
+      "firstCreatedAt": "2026-07-27T01:50:40.000Z",
+      "lastCreatedAt": "2026-07-27T01:50:40.000Z"
+    },
+    {
+      "name": "personal.tasks.records",
+      "count": 1,
+      "firstCreatedAt": "2026-07-20T02:26:50.000Z",
+      "lastCreatedAt": "2026-07-20T02:26:50.000Z"
+    },
+    {
+      "name": "personal.tasks.records",
+      "count": 2,
+      "firstCreatedAt": "2026-07-13T02:16:48.000Z",
+      "lastCreatedAt": "2026-07-13T02:16:48.000Z"
+    },
+    {
+      "name": "personal.tasks.records",
+      "count": 2,
+      "firstCreatedAt": "2026-07-06T02:32:41.000Z",
+      "lastCreatedAt": "2026-07-06T02:32:41.000Z"
+    },
+    {
+      "name": "pm.tasks.records",
+      "count": 0
+    },
+    {
+      "name": "pm.tasks.records",
+      "count": 2,
+      "firstCreatedAt": "2026-08-07T08:11:01.000Z",
+      "lastCreatedAt": "2026-08-07T08:11:01.000Z"
+    },
+    {
+      "name": "pm.tasks.records",
+      "count": 3,
+      "firstCreatedAt": "2026-08-03T06:12:26.000Z",
+      "lastCreatedAt": "2026-08-03T03:26:38.000Z"
+    },
+    {
+      "name": "pm.tasks.records",
+      "count": 8,
+      "firstCreatedAt": "2026-07-28T02:22:01.000Z",
+      "lastCreatedAt": "2026-07-27T01:44:29.000Z"
+    },
+    {
+      "name": "pm.tasks.records",
+      "count": 5,
+      "firstCreatedAt": "2026-07-20T02:40:00.000Z",
+      "lastCreatedAt": "2026-07-20T01:33:46.000Z"
+    },
+    {
+      "name": "pm.tasks.records",
+      "count": 3,
+      "firstCreatedAt": "2026-07-13T02:16:48.000Z",
+      "lastCreatedAt": "2026-07-13T01:40:10.000Z"
+    },
+    {
+      "name": "pm.tasks.records",
+      "count": 5,
+      "firstCreatedAt": "2026-07-06T02:26:24.000Z",
+      "lastCreatedAt": "2026-07-06T01:32:45.000Z"
+    },
+    {
+      "name": "progress-details.records",
+      "count": 131,
+      "firstCreatedAt": "2026-09-12T09:25:02.000Z",
+      "lastCreatedAt": "2026-07-06T01:17:28.000Z"
+    }
+  ],
+  "exportRows": 131,
+  "exportSheets": [
+    "导出说明",
+    "进度明细",
+    "人员周期容量",
+    "需求方目录快照"
+  ]
+}

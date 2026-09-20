@@ -1,0 +1,848 @@
+{
+  "run": "2026-09-16T15-05-07-449Z",
+  "results": [
+    {
+      "run": "2026-09-16T15-05-07-449Z",
+      "id": "SSZ-SORT",
+      "status": "PASS",
+      "evidence": {
+        "observations": [
+          {
+            "label": "工时/h",
+            "direction": "descending",
+            "first": [
+              "SSZ需求11监控",
+              "SSZ交付48",
+              "SSZ需求19监控"
+            ],
+            "last": [
+              "SSZ需求1监控",
+              "SSZ需求34监控",
+              "SSZ需求8监控"
+            ]
+          },
+          {
+            "label": "工时/h",
+            "direction": "ascending",
+            "first": [
+              "SSZ需求34监控",
+              "SSZ需求8监控",
+              "SSZ需求1监控"
+            ],
+            "last": [
+              "SSZ需求19监控",
+              "SSZ交付48",
+              "SSZ需求11监控"
+            ]
+          },
+          {
+            "label": "需求",
+            "direction": "ascending",
+            "first": [
+              "SSZ产品20",
+              "SSZ交付32",
+              "SSZ交付48"
+            ],
+            "last": [
+              "SSZ需求41监控",
+              "SSZ需求42监控",
+              "SSZ需求43监控"
+            ]
+          },
+          {
+            "label": "创建时间",
+            "direction": "ascending",
+            "first": [
+              "SSZ需求30监控",
+              "SSZ需求11监控",
+              "SSZ需求35监控"
+            ],
+            "last": [
+              "SSZ无版本16",
+              "SSZ需求6监控",
+              "SSZ需求25监控"
+            ]
+          },
+          {
+            "label": "创建时间",
+            "direction": "descending",
+            "first": [
+              "SSZ无版本16",
+              "SSZ交付32",
+              "SSZ交付48"
+            ],
+            "last": [
+              "SSZ需求30监控",
+              "SSZ需求6监控",
+              "SSZ需求25监控"
+            ]
+          }
+        ],
+        "groupedRows": 47,
+        "tableHeaders": [
+          {
+            "name": "人员",
+            "headers": [
+              {
+                "name": "人员",
+                "sortable": true
+              },
+              {
+                "name": "应交付工时/h",
+                "sortable": true
+              },
+              {
+                "name": "已交付工时/h",
+                "sortable": true
+              },
+              {
+                "name": "交付率",
+                "sortable": true
+              },
+              {
+                "name": "已填总工时/h",
+                "sortable": true
+              },
+              {
+                "name": "工时占比",
+                "sortable": true
+              },
+              {
+                "name": "记录数",
+                "sortable": true
+              },
+              {
+                "name": "周期数",
+                "sortable": true
+              },
+              {
+                "name": "需求数",
+                "sortable": true
+              }
+            ]
+          },
+          {
+            "name": "工时记录",
+            "headers": [
+              {
+                "name": "#",
+                "sortable": false
+              },
+              {
+                "name": "来源",
+                "sortable": true
+              },
+              {
+                "name": "人员",
+                "sortable": true
+              },
+              {
+                "name": "岗位",
+                "sortable": true
+              },
+              {
+                "name": "周期 / 周",
+                "sortable": true
+              },
+              {
+                "name": "版本号",
+                "sortable": true
+              },
+              {
+                "name": "需求",
+                "sortable": true
+              },
+              {
+                "name": "需求方",
+                "sortable": true
+              },
+              {
+                "name": "AI产品经理归属",
+                "sortable": true
+              },
+              {
+                "name": "工时/h",
+                "sortable": true
+              },
+              {
+                "name": "交付率",
+                "sortable": true
+              },
+              {
+                "name": "创建时间",
+                "sortable": true
+              }
+            ]
+          },
+          {
+            "name": "普通版本（有版本号）",
+            "headers": [
+              {
+                "name": "",
+                "sortable": false
+              },
+              {
+                "name": "人员",
+                "sortable": true
+              },
+              {
+                "name": "岗位",
+                "sortable": true
+              },
+              {
+                "name": "版本分组",
+                "sortable": true
+              },
+              {
+                "name": "周",
+                "sortable": true
+              },
+              {
+                "name": "版本号",
+                "sortable": true
+              },
+              {
+                "name": "需求",
+                "sortable": true
+              },
+              {
+                "name": "工时/h",
+                "sortable": true
+              },
+              {
+                "name": "已交付工时/h",
+                "sortable": true
+              },
+              {
+                "name": "交付率 / 状态",
+                "sortable": true
+              },
+              {
+                "name": "最新创建时间",
+                "sortable": true
+              }
+            ]
+          },
+          {
+            "name": "无版本号版本",
+            "headers": [
+              {
+                "name": "",
+                "sortable": false
+              },
+              {
+                "name": "人员",
+                "sortable": true
+              },
+              {
+                "name": "岗位",
+                "sortable": true
+              },
+              {
+                "name": "版本分组",
+                "sortable": true
+              },
+              {
+                "name": "周",
+                "sortable": true
+              },
+              {
+                "name": "版本号",
+                "sortable": true
+              },
+              {
+                "name": "需求",
+                "sortable": true
+              },
+              {
+                "name": "工时/h",
+                "sortable": true
+              },
+              {
+                "name": "最新创建时间",
+                "sortable": true
+              }
+            ]
+          },
+          {
+            "name": "AI产品经理",
+            "headers": [
+              {
+                "name": "AI产品经理",
+                "sortable": true
+              },
+              {
+                "name": "工时/h",
+                "sortable": true
+              },
+              {
+                "name": "工时占比",
+                "sortable": true
+              },
+              {
+                "name": "AI开发",
+                "sortable": true
+              },
+              {
+                "name": "VOIP",
+                "sortable": true
+              },
+              {
+                "name": "AI质量",
+                "sortable": true
+              },
+              {
+                "name": "嵌入式",
+                "sortable": true
+              },
+              {
+                "name": "AI产品",
+                "sortable": true
+              },
+              {
+                "name": "记录数",
+                "sortable": true
+              },
+              {
+                "name": "需求数",
+                "sortable": true
+              }
+            ]
+          },
+          {
+            "name": "周期",
+            "headers": [
+              {
+                "name": "周期",
+                "sortable": true
+              },
+              {
+                "name": "工时/h",
+                "sortable": true
+              },
+              {
+                "name": "工时占比",
+                "sortable": true
+              },
+              {
+                "name": "AI开发",
+                "sortable": true
+              },
+              {
+                "name": "VOIP",
+                "sortable": true
+              },
+              {
+                "name": "AI质量",
+                "sortable": true
+              },
+              {
+                "name": "嵌入式",
+                "sortable": true
+              },
+              {
+                "name": "AI产品",
+                "sortable": true
+              },
+              {
+                "name": "记录数",
+                "sortable": true
+              },
+              {
+                "name": "需求数",
+                "sortable": true
+              }
+            ]
+          },
+          {
+            "name": "版本",
+            "headers": [
+              {
+                "name": "版本",
+                "sortable": true
+              },
+              {
+                "name": "周",
+                "sortable": true
+              },
+              {
+                "name": "工时/h",
+                "sortable": true
+              },
+              {
+                "name": "工时占比",
+                "sortable": true
+              },
+              {
+                "name": "AI开发",
+                "sortable": true
+              },
+              {
+                "name": "VOIP",
+                "sortable": true
+              },
+              {
+                "name": "AI质量",
+                "sortable": true
+              },
+              {
+                "name": "嵌入式",
+                "sortable": true
+              },
+              {
+                "name": "AI产品",
+                "sortable": true
+              },
+              {
+                "name": "记录数",
+                "sortable": true
+              },
+              {
+                "name": "需求数",
+                "sortable": true
+              }
+            ]
+          },
+          {
+            "name": "需求",
+            "headers": [
+              {
+                "name": "需求",
+                "sortable": true
+              },
+              {
+                "name": "工时/h",
+                "sortable": true
+              },
+              {
+                "name": "工时占比",
+                "sortable": true
+              },
+              {
+                "name": "AI开发",
+                "sortable": true
+              },
+              {
+                "name": "VOIP",
+                "sortable": true
+              },
+              {
+                "name": "AI质量",
+                "sortable": true
+              },
+              {
+                "name": "嵌入式",
+                "sortable": true
+              },
+              {
+                "name": "AI产品",
+                "sortable": true
+              },
+              {
+                "name": "记录数",
+                "sortable": true
+              }
+            ]
+          },
+          {
+            "name": "关键词",
+            "headers": [
+              {
+                "name": "关键词",
+                "sortable": true
+              },
+              {
+                "name": "命中工时/h",
+                "sortable": true
+              },
+              {
+                "name": "工时占比",
+                "sortable": true
+              },
+              {
+                "name": "记录数",
+                "sortable": true
+              },
+              {
+                "name": "需求数",
+                "sortable": true
+              }
+            ]
+          },
+          {
+            "name": "数据质量",
+            "headers": [
+              {
+                "name": "检查项",
+                "sortable": true
+              },
+              {
+                "name": "工时/h",
+                "sortable": true
+              },
+              {
+                "name": "工时占比",
+                "sortable": true
+              },
+              {
+                "name": "记录数",
+                "sortable": true
+              }
+            ]
+          },
+          {
+            "name": "需求进度",
+            "headers": [
+              {
+                "name": "",
+                "sortable": false
+              },
+              {
+                "name": "人员",
+                "sortable": true
+              },
+              {
+                "name": "岗位",
+                "sortable": true
+              },
+              {
+                "name": "版本分组",
+                "sortable": true
+              },
+              {
+                "name": "周",
+                "sortable": true
+              },
+              {
+                "name": "版本号",
+                "sortable": true
+              },
+              {
+                "name": "需求",
+                "sortable": true
+              },
+              {
+                "name": "工时/h",
+                "sortable": true
+              },
+              {
+                "name": "已交付工时/h",
+                "sortable": true
+              },
+              {
+                "name": "交付率 / 状态",
+                "sortable": true
+              },
+              {
+                "name": "最新创建时间",
+                "sortable": true
+              }
+            ]
+          }
+        ],
+        "nullHoursDisplay": "0 (record normalization)",
+        "nullDatesLast": true
+      }
+    },
+    {
+      "run": "2026-09-16T15-05-07-449Z",
+      "id": "SSZ-PAGING",
+      "status": "PASS",
+      "evidence": {
+        "sortResetsPage": true,
+        "independentPages": true,
+        "independentPageSizes": [
+          10,
+          20
+        ],
+        "restoredNewestFirst": true
+      }
+    },
+    {
+      "run": "2026-09-16T15-05-07-449Z",
+      "id": "SSZ-DELIVERY",
+      "status": "PASS",
+      "evidence": {
+        "versioned32": "80%",
+        "versioned48": "120%",
+        "legacy100Unversioned16": "record only"
+      }
+    },
+    {
+      "run": "2026-09-16T15-05-07-449Z",
+      "id": "SSZ-ZOOM",
+      "status": "PASS",
+      "evidence": {
+        "independentExpansion": true,
+        "escapeRestore": true,
+        "shrinkRestore": true,
+        "filterFromExpanded": true,
+        "before": {
+          "left": [
+            "归属经理甲"
+          ],
+          "right": [
+            "范围产品戊",
+            "范围产品丁"
+          ]
+        },
+        "leftBox": {
+          "x": 96,
+          "y": 87,
+          "width": 1408,
+          "height": 336
+        }
+      }
+    },
+    {
+      "run": "2026-09-16T15-05-07-449Z",
+      "id": "SSZ-LAYOUT",
+      "status": "PASS",
+      "evidence": {
+        "removedTabs": true,
+        "focusTabsRetained": true,
+        "dimensions": {
+          "viewport": 390,
+          "width": 390
+        },
+        "filterBounds": {
+          "year": {
+            "x": 12,
+            "y": 272.96875,
+            "width": 120,
+            "height": 32
+          },
+          "quarter": {
+            "x": 142,
+            "y": 272.96875,
+            "width": 100,
+            "height": 32
+          }
+        },
+        "expandedBox": {
+          "x": 32,
+          "y": 84.1875,
+          "width": 326,
+          "height": 340
+        },
+        "desktopFirstRow": {
+          "x": 80,
+          "y": 444.5299072265625,
+          "width": 1440,
+          "height": 32
+        },
+        "errors": [],
+        "failures": [],
+        "writes": []
+      }
+    }
+  ],
+  "errors": [],
+  "failures": [],
+  "writes": [],
+  "requests": [
+    {
+      "suffix": "/index.js",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/roles",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/tasks",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/pm",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/roles",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/stats",
+      "params": {
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all"
+      },
+      "live": false
+    },
+    {
+      "suffix": "/index.js",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/roles",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/tasks",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/pm",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/roles",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/stats",
+      "params": {
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all"
+      },
+      "live": false
+    },
+    {
+      "suffix": "/index.js",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/roles",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/tasks",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/pm",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/roles",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/stats",
+      "params": {
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all"
+      },
+      "live": false
+    },
+    {
+      "suffix": "/index.js",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/roles",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/tasks",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/pm",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/roles",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/stats",
+      "params": {
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all"
+      },
+      "live": false
+    },
+    {
+      "suffix": "/index.js",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/roles",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/tasks",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/pm",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/roles",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/stats",
+      "params": {
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all"
+      },
+      "live": false
+    },
+    {
+      "suffix": "/stats",
+      "params": {
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all"
+      },
+      "live": false
+    },
+    {
+      "suffix": "/stats",
+      "params": {
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all"
+      },
+      "live": false
+    },
+    {
+      "suffix": "/pm",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/stats",
+      "params": {
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all"
+      },
+      "live": false
+    }
+  ],
+  "exportsSeen": []
+}

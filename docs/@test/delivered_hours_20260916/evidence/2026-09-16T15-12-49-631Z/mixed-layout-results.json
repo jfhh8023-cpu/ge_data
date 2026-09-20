@@ -1,0 +1,234 @@
+{
+  "run": "2026-09-16T15-12-49-631Z",
+  "results": [
+    {
+      "case": "targeted",
+      "wheel": {
+        "before": 0,
+        "after": 68
+      },
+      "centerOpens": true,
+      "digits": [
+        {
+          "value": "280h",
+          "box": {
+            "left": 37,
+            "right": 78.484375,
+            "width": 41.484375
+          },
+          "text": {
+            "left": 37,
+            "right": 66.375,
+            "width": 29.375
+          },
+          "client": 41,
+          "scroll": 41
+        },
+        {
+          "value": "400h",
+          "box": {
+            "left": 81.484375,
+            "right": 122.984375,
+            "width": 41.5
+          },
+          "text": {
+            "left": 81.484375,
+            "right": 110.859375,
+            "width": 29.375
+          },
+          "client": 42,
+          "scroll": 42
+        },
+        {
+          "value": "142.86%",
+          "box": {
+            "left": 125.984375,
+            "right": 182,
+            "width": 56.015625
+          },
+          "text": {
+            "left": 129.984375,
+            "right": 181.59375,
+            "width": 51.609375
+          },
+          "client": 56,
+          "scroll": 56
+        },
+        {
+          "value": "280",
+          "box": {
+            "left": 66,
+            "right": 95,
+            "width": 29
+          },
+          "text": {
+            "left": 74.640625,
+            "right": 94,
+            "width": 19.359375
+          },
+          "client": 29,
+          "scroll": 29
+        },
+        {
+          "value": "400",
+          "box": {
+            "left": 95,
+            "right": 124,
+            "width": 29
+          },
+          "text": {
+            "left": 103.640625,
+            "right": 123,
+            "width": 19.359375
+          },
+          "client": 29,
+          "scroll": 29
+        },
+        {
+          "value": "142.86%",
+          "box": {
+            "left": 124,
+            "right": 182,
+            "width": 58
+          },
+          "text": {
+            "left": 129.6875,
+            "right": 181,
+            "width": 51.3125
+          },
+          "client": 58,
+          "scroll": 58
+        }
+      ],
+      "otherCards": [
+        {
+          "label": "部门",
+          "numbers": [
+            {
+              "value": "4,352h",
+              "left": 37,
+              "right": 78.484375,
+              "textLeft": 37,
+              "textRight": 77.203125
+            },
+            {
+              "value": "1,673h",
+              "left": 81.484375,
+              "right": 122.984375,
+              "textLeft": 81.484375,
+              "textRight": 121.6875
+            },
+            {
+              "value": "38.44%",
+              "left": 125.984375,
+              "right": 182,
+              "textLeft": 125.984375,
+              "textRight": 170.1875
+            }
+          ]
+        },
+        {
+          "label": "AI开发工程师",
+          "numbers": [
+            {
+              "value": "1,552h",
+              "left": 208,
+              "right": 249.484375,
+              "textLeft": 208,
+              "textRight": 248.203125
+            },
+            {
+              "value": "708h",
+              "left": 252.484375,
+              "right": 293.984375,
+              "textLeft": 252.484375,
+              "textRight": 281.859375
+            },
+            {
+              "value": "45.62%",
+              "left": 296.984375,
+              "right": 353,
+              "textLeft": 296.984375,
+              "textRight": 341.1875
+            }
+          ]
+        }
+      ],
+      "cardBoxes": [
+        {
+          "x": 28,
+          "y": -83.03125,
+          "width": 163,
+          "height": 205.296875
+        },
+        {
+          "x": 199,
+          "y": -83.03125,
+          "width": 163,
+          "height": 205.296875
+        },
+        {
+          "x": 28,
+          "y": 130.265625,
+          "width": 163,
+          "height": 181.296875
+        },
+        {
+          "x": 199,
+          "y": 130.265625,
+          "width": 163,
+          "height": 181.296875
+        },
+        {
+          "x": 28,
+          "y": 319.5625,
+          "width": 163,
+          "height": 205.296875
+        },
+        {
+          "x": 199,
+          "y": 319.5625,
+          "width": 163,
+          "height": 205.296875
+        }
+      ],
+      "lastTabUsable": true,
+      "recordSortHours": [
+        50,
+        50,
+        40,
+        32,
+        32,
+        32,
+        28,
+        28,
+        24,
+        24,
+        24,
+        24,
+        24,
+        16,
+        16,
+        16,
+        16,
+        16,
+        16,
+        16
+      ],
+      "pagination": {
+        "x": 31.59375,
+        "y": 720.671875,
+        "width": 326.796875,
+        "height": 72
+      },
+      "dialog": {
+        "x": 15.59375,
+        "y": 33.75,
+        "width": 358.796875,
+        "height": 776.46875
+      }
+    }
+  ],
+  "errors": [],
+  "writes": []
+}

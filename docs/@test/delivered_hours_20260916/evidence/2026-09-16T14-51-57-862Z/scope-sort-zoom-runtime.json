@@ -1,0 +1,157 @@
+{
+  "run": "2026-09-16T14-51-57-862Z",
+  "results": [
+    {
+      "run": "2026-09-16T14-51-57-862Z",
+      "id": "SSZ-FILTER",
+      "status": "PASS",
+      "evidence": {
+        "observations": [
+          {
+            "label": "AI开发工程师",
+            "count": 44
+          },
+          {
+            "label": "AI产品经理",
+            "count": 2
+          }
+        ],
+        "selectedPerson": {
+          "units": [
+            {
+              "staffId": "SSZ-p",
+              "staffName": "范围产品丁",
+              "role": "ai_pm",
+              "taskId": "SSZ-w1",
+              "calendarStatus": "official",
+              "standardHours": 40,
+              "workDates": [
+                "2026-09-14",
+                "2026-09-15",
+                "2026-09-16",
+                "2026-09-17",
+                "2026-09-18"
+              ]
+            },
+            {
+              "staffId": "SSZ-p",
+              "staffName": "范围产品丁",
+              "role": "ai_pm",
+              "taskId": "SSZ-w2",
+              "calendarStatus": "official",
+              "standardHours": 40,
+              "workDates": [
+                "2026-09-07",
+                "2026-09-08",
+                "2026-09-09",
+                "2026-09-10",
+                "2026-09-11"
+              ]
+            }
+          ],
+          "standardHours": 80,
+          "workingDays": 10,
+          "calendarStatus": "official",
+          "recordedHours": 16,
+          "deliveredHours": 0,
+          "unversionedHours": 16,
+          "deliveryRate": 0
+        },
+        "allSelectedCapacity": 120,
+        "export": {
+          "scope": "all",
+          "year": "2026",
+          "quarter": "Q3",
+          "taskId": "all",
+          "sourceType": "",
+          "role": "ai_pm",
+          "versionType": "",
+          "demandSourceId": "",
+          "staffId": "SSZ-p"
+        },
+        "emptyStaffPreserved": true
+      }
+    }
+  ],
+  "errors": [],
+  "failures": [],
+  "writes": [],
+  "requests": [
+    {
+      "suffix": "/index.js",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/roles",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/tasks",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/pm",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/roles",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/stats",
+      "params": {
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all"
+      },
+      "live": false
+    },
+    {
+      "suffix": "/stats/progress-details",
+      "params": {
+        "scope": "all",
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all",
+        "sourceType": "",
+        "role": "ai_pm",
+        "demandSourceId": "",
+        "staffId": "SSZ-p"
+      },
+      "live": false
+    },
+    {
+      "suffix": "/stats/export.xlsx",
+      "params": {
+        "scope": "all",
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all",
+        "sourceType": "",
+        "role": "ai_pm",
+        "versionType": "",
+        "demandSourceId": "",
+        "staffId": "SSZ-p"
+      },
+      "live": false
+    }
+  ],
+  "exportsSeen": [
+    {
+      "scope": "all",
+      "year": "2026",
+      "quarter": "Q3",
+      "taskId": "all",
+      "sourceType": "",
+      "role": "ai_pm",
+      "versionType": "",
+      "demandSourceId": "",
+      "staffId": "SSZ-p"
+    }
+  ]
+}

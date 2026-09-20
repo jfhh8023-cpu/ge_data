@@ -1,0 +1,7 @@
+# 部门图表验证状态
+
+运行：2026-09-16T13-14-17-538Z
+当前：completed
+
+CHART-DESKTOP: PASS
+CHART-LIVE: PASS

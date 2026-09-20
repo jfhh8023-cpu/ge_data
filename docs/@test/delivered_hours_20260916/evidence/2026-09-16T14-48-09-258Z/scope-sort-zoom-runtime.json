@@ -1,0 +1,210 @@
+{
+  "run": "2026-09-16T14-48-09-258Z",
+  "results": [
+    {
+      "run": "2026-09-16T14-48-09-258Z",
+      "id": "SSZ-SCOPE",
+      "status": "PASS",
+      "evidence": {
+        "overview": "147 条记录\n总工时 2504h\n已交付工时 1673h\n无版本工时 831h",
+        "current": {
+          "records": 147,
+          "total": 2504,
+          "delivered": 1673,
+          "capacity": 4352
+        },
+        "week": {
+          "id": "1ee1c48e-a5cf-47ca-8f89-64ce534e914a",
+          "records": 25,
+          "total": 339
+        },
+        "all": {
+          "records": 713,
+          "total": 9692.5,
+          "capacity": 18432
+        }
+      }
+    },
+    {
+      "run": "2026-09-16T14-48-09-258Z",
+      "id": "SSZ-FILTER",
+      "status": "FAIL",
+      "message": "locator.click: Timeout 6500ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('option', { name: 'AI研发（全部岗位）', exact: true })\u001b[22m\n",
+      "stack": "locator.click: Timeout 6500ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('option', { name: 'AI研发（全部岗位）', exact: true })\u001b[22m\n\n    at option (D:\\PythonTEST\\My_Other_Tool_System\\get_data\\get_data_cursor\\backend\\scripts\\verify_scope_sort_zoom_ui.js:50:308)\n    at async D:\\PythonTEST\\My_Other_Tool_System\\get_data\\get_data_cursor\\backend\\scripts\\verify_scope_sort_zoom_ui.js:95:7\n    at async check (D:\\PythonTEST\\My_Other_Tool_System\\get_data\\get_data_cursor\\backend\\scripts\\verify_scope_sort_zoom_ui.js:61:249)\n    at async run (D:\\PythonTEST\\My_Other_Tool_System\\get_data\\get_data_cursor\\backend\\scripts\\verify_scope_sort_zoom_ui.js:89:5)",
+      "url": "http://localhost:5176/stats?admin=1",
+      "body": "DevTracker\nv3.0.2\n任务收集\n需求工时统计\n周期统计（季度）\n+ 新建收集\n管理员\n🔐\n团\n周期统计（季度）｜2026-09-07 至 2026-09-20\n\n部门工时趋势与个人贡献分析 · 当前范围：2026年 Q3 / Q3\n\n📊 周期数据分析\n📤 导出Excel\n🔄\n2026年\nQ3\n全部周期\n自然周\n38周\n37周\n36周\n35周\n34周\n33周\n32周\n31周\n30周\n部门展示\n研发聚焦\n产品经理聚焦\nQ3 · 部门\n总工时\n1,070.0h\n已交付工时\n1,054h\n交付率\n219.58%\nAI开发工程师\n总工时\n986.0h\n已交付工时\n986h\n交付率\n410.83%\nVOIP工程师\n总工时\n0.0h\n已交付工时\n0h\n交付率\n—\nAI质量工程师\n总工时\n48.0h\n已交付工时\n48h\n交付率\n60%\n嵌入式工程师\n总工时\n0.0h\n已交付工时\n0h\n交付率\n—\nAI产品经理\n总工时\n36.0h\n已交付工时\n20h\n交付率\n12.5%\nAI产品经理 · 范围产品丁 · 当前列表\n提交记录数 ↗\n1\n统计需求总数 ↗\n1\n有记录周期数 ↗\n1\n应填人员数 ↗\n1\n\n有版本工时计入交付率，无版本工时仅记录。\n\nAI研发工时分布 · 按AI产品经理归属人 — Q3\n隐藏零值\n放大\nAI开发\nVOIP\nAI质量\n嵌入式\n总计\n986\n48\n1034\n归属经理甲\n986\n48\n1034\n归属经理乙\nAI产品经理工时分布（按人员与需求方） — Q3\n隐藏零值\n放大\n来源甲\n来源乙\n来源丙\n来源丁\n总计\n14\n6\n20\n范围产品戊\n11.2\n4.8\n16\n范围产品丁\n点击产品经理姓名查看工时；需求方按保存权重分摊，总计按原始工时计算。\n工时明细 · AI产品经理 · 范围产品丁\nAI产品经理\n范围产品丁\n查看当前范围分析\n1 条记录\n总工时 16h\n已交付工时 0h\n无版本工时 16h\n#\n\t\n来源\n\t\n人员\n\t\n岗位\n\t\n周期 / 周\n\t\n版本号\n\t\n需求\n\t\n需求方\n\t\nAI产品经理归属\n\t\n工时/h\n\t\n创建时间\n1\n\t\nAI产品\n\t\n范围产品丁\n\t\nAI产品\n\t\nW38\n\t\n无版本号\n\t\nSSZ无版本16\n\t\n来源甲、来源乙\n\t\n归属经理甲、归属经理乙\n\t\n16\n\t\n2026/9/16 21:00:00\n共 1 条\n20条/页\n1\n前往\n页\nDevTracker v3.0.2© 2026   2698-jfzhu8023\n全部部门\nAI研发\nAI产品独立工时\nAI开发工程师\nVOIP工程师\nAI质量工程师\n嵌入式工程师\nAI产品经理"
+    }
+  ],
+  "errors": [],
+  "failures": [],
+  "writes": [],
+  "requests": [
+    {
+      "suffix": "/index.js",
+      "params": {},
+      "live": true
+    },
+    {
+      "suffix": "/roles",
+      "params": {},
+      "live": true
+    },
+    {
+      "suffix": "/tasks",
+      "params": {},
+      "live": true
+    },
+    {
+      "suffix": "/pm",
+      "params": {},
+      "live": true
+    },
+    {
+      "suffix": "/roles",
+      "params": {},
+      "live": true
+    },
+    {
+      "suffix": "/stats",
+      "params": {
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all"
+      },
+      "live": true
+    },
+    {
+      "suffix": "/stats",
+      "params": {
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "1ee1c48e-a5cf-47ca-8f89-64ce534e914a"
+      },
+      "live": true
+    },
+    {
+      "suffix": "/stats/progress-details",
+      "params": {
+        "scope": "all",
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "1ee1c48e-a5cf-47ca-8f89-64ce534e914a",
+        "sourceType": "",
+        "role": "",
+        "demandSourceId": "",
+        "staffId": ""
+      },
+      "live": true
+    },
+    {
+      "suffix": "/index.js",
+      "params": {},
+      "live": true
+    },
+    {
+      "suffix": "/roles",
+      "params": {},
+      "live": true
+    },
+    {
+      "suffix": "/tasks",
+      "params": {},
+      "live": true
+    },
+    {
+      "suffix": "/pm",
+      "params": {},
+      "live": true
+    },
+    {
+      "suffix": "/roles",
+      "params": {},
+      "live": true
+    },
+    {
+      "suffix": "/stats",
+      "params": {
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all"
+      },
+      "live": true
+    },
+    {
+      "suffix": "/index.js",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/roles",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/tasks",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/pm",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/roles",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/stats",
+      "params": {
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all"
+      },
+      "live": false
+    },
+    {
+      "suffix": "/stats/progress-details",
+      "params": {
+        "scope": "all",
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all",
+        "sourceType": "",
+        "role": "ai_pm",
+        "demandSourceId": "",
+        "staffId": "SSZ-p"
+      },
+      "live": false
+    },
+    {
+      "suffix": "/stats/export.xlsx",
+      "params": {
+        "scope": "all",
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all",
+        "sourceType": "",
+        "role": "ai_pm",
+        "versionType": "",
+        "demandSourceId": "",
+        "staffId": "SSZ-p"
+      },
+      "live": false
+    }
+  ],
+  "exportsSeen": [
+    {
+      "scope": "all",
+      "year": "2026",
+      "quarter": "Q3",
+      "taskId": "all",
+      "sourceType": "",
+      "role": "ai_pm",
+      "versionType": "",
+      "demandSourceId": "",
+      "staffId": "SSZ-p"
+    }
+  ]
+}

@@ -1,0 +1,760 @@
+{
+  "task": {
+    "id": "CHART-task",
+    "title": "CHART图表验证周",
+    "start_date": "2026-09-14",
+    "end_date": "2026-09-20",
+    "year": 2026,
+    "week_number": 38,
+    "time_dimension": "week",
+    "status": "active",
+    "is_preferred": true,
+    "record_count": 7
+  },
+  "sources": [
+    {
+      "id": "CHART-internal",
+      "name": "内部需求",
+      "color": "#165DFF",
+      "sort_order": 0,
+      "is_active": true
+    },
+    {
+      "id": "CHART-customer",
+      "name": "客户需求",
+      "color": "#00B42A",
+      "sort_order": 10,
+      "is_active": true
+    },
+    {
+      "id": "CHART-tech",
+      "name": "技术需求",
+      "color": "#FF7D00",
+      "sort_order": 20,
+      "is_active": true
+    },
+    {
+      "id": "CHART-other",
+      "name": "其他需求",
+      "color": "#722ED1",
+      "sort_order": 30,
+      "is_active": true
+    }
+  ],
+  "pms": [
+    {
+      "id": "CHART-pm-0",
+      "name": "归属甲",
+      "is_active": true,
+      "employment_status": "active"
+    },
+    {
+      "id": "CHART-pm-1",
+      "name": "归属乙",
+      "is_active": true,
+      "employment_status": "active"
+    },
+    {
+      "id": "CHART-pm-2",
+      "name": "归属丙",
+      "is_active": true,
+      "employment_status": "active"
+    }
+  ],
+  "stats": {
+    "tasks": [
+      {
+        "id": "CHART-task",
+        "title": "CHART图表验证周",
+        "start_date": "2026-09-14",
+        "end_date": "2026-09-20",
+        "year": 2026,
+        "week_number": 38,
+        "time_dimension": "week",
+        "status": "active",
+        "is_preferred": true,
+        "record_count": 7
+      }
+    ],
+    "records": [
+      {
+        "id": "CHART-E1",
+        "staff_id": "CHART-dev",
+        "staff": {
+          "id": "CHART-dev",
+          "name": "研发甲",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staffName": "研发甲",
+        "role": "ai_dev",
+        "task_id": "CHART-task",
+        "hours": 32,
+        "delivery_progress": 50,
+        "created_at": "2026-09-16T08:00:00Z",
+        "requirement_title": "CHART-E1",
+        "version": "CHART-v1",
+        "product_managers": [
+          "归属甲"
+        ],
+        "is_product_manager_record": false,
+        "source_type": "engineering"
+      },
+      {
+        "id": "CHART-E2",
+        "staff_id": "CHART-voip",
+        "staff": {
+          "id": "CHART-voip",
+          "name": "研发乙",
+          "role": "voip",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staffName": "研发乙",
+        "role": "voip",
+        "task_id": "CHART-task",
+        "hours": 8,
+        "delivery_progress": 50,
+        "created_at": "2026-09-16T08:00:00Z",
+        "requirement_title": "CHART-E2",
+        "version": "CHART-v1",
+        "product_managers": [
+          "归属甲"
+        ],
+        "is_product_manager_record": false,
+        "source_type": "engineering"
+      },
+      {
+        "id": "CHART-E3",
+        "staff_id": "CHART-dev",
+        "staff": {
+          "id": "CHART-dev",
+          "name": "研发甲",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staffName": "研发甲",
+        "role": "ai_dev",
+        "task_id": "CHART-task",
+        "hours": 16,
+        "delivery_progress": 50,
+        "created_at": "2026-09-16T08:00:00Z",
+        "requirement_title": "CHART-E3",
+        "version": "CHART-v1",
+        "product_managers": [
+          "归属乙"
+        ],
+        "is_product_manager_record": false,
+        "source_type": "engineering"
+      },
+      {
+        "id": "CHART-E4",
+        "staff_id": "CHART-quality",
+        "staff": {
+          "id": "CHART-quality",
+          "name": "研发丙",
+          "role": "ai_quality",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staffName": "研发丙",
+        "role": "ai_quality",
+        "task_id": "CHART-task",
+        "hours": 8,
+        "delivery_progress": 50,
+        "created_at": "2026-09-16T08:00:00Z",
+        "requirement_title": "CHART-E4",
+        "version": "CHART-v1",
+        "product_managers": [
+          "归属乙"
+        ],
+        "is_product_manager_record": false,
+        "source_type": "engineering"
+      },
+      {
+        "id": "CHART-E5",
+        "staff_id": "CHART-embedded",
+        "staff": {
+          "id": "CHART-embedded",
+          "name": "研发丁",
+          "role": "embedded",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staffName": "研发丁",
+        "role": "embedded",
+        "task_id": "CHART-task",
+        "hours": 12,
+        "delivery_progress": 50,
+        "created_at": "2026-09-16T08:00:00Z",
+        "requirement_title": "CHART-E5",
+        "version": "CHART-v1",
+        "product_managers": [
+          "归属丙"
+        ],
+        "is_product_manager_record": false,
+        "source_type": "engineering"
+      },
+      {
+        "id": "CHART-P1",
+        "staff_id": "CHART-product-a",
+        "staff": {
+          "id": "CHART-product-a",
+          "name": "产品甲",
+          "role": "ai_pm",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staffName": "产品甲",
+        "role": "ai_pm",
+        "task_id": "CHART-task",
+        "hours": 40,
+        "delivery_progress": 50,
+        "created_at": "2026-09-16T08:00:00Z",
+        "requirement_title": "CHART-P1",
+        "version": "CHART-v1",
+        "product_managers": [
+          "归属甲"
+        ],
+        "is_product_manager_record": true,
+        "source_type": "product_manager",
+        "demand_sources": [
+          "内部需求",
+          "客户需求"
+        ],
+        "demand_source_weights": {
+          "内部需求": 60,
+          "客户需求": 40
+        }
+      },
+      {
+        "id": "CHART-P2",
+        "staff_id": "CHART-product-b",
+        "staff": {
+          "id": "CHART-product-b",
+          "name": "产品乙",
+          "role": "ai_pm",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staffName": "产品乙",
+        "role": "ai_pm",
+        "task_id": "CHART-task",
+        "hours": 20,
+        "delivery_progress": 50,
+        "created_at": "2026-09-16T08:00:00Z",
+        "requirement_title": "CHART-P2",
+        "version": "CHART-v1",
+        "product_managers": [
+          "归属甲"
+        ],
+        "is_product_manager_record": true,
+        "source_type": "product_manager",
+        "demand_sources": [
+          "技术需求",
+          "其他需求"
+        ],
+        "demand_source_weights": {
+          "技术需求": 40,
+          "其他需求": 60
+        }
+      }
+    ],
+    "staff": [
+      {
+        "id": "CHART-dev",
+        "name": "研发甲",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      {
+        "id": "CHART-voip",
+        "name": "研发乙",
+        "role": "voip",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      {
+        "id": "CHART-quality",
+        "name": "研发丙",
+        "role": "ai_quality",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      {
+        "id": "CHART-embedded",
+        "name": "研发丁",
+        "role": "embedded",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      {
+        "id": "CHART-product-a",
+        "name": "产品甲",
+        "role": "ai_pm",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      {
+        "id": "CHART-product-b",
+        "name": "产品乙",
+        "role": "ai_pm",
+        "is_active": true,
+        "employment_status": "active"
+      }
+    ],
+    "currentStaff": [
+      {
+        "id": "CHART-dev",
+        "name": "研发甲",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      {
+        "id": "CHART-voip",
+        "name": "研发乙",
+        "role": "voip",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      {
+        "id": "CHART-quality",
+        "name": "研发丙",
+        "role": "ai_quality",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      {
+        "id": "CHART-embedded",
+        "name": "研发丁",
+        "role": "embedded",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      {
+        "id": "CHART-product-a",
+        "name": "产品甲",
+        "role": "ai_pm",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      {
+        "id": "CHART-product-b",
+        "name": "产品乙",
+        "role": "ai_pm",
+        "is_active": true,
+        "employment_status": "active"
+      }
+    ],
+    "productManagerRecords": [
+      {
+        "id": "CHART-P1",
+        "staff_id": "CHART-product-a",
+        "staff": {
+          "id": "CHART-product-a",
+          "name": "产品甲",
+          "role": "ai_pm",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staffName": "产品甲",
+        "role": "ai_pm",
+        "task_id": "CHART-task",
+        "hours": 40,
+        "delivery_progress": 50,
+        "created_at": "2026-09-16T08:00:00Z",
+        "requirement_title": "CHART-P1",
+        "version": "CHART-v1",
+        "product_managers": [
+          "归属甲"
+        ],
+        "is_product_manager_record": true,
+        "source_type": "product_manager",
+        "demand_sources": [
+          "内部需求",
+          "客户需求"
+        ],
+        "demand_source_weights": {
+          "内部需求": 60,
+          "客户需求": 40
+        }
+      },
+      {
+        "id": "CHART-P2",
+        "staff_id": "CHART-product-b",
+        "staff": {
+          "id": "CHART-product-b",
+          "name": "产品乙",
+          "role": "ai_pm",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staffName": "产品乙",
+        "role": "ai_pm",
+        "task_id": "CHART-task",
+        "hours": 20,
+        "delivery_progress": 50,
+        "created_at": "2026-09-16T08:00:00Z",
+        "requirement_title": "CHART-P2",
+        "version": "CHART-v1",
+        "product_managers": [
+          "归属甲"
+        ],
+        "is_product_manager_record": true,
+        "source_type": "product_manager",
+        "demand_sources": [
+          "技术需求",
+          "其他需求"
+        ],
+        "demand_source_weights": {
+          "技术需求": 40,
+          "其他需求": 60
+        }
+      }
+    ],
+    "productDemandDistribution": [
+      {
+        "id": "CHART-internal",
+        "name": "内部需求",
+        "color": "#165DFF",
+        "sort_order": 0,
+        "is_active": true,
+        "total": 24,
+        "product": 24
+      },
+      {
+        "id": "CHART-customer",
+        "name": "客户需求",
+        "color": "#00B42A",
+        "sort_order": 10,
+        "is_active": true,
+        "total": 16,
+        "product": 16
+      },
+      {
+        "id": "CHART-tech",
+        "name": "技术需求",
+        "color": "#FF7D00",
+        "sort_order": 20,
+        "is_active": true,
+        "total": 8,
+        "product": 8
+      },
+      {
+        "id": "CHART-other",
+        "name": "其他需求",
+        "color": "#722ED1",
+        "sort_order": 30,
+        "is_active": true,
+        "total": 12,
+        "product": 12
+      }
+    ],
+    "demandSources": [
+      {
+        "id": "CHART-internal",
+        "name": "内部需求",
+        "color": "#165DFF",
+        "sort_order": 0,
+        "is_active": true
+      },
+      {
+        "id": "CHART-customer",
+        "name": "客户需求",
+        "color": "#00B42A",
+        "sort_order": 10,
+        "is_active": true
+      },
+      {
+        "id": "CHART-tech",
+        "name": "技术需求",
+        "color": "#FF7D00",
+        "sort_order": 20,
+        "is_active": true
+      },
+      {
+        "id": "CHART-other",
+        "name": "其他需求",
+        "color": "#722ED1",
+        "sort_order": 30,
+        "is_active": true
+      }
+    ],
+    "pmDistribution": [
+      {
+        "id": "CHART-pm-0",
+        "name": "归属甲",
+        "is_active": true,
+        "employment_status": "active",
+        "records": [
+          {
+            "id": "CHART-E1",
+            "staff_id": "CHART-dev",
+            "staff": {
+              "id": "CHART-dev",
+              "name": "研发甲",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staffName": "研发甲",
+            "role": "ai_dev",
+            "task_id": "CHART-task",
+            "hours": 32,
+            "delivery_progress": 50,
+            "created_at": "2026-09-16T08:00:00Z",
+            "requirement_title": "CHART-E1",
+            "version": "CHART-v1",
+            "product_managers": [
+              "归属甲"
+            ],
+            "is_product_manager_record": false,
+            "source_type": "engineering"
+          },
+          {
+            "id": "CHART-E2",
+            "staff_id": "CHART-voip",
+            "staff": {
+              "id": "CHART-voip",
+              "name": "研发乙",
+              "role": "voip",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staffName": "研发乙",
+            "role": "voip",
+            "task_id": "CHART-task",
+            "hours": 8,
+            "delivery_progress": 50,
+            "created_at": "2026-09-16T08:00:00Z",
+            "requirement_title": "CHART-E2",
+            "version": "CHART-v1",
+            "product_managers": [
+              "归属甲"
+            ],
+            "is_product_manager_record": false,
+            "source_type": "engineering"
+          }
+        ],
+        "total": 40,
+        "ai_dev": 32,
+        "voip": 8,
+        "ai_quality": 0,
+        "embedded": 0,
+        "ai_pm": 0
+      },
+      {
+        "id": "CHART-pm-1",
+        "name": "归属乙",
+        "is_active": true,
+        "employment_status": "active",
+        "records": [
+          {
+            "id": "CHART-E3",
+            "staff_id": "CHART-dev",
+            "staff": {
+              "id": "CHART-dev",
+              "name": "研发甲",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staffName": "研发甲",
+            "role": "ai_dev",
+            "task_id": "CHART-task",
+            "hours": 16,
+            "delivery_progress": 50,
+            "created_at": "2026-09-16T08:00:00Z",
+            "requirement_title": "CHART-E3",
+            "version": "CHART-v1",
+            "product_managers": [
+              "归属乙"
+            ],
+            "is_product_manager_record": false,
+            "source_type": "engineering"
+          },
+          {
+            "id": "CHART-E4",
+            "staff_id": "CHART-quality",
+            "staff": {
+              "id": "CHART-quality",
+              "name": "研发丙",
+              "role": "ai_quality",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staffName": "研发丙",
+            "role": "ai_quality",
+            "task_id": "CHART-task",
+            "hours": 8,
+            "delivery_progress": 50,
+            "created_at": "2026-09-16T08:00:00Z",
+            "requirement_title": "CHART-E4",
+            "version": "CHART-v1",
+            "product_managers": [
+              "归属乙"
+            ],
+            "is_product_manager_record": false,
+            "source_type": "engineering"
+          }
+        ],
+        "total": 24,
+        "ai_dev": 16,
+        "voip": 0,
+        "ai_quality": 8,
+        "embedded": 0,
+        "ai_pm": 0
+      },
+      {
+        "id": "CHART-pm-2",
+        "name": "归属丙",
+        "is_active": true,
+        "employment_status": "active",
+        "records": [
+          {
+            "id": "CHART-E5",
+            "staff_id": "CHART-embedded",
+            "staff": {
+              "id": "CHART-embedded",
+              "name": "研发丁",
+              "role": "embedded",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staffName": "研发丁",
+            "role": "embedded",
+            "task_id": "CHART-task",
+            "hours": 12,
+            "delivery_progress": 50,
+            "created_at": "2026-09-16T08:00:00Z",
+            "requirement_title": "CHART-E5",
+            "version": "CHART-v1",
+            "product_managers": [
+              "归属丙"
+            ],
+            "is_product_manager_record": false,
+            "source_type": "engineering"
+          }
+        ],
+        "total": 12,
+        "ai_dev": 0,
+        "voip": 0,
+        "ai_quality": 0,
+        "embedded": 12,
+        "ai_pm": 0
+      }
+    ],
+    "roleSummary": {
+      "ai_dev": 48,
+      "voip": 8,
+      "ai_quality": 8,
+      "embedded": 12,
+      "ai_pm": 60
+    },
+    "summary": {
+      "totalHours": 136,
+      "recordCount": 7,
+      "staffCount": 6,
+      "taskCount": 1
+    },
+    "matchGroups": [],
+    "workHours": {
+      "actualHours": 136,
+      "standardHours": 240,
+      "completionRate": 56.67,
+      "excessRate": 0,
+      "workingDays": 30,
+      "calendarStatus": "official",
+      "units": [
+        {
+          "staffId": "CHART-dev",
+          "staffName": "研发甲",
+          "role": "ai_dev",
+          "taskId": "CHART-task",
+          "workDates": [
+            "2026-09-14",
+            "2026-09-15",
+            "2026-09-16",
+            "2026-09-17",
+            "2026-09-18"
+          ],
+          "calendarStatus": "official"
+        },
+        {
+          "staffId": "CHART-voip",
+          "staffName": "研发乙",
+          "role": "voip",
+          "taskId": "CHART-task",
+          "workDates": [
+            "2026-09-14",
+            "2026-09-15",
+            "2026-09-16",
+            "2026-09-17",
+            "2026-09-18"
+          ],
+          "calendarStatus": "official"
+        },
+        {
+          "staffId": "CHART-quality",
+          "staffName": "研发丙",
+          "role": "ai_quality",
+          "taskId": "CHART-task",
+          "workDates": [
+            "2026-09-14",
+            "2026-09-15",
+            "2026-09-16",
+            "2026-09-17",
+            "2026-09-18"
+          ],
+          "calendarStatus": "official"
+        },
+        {
+          "staffId": "CHART-embedded",
+          "staffName": "研发丁",
+          "role": "embedded",
+          "taskId": "CHART-task",
+          "workDates": [
+            "2026-09-14",
+            "2026-09-15",
+            "2026-09-16",
+            "2026-09-17",
+            "2026-09-18"
+          ],
+          "calendarStatus": "official"
+        },
+        {
+          "staffId": "CHART-product-a",
+          "staffName": "产品甲",
+          "role": "ai_pm",
+          "taskId": "CHART-task",
+          "workDates": [
+            "2026-09-14",
+            "2026-09-15",
+            "2026-09-16",
+            "2026-09-17",
+            "2026-09-18"
+          ],
+          "calendarStatus": "official"
+        },
+        {
+          "staffId": "CHART-product-b",
+          "staffName": "产品乙",
+          "role": "ai_pm",
+          "taskId": "CHART-task",
+          "workDates": [
+            "2026-09-14",
+            "2026-09-15",
+            "2026-09-16",
+            "2026-09-17",
+            "2026-09-18"
+          ],
+          "calendarStatus": "official"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,121 @@
+{
+  "status": "PASS",
+  "cardLabels": 6,
+  "deliveredHours": 415,
+  "geometry": [
+    {
+      "text": "应交付",
+      "w": 41.484375,
+      "scroll": 41,
+      "client": 41
+    },
+    {
+      "text": "含版本号已交付",
+      "w": 41.5,
+      "scroll": 42,
+      "client": 42
+    },
+    {
+      "text": "交付率",
+      "w": 56.015625,
+      "scroll": 56,
+      "client": 56
+    },
+    {
+      "text": "应交付",
+      "w": 41.484375,
+      "scroll": 41,
+      "client": 41
+    },
+    {
+      "text": "含版本号已交付",
+      "w": 41.5,
+      "scroll": 42,
+      "client": 42
+    },
+    {
+      "text": "交付率",
+      "w": 56.015625,
+      "scroll": 56,
+      "client": 56
+    },
+    {
+      "text": "应交付",
+      "w": 41.484375,
+      "scroll": 41,
+      "client": 41
+    },
+    {
+      "text": "含版本号已交付",
+      "w": 41.5,
+      "scroll": 42,
+      "client": 42
+    },
+    {
+      "text": "交付率",
+      "w": 56.015625,
+      "scroll": 56,
+      "client": 56
+    },
+    {
+      "text": "应交付",
+      "w": 41.484375,
+      "scroll": 41,
+      "client": 41
+    },
+    {
+      "text": "含版本号已交付",
+      "w": 41.5,
+      "scroll": 42,
+      "client": 42
+    },
+    {
+      "text": "交付率",
+      "w": 56.015625,
+      "scroll": 56,
+      "client": 56
+    },
+    {
+      "text": "应交付",
+      "w": 41.484375,
+      "scroll": 41,
+      "client": 41
+    },
+    {
+      "text": "含版本号已交付",
+      "w": 41.5,
+      "scroll": 42,
+      "client": 42
+    },
+    {
+      "text": "交付率",
+      "w": 56.015625,
+      "scroll": 56,
+      "client": 56
+    },
+    {
+      "text": "应交付",
+      "w": 41.484375,
+      "scroll": 41,
+      "client": 41
+    },
+    {
+      "text": "含版本号已交付",
+      "w": 41.5,
+      "scroll": 42,
+      "client": 42
+    },
+    {
+      "text": "交付率",
+      "w": 56.015625,
+      "scroll": 56,
+      "client": 56
+    }
+  ],
+  "personHeader": {
+    "w": 70,
+    "scroll": 70,
+    "text": "含版本号已交付"
+  },
+  "errors": []
+}

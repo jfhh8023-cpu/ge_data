@@ -1,0 +1,2272 @@
+{
+  "task": {
+    "id": "REST-task",
+    "title": "REST当前验证周",
+    "year": 2026,
+    "week_number": 38,
+    "time_dimension": "week",
+    "start_date": "2026-09-14",
+    "end_date": "2026-09-20",
+    "status": "active",
+    "is_preferred": true
+  },
+  "history": {
+    "id": "REST-history",
+    "title": "REST历史验证周",
+    "year": 2025,
+    "week_number": 2,
+    "time_dimension": "week",
+    "start_date": "2025-01-06",
+    "end_date": "2025-01-12",
+    "status": "closed",
+    "is_preferred": false
+  },
+  "people": [
+    {
+      "id": "REST-dev",
+      "name": "REST研发甲",
+      "role": "ai_dev",
+      "is_active": true,
+      "employment_status": "active"
+    },
+    {
+      "id": "REST-audit",
+      "name": "REST审计乙",
+      "role": "rest_audit",
+      "is_active": true,
+      "employment_status": "active"
+    }
+  ],
+  "pm": {
+    "id": "REST-pm",
+    "name": "REST归属经理",
+    "is_active": true,
+    "employment_status": "active"
+  },
+  "records": [
+    {
+      "id": "REST-zero-00监控",
+      "hours": 0,
+      "version": "REST-v1",
+      "staff": {
+        "id": "REST-dev",
+        "name": "REST研发甲",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staff_id": "REST-dev",
+      "role": "ai_dev",
+      "staffName": "REST研发甲",
+      "task_id": "REST-task",
+      "created_at": "2026-09-14T10:00:00.000Z",
+      "requirement_title": "REST-zero-00监控",
+      "delivery_progress": 0,
+      "product_managers": [
+        "REST归属经理"
+      ],
+      "source_type": "engineering",
+      "is_product_manager_record": false
+    },
+    {
+      "id": "REST-zero-01监控",
+      "hours": 0,
+      "version": "REST-v1",
+      "staff": {
+        "id": "REST-dev",
+        "name": "REST研发甲",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staff_id": "REST-dev",
+      "role": "ai_dev",
+      "staffName": "REST研发甲",
+      "task_id": "REST-task",
+      "created_at": "2026-09-14T10:01:00.000Z",
+      "requirement_title": "REST-zero-01监控",
+      "delivery_progress": 0,
+      "product_managers": [
+        "REST归属经理"
+      ],
+      "source_type": "engineering",
+      "is_product_manager_record": false
+    },
+    {
+      "id": "REST-zero-02监控",
+      "hours": 0,
+      "version": "REST-v1",
+      "staff": {
+        "id": "REST-dev",
+        "name": "REST研发甲",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staff_id": "REST-dev",
+      "role": "ai_dev",
+      "staffName": "REST研发甲",
+      "task_id": "REST-task",
+      "created_at": "2026-09-14T10:02:00.000Z",
+      "requirement_title": "REST-zero-02监控",
+      "delivery_progress": 0,
+      "product_managers": [
+        "REST归属经理"
+      ],
+      "source_type": "engineering",
+      "is_product_manager_record": false
+    },
+    {
+      "id": "REST-zero-03监控",
+      "hours": 0,
+      "version": "REST-v1",
+      "staff": {
+        "id": "REST-dev",
+        "name": "REST研发甲",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staff_id": "REST-dev",
+      "role": "ai_dev",
+      "staffName": "REST研发甲",
+      "task_id": "REST-task",
+      "created_at": "2026-09-14T10:03:00.000Z",
+      "requirement_title": "REST-zero-03监控",
+      "delivery_progress": 0,
+      "product_managers": [
+        "REST归属经理"
+      ],
+      "source_type": "engineering",
+      "is_product_manager_record": false
+    },
+    {
+      "id": "REST-zero-04监控",
+      "hours": 0,
+      "version": "REST-v1",
+      "staff": {
+        "id": "REST-dev",
+        "name": "REST研发甲",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staff_id": "REST-dev",
+      "role": "ai_dev",
+      "staffName": "REST研发甲",
+      "task_id": "REST-task",
+      "created_at": "2026-09-14T10:04:00.000Z",
+      "requirement_title": "REST-zero-04监控",
+      "delivery_progress": 0,
+      "product_managers": [
+        "REST归属经理"
+      ],
+      "source_type": "engineering",
+      "is_product_manager_record": false
+    },
+    {
+      "id": "REST-zero-05监控",
+      "hours": 0,
+      "version": "REST-v1",
+      "staff": {
+        "id": "REST-dev",
+        "name": "REST研发甲",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staff_id": "REST-dev",
+      "role": "ai_dev",
+      "staffName": "REST研发甲",
+      "task_id": "REST-task",
+      "created_at": "2026-09-14T10:05:00.000Z",
+      "requirement_title": "REST-zero-05监控",
+      "delivery_progress": 0,
+      "product_managers": [
+        "REST归属经理"
+      ],
+      "source_type": "engineering",
+      "is_product_manager_record": false
+    },
+    {
+      "id": "REST-zero-06监控",
+      "hours": 0,
+      "version": "REST-v1",
+      "staff": {
+        "id": "REST-dev",
+        "name": "REST研发甲",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staff_id": "REST-dev",
+      "role": "ai_dev",
+      "staffName": "REST研发甲",
+      "task_id": "REST-task",
+      "created_at": "2026-09-14T10:06:00.000Z",
+      "requirement_title": "REST-zero-06监控",
+      "delivery_progress": 0,
+      "product_managers": [
+        "REST归属经理"
+      ],
+      "source_type": "engineering",
+      "is_product_manager_record": false
+    },
+    {
+      "id": "REST-zero-07监控",
+      "hours": 0,
+      "version": "REST-v1",
+      "staff": {
+        "id": "REST-dev",
+        "name": "REST研发甲",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staff_id": "REST-dev",
+      "role": "ai_dev",
+      "staffName": "REST研发甲",
+      "task_id": "REST-task",
+      "created_at": "2026-09-14T10:07:00.000Z",
+      "requirement_title": "REST-zero-07监控",
+      "delivery_progress": 0,
+      "product_managers": [
+        "REST归属经理"
+      ],
+      "source_type": "engineering",
+      "is_product_manager_record": false
+    },
+    {
+      "id": "REST-zero-08监控",
+      "hours": 0,
+      "version": "REST-v1",
+      "staff": {
+        "id": "REST-dev",
+        "name": "REST研发甲",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staff_id": "REST-dev",
+      "role": "ai_dev",
+      "staffName": "REST研发甲",
+      "task_id": "REST-task",
+      "created_at": "2026-09-14T10:08:00.000Z",
+      "requirement_title": "REST-zero-08监控",
+      "delivery_progress": 0,
+      "product_managers": [
+        "REST归属经理"
+      ],
+      "source_type": "engineering",
+      "is_product_manager_record": false
+    },
+    {
+      "id": "REST-zero-09监控",
+      "hours": 0,
+      "version": "REST-v1",
+      "staff": {
+        "id": "REST-dev",
+        "name": "REST研发甲",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staff_id": "REST-dev",
+      "role": "ai_dev",
+      "staffName": "REST研发甲",
+      "task_id": "REST-task",
+      "created_at": "2026-09-14T10:09:00.000Z",
+      "requirement_title": "REST-zero-09监控",
+      "delivery_progress": 0,
+      "product_managers": [
+        "REST归属经理"
+      ],
+      "source_type": "engineering",
+      "is_product_manager_record": false
+    },
+    {
+      "id": "REST-zero-10监控",
+      "hours": 0,
+      "version": "REST-v1",
+      "staff": {
+        "id": "REST-dev",
+        "name": "REST研发甲",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staff_id": "REST-dev",
+      "role": "ai_dev",
+      "staffName": "REST研发甲",
+      "task_id": "REST-task",
+      "created_at": "2026-09-14T10:10:00.000Z",
+      "requirement_title": "REST-zero-10监控",
+      "delivery_progress": 0,
+      "product_managers": [
+        "REST归属经理"
+      ],
+      "source_type": "engineering",
+      "is_product_manager_record": false
+    },
+    {
+      "id": "REST-zero-11监控",
+      "hours": 0,
+      "version": "REST-v1",
+      "staff": {
+        "id": "REST-dev",
+        "name": "REST研发甲",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staff_id": "REST-dev",
+      "role": "ai_dev",
+      "staffName": "REST研发甲",
+      "task_id": "REST-task",
+      "created_at": "2026-09-14T10:11:00.000Z",
+      "requirement_title": "REST-zero-11监控",
+      "delivery_progress": 0,
+      "product_managers": [
+        "REST归属经理"
+      ],
+      "source_type": "engineering",
+      "is_product_manager_record": false
+    },
+    {
+      "id": "REST-zero-12监控",
+      "hours": 0,
+      "version": "REST-v1",
+      "staff": {
+        "id": "REST-dev",
+        "name": "REST研发甲",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staff_id": "REST-dev",
+      "role": "ai_dev",
+      "staffName": "REST研发甲",
+      "task_id": "REST-task",
+      "created_at": "2026-09-14T10:12:00.000Z",
+      "requirement_title": "REST-zero-12监控",
+      "delivery_progress": 0,
+      "product_managers": [
+        "REST归属经理"
+      ],
+      "source_type": "engineering",
+      "is_product_manager_record": false
+    },
+    {
+      "id": "REST-zero-13监控",
+      "hours": 0,
+      "version": "REST-v1",
+      "staff": {
+        "id": "REST-dev",
+        "name": "REST研发甲",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staff_id": "REST-dev",
+      "role": "ai_dev",
+      "staffName": "REST研发甲",
+      "task_id": "REST-task",
+      "created_at": "2026-09-14T10:13:00.000Z",
+      "requirement_title": "REST-zero-13监控",
+      "delivery_progress": 0,
+      "product_managers": [
+        "REST归属经理"
+      ],
+      "source_type": "engineering",
+      "is_product_manager_record": false
+    },
+    {
+      "id": "REST-zero-14监控",
+      "hours": 0,
+      "version": "REST-v1",
+      "staff": {
+        "id": "REST-dev",
+        "name": "REST研发甲",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staff_id": "REST-dev",
+      "role": "ai_dev",
+      "staffName": "REST研发甲",
+      "task_id": "REST-task",
+      "created_at": "2026-09-14T10:14:00.000Z",
+      "requirement_title": "REST-zero-14监控",
+      "delivery_progress": 0,
+      "product_managers": [
+        "REST归属经理"
+      ],
+      "source_type": "engineering",
+      "is_product_manager_record": false
+    },
+    {
+      "id": "REST-zero-15监控",
+      "hours": 0,
+      "version": "REST-v1",
+      "staff": {
+        "id": "REST-dev",
+        "name": "REST研发甲",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staff_id": "REST-dev",
+      "role": "ai_dev",
+      "staffName": "REST研发甲",
+      "task_id": "REST-task",
+      "created_at": "2026-09-14T10:15:00.000Z",
+      "requirement_title": "REST-zero-15监控",
+      "delivery_progress": 0,
+      "product_managers": [
+        "REST归属经理"
+      ],
+      "source_type": "engineering",
+      "is_product_manager_record": false
+    },
+    {
+      "id": "REST-zero-16监控",
+      "hours": 0,
+      "version": "REST-v1",
+      "staff": {
+        "id": "REST-dev",
+        "name": "REST研发甲",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staff_id": "REST-dev",
+      "role": "ai_dev",
+      "staffName": "REST研发甲",
+      "task_id": "REST-task",
+      "created_at": "2026-09-14T10:16:00.000Z",
+      "requirement_title": "REST-zero-16监控",
+      "delivery_progress": 0,
+      "product_managers": [
+        "REST归属经理"
+      ],
+      "source_type": "engineering",
+      "is_product_manager_record": false
+    },
+    {
+      "id": "REST-zero-17监控",
+      "hours": 0,
+      "version": "REST-v1",
+      "staff": {
+        "id": "REST-dev",
+        "name": "REST研发甲",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staff_id": "REST-dev",
+      "role": "ai_dev",
+      "staffName": "REST研发甲",
+      "task_id": "REST-task",
+      "created_at": "2026-09-14T10:17:00.000Z",
+      "requirement_title": "REST-zero-17监控",
+      "delivery_progress": 0,
+      "product_managers": [
+        "REST归属经理"
+      ],
+      "source_type": "engineering",
+      "is_product_manager_record": false
+    },
+    {
+      "id": "REST-zero-18监控",
+      "hours": 0,
+      "version": "REST-v1",
+      "staff": {
+        "id": "REST-dev",
+        "name": "REST研发甲",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staff_id": "REST-dev",
+      "role": "ai_dev",
+      "staffName": "REST研发甲",
+      "task_id": "REST-task",
+      "created_at": "2026-09-14T10:18:00.000Z",
+      "requirement_title": "REST-zero-18监控",
+      "delivery_progress": 0,
+      "product_managers": [
+        "REST归属经理"
+      ],
+      "source_type": "engineering",
+      "is_product_manager_record": false
+    },
+    {
+      "id": "REST-zero-19监控",
+      "hours": 0,
+      "version": "REST-v1",
+      "staff": {
+        "id": "REST-dev",
+        "name": "REST研发甲",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staff_id": "REST-dev",
+      "role": "ai_dev",
+      "staffName": "REST研发甲",
+      "task_id": "REST-task",
+      "created_at": "2026-09-14T10:19:00.000Z",
+      "requirement_title": "REST-zero-19监控",
+      "delivery_progress": 0,
+      "product_managers": [
+        "REST归属经理"
+      ],
+      "source_type": "engineering",
+      "is_product_manager_record": false
+    },
+    {
+      "id": "REST-zero-20监控",
+      "hours": 0,
+      "version": "REST-v1",
+      "staff": {
+        "id": "REST-dev",
+        "name": "REST研发甲",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staff_id": "REST-dev",
+      "role": "ai_dev",
+      "staffName": "REST研发甲",
+      "task_id": "REST-task",
+      "created_at": "2026-09-14T10:20:00.000Z",
+      "requirement_title": "REST-zero-20监控",
+      "delivery_progress": 0,
+      "product_managers": [
+        "REST归属经理"
+      ],
+      "source_type": "engineering",
+      "is_product_manager_record": false
+    },
+    {
+      "id": "REST-zero-21监控",
+      "hours": 0,
+      "version": "REST-v1",
+      "staff": {
+        "id": "REST-dev",
+        "name": "REST研发甲",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staff_id": "REST-dev",
+      "role": "ai_dev",
+      "staffName": "REST研发甲",
+      "task_id": "REST-task",
+      "created_at": "2026-09-14T10:21:00.000Z",
+      "requirement_title": "REST-zero-21监控",
+      "delivery_progress": 0,
+      "product_managers": [
+        "REST归属经理"
+      ],
+      "source_type": "engineering",
+      "is_product_manager_record": false
+    },
+    {
+      "id": "REST-zero-22监控",
+      "hours": 0,
+      "version": "REST-v1",
+      "staff": {
+        "id": "REST-dev",
+        "name": "REST研发甲",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staff_id": "REST-dev",
+      "role": "ai_dev",
+      "staffName": "REST研发甲",
+      "task_id": "REST-task",
+      "created_at": "2026-09-14T10:22:00.000Z",
+      "requirement_title": "REST-zero-22监控",
+      "delivery_progress": 0,
+      "product_managers": [
+        "REST归属经理"
+      ],
+      "source_type": "engineering",
+      "is_product_manager_record": false
+    },
+    {
+      "id": "REST-zero-23监控",
+      "hours": 0,
+      "version": "REST-v1",
+      "staff": {
+        "id": "REST-dev",
+        "name": "REST研发甲",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staff_id": "REST-dev",
+      "role": "ai_dev",
+      "staffName": "REST研发甲",
+      "task_id": "REST-task",
+      "created_at": "2026-09-14T10:23:00.000Z",
+      "requirement_title": "REST-zero-23监控",
+      "delivery_progress": 0,
+      "product_managers": [
+        "REST归属经理"
+      ],
+      "source_type": "engineering",
+      "is_product_manager_record": false
+    },
+    {
+      "id": "REST-new32呼叫优化",
+      "hours": 32,
+      "version": "REST-v1",
+      "staff": {
+        "id": "REST-dev",
+        "name": "REST研发甲",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staff_id": "REST-dev",
+      "role": "ai_dev",
+      "staffName": "REST研发甲",
+      "task_id": "REST-task",
+      "created_at": "2026-09-16T12:00:00Z",
+      "requirement_title": "REST-new32呼叫优化",
+      "delivery_progress": 0,
+      "product_managers": [
+        "REST归属经理"
+      ],
+      "source_type": "engineering",
+      "is_product_manager_record": false
+    },
+    {
+      "id": "REST-noVersion16旧进度100",
+      "hours": 16,
+      "version": "",
+      "staff": {
+        "id": "REST-dev",
+        "name": "REST研发甲",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staff_id": "REST-dev",
+      "role": "ai_dev",
+      "staffName": "REST研发甲",
+      "task_id": "REST-task",
+      "created_at": "2026-09-16T13:00:00Z",
+      "requirement_title": "REST-noVersion16旧进度100",
+      "delivery_progress": 100,
+      "product_managers": [
+        "REST归属经理"
+      ],
+      "source_type": "engineering",
+      "is_product_manager_record": false
+    },
+    {
+      "id": "REST-custom48审计",
+      "hours": 48,
+      "version": "REST-v2",
+      "staff": {
+        "id": "REST-audit",
+        "name": "REST审计乙",
+        "role": "rest_audit",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      "staff_id": "REST-audit",
+      "role": "rest_audit",
+      "staffName": "REST审计乙",
+      "task_id": "REST-task",
+      "created_at": "2026-09-16T11:00:00Z",
+      "requirement_title": "REST-custom48审计",
+      "delivery_progress": 0,
+      "product_managers": [
+        "REST归属经理"
+      ],
+      "source_type": "engineering",
+      "is_product_manager_record": false
+    }
+  ],
+  "old": {
+    "id": "REST-history40部署",
+    "hours": 40,
+    "version": "REST-v1",
+    "staff": {
+      "id": "REST-dev",
+      "name": "REST研发甲",
+      "role": "ai_dev",
+      "is_active": true,
+      "employment_status": "active"
+    },
+    "staff_id": "REST-dev",
+    "role": "ai_dev",
+    "staffName": "REST研发甲",
+    "task_id": "REST-history",
+    "created_at": "2025-01-07T10:00:00Z",
+    "requirement_title": "REST-history40部署",
+    "delivery_progress": 0,
+    "product_managers": [
+      "REST归属经理"
+    ],
+    "source_type": "engineering",
+    "is_product_manager_record": false
+  },
+  "stats": {
+    "tasks": [
+      {
+        "id": "REST-task",
+        "title": "REST当前验证周",
+        "year": 2026,
+        "week_number": 38,
+        "time_dimension": "week",
+        "start_date": "2026-09-14",
+        "end_date": "2026-09-20",
+        "status": "active",
+        "is_preferred": true
+      }
+    ],
+    "staff": [
+      {
+        "id": "REST-dev",
+        "name": "REST研发甲",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      {
+        "id": "REST-audit",
+        "name": "REST审计乙",
+        "role": "rest_audit",
+        "is_active": true,
+        "employment_status": "active"
+      }
+    ],
+    "currentStaff": [
+      {
+        "id": "REST-dev",
+        "name": "REST研发甲",
+        "role": "ai_dev",
+        "is_active": true,
+        "employment_status": "active"
+      },
+      {
+        "id": "REST-audit",
+        "name": "REST审计乙",
+        "role": "rest_audit",
+        "is_active": true,
+        "employment_status": "active"
+      }
+    ],
+    "records": [
+      {
+        "id": "REST-zero-00监控",
+        "hours": 0,
+        "version": "REST-v1",
+        "staff": {
+          "id": "REST-dev",
+          "name": "REST研发甲",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staff_id": "REST-dev",
+        "role": "ai_dev",
+        "staffName": "REST研发甲",
+        "task_id": "REST-task",
+        "created_at": "2026-09-14T10:00:00.000Z",
+        "requirement_title": "REST-zero-00监控",
+        "delivery_progress": 0,
+        "product_managers": [
+          "REST归属经理"
+        ],
+        "source_type": "engineering",
+        "is_product_manager_record": false
+      },
+      {
+        "id": "REST-zero-01监控",
+        "hours": 0,
+        "version": "REST-v1",
+        "staff": {
+          "id": "REST-dev",
+          "name": "REST研发甲",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staff_id": "REST-dev",
+        "role": "ai_dev",
+        "staffName": "REST研发甲",
+        "task_id": "REST-task",
+        "created_at": "2026-09-14T10:01:00.000Z",
+        "requirement_title": "REST-zero-01监控",
+        "delivery_progress": 0,
+        "product_managers": [
+          "REST归属经理"
+        ],
+        "source_type": "engineering",
+        "is_product_manager_record": false
+      },
+      {
+        "id": "REST-zero-02监控",
+        "hours": 0,
+        "version": "REST-v1",
+        "staff": {
+          "id": "REST-dev",
+          "name": "REST研发甲",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staff_id": "REST-dev",
+        "role": "ai_dev",
+        "staffName": "REST研发甲",
+        "task_id": "REST-task",
+        "created_at": "2026-09-14T10:02:00.000Z",
+        "requirement_title": "REST-zero-02监控",
+        "delivery_progress": 0,
+        "product_managers": [
+          "REST归属经理"
+        ],
+        "source_type": "engineering",
+        "is_product_manager_record": false
+      },
+      {
+        "id": "REST-zero-03监控",
+        "hours": 0,
+        "version": "REST-v1",
+        "staff": {
+          "id": "REST-dev",
+          "name": "REST研发甲",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staff_id": "REST-dev",
+        "role": "ai_dev",
+        "staffName": "REST研发甲",
+        "task_id": "REST-task",
+        "created_at": "2026-09-14T10:03:00.000Z",
+        "requirement_title": "REST-zero-03监控",
+        "delivery_progress": 0,
+        "product_managers": [
+          "REST归属经理"
+        ],
+        "source_type": "engineering",
+        "is_product_manager_record": false
+      },
+      {
+        "id": "REST-zero-04监控",
+        "hours": 0,
+        "version": "REST-v1",
+        "staff": {
+          "id": "REST-dev",
+          "name": "REST研发甲",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staff_id": "REST-dev",
+        "role": "ai_dev",
+        "staffName": "REST研发甲",
+        "task_id": "REST-task",
+        "created_at": "2026-09-14T10:04:00.000Z",
+        "requirement_title": "REST-zero-04监控",
+        "delivery_progress": 0,
+        "product_managers": [
+          "REST归属经理"
+        ],
+        "source_type": "engineering",
+        "is_product_manager_record": false
+      },
+      {
+        "id": "REST-zero-05监控",
+        "hours": 0,
+        "version": "REST-v1",
+        "staff": {
+          "id": "REST-dev",
+          "name": "REST研发甲",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staff_id": "REST-dev",
+        "role": "ai_dev",
+        "staffName": "REST研发甲",
+        "task_id": "REST-task",
+        "created_at": "2026-09-14T10:05:00.000Z",
+        "requirement_title": "REST-zero-05监控",
+        "delivery_progress": 0,
+        "product_managers": [
+          "REST归属经理"
+        ],
+        "source_type": "engineering",
+        "is_product_manager_record": false
+      },
+      {
+        "id": "REST-zero-06监控",
+        "hours": 0,
+        "version": "REST-v1",
+        "staff": {
+          "id": "REST-dev",
+          "name": "REST研发甲",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staff_id": "REST-dev",
+        "role": "ai_dev",
+        "staffName": "REST研发甲",
+        "task_id": "REST-task",
+        "created_at": "2026-09-14T10:06:00.000Z",
+        "requirement_title": "REST-zero-06监控",
+        "delivery_progress": 0,
+        "product_managers": [
+          "REST归属经理"
+        ],
+        "source_type": "engineering",
+        "is_product_manager_record": false
+      },
+      {
+        "id": "REST-zero-07监控",
+        "hours": 0,
+        "version": "REST-v1",
+        "staff": {
+          "id": "REST-dev",
+          "name": "REST研发甲",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staff_id": "REST-dev",
+        "role": "ai_dev",
+        "staffName": "REST研发甲",
+        "task_id": "REST-task",
+        "created_at": "2026-09-14T10:07:00.000Z",
+        "requirement_title": "REST-zero-07监控",
+        "delivery_progress": 0,
+        "product_managers": [
+          "REST归属经理"
+        ],
+        "source_type": "engineering",
+        "is_product_manager_record": false
+      },
+      {
+        "id": "REST-zero-08监控",
+        "hours": 0,
+        "version": "REST-v1",
+        "staff": {
+          "id": "REST-dev",
+          "name": "REST研发甲",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staff_id": "REST-dev",
+        "role": "ai_dev",
+        "staffName": "REST研发甲",
+        "task_id": "REST-task",
+        "created_at": "2026-09-14T10:08:00.000Z",
+        "requirement_title": "REST-zero-08监控",
+        "delivery_progress": 0,
+        "product_managers": [
+          "REST归属经理"
+        ],
+        "source_type": "engineering",
+        "is_product_manager_record": false
+      },
+      {
+        "id": "REST-zero-09监控",
+        "hours": 0,
+        "version": "REST-v1",
+        "staff": {
+          "id": "REST-dev",
+          "name": "REST研发甲",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staff_id": "REST-dev",
+        "role": "ai_dev",
+        "staffName": "REST研发甲",
+        "task_id": "REST-task",
+        "created_at": "2026-09-14T10:09:00.000Z",
+        "requirement_title": "REST-zero-09监控",
+        "delivery_progress": 0,
+        "product_managers": [
+          "REST归属经理"
+        ],
+        "source_type": "engineering",
+        "is_product_manager_record": false
+      },
+      {
+        "id": "REST-zero-10监控",
+        "hours": 0,
+        "version": "REST-v1",
+        "staff": {
+          "id": "REST-dev",
+          "name": "REST研发甲",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staff_id": "REST-dev",
+        "role": "ai_dev",
+        "staffName": "REST研发甲",
+        "task_id": "REST-task",
+        "created_at": "2026-09-14T10:10:00.000Z",
+        "requirement_title": "REST-zero-10监控",
+        "delivery_progress": 0,
+        "product_managers": [
+          "REST归属经理"
+        ],
+        "source_type": "engineering",
+        "is_product_manager_record": false
+      },
+      {
+        "id": "REST-zero-11监控",
+        "hours": 0,
+        "version": "REST-v1",
+        "staff": {
+          "id": "REST-dev",
+          "name": "REST研发甲",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staff_id": "REST-dev",
+        "role": "ai_dev",
+        "staffName": "REST研发甲",
+        "task_id": "REST-task",
+        "created_at": "2026-09-14T10:11:00.000Z",
+        "requirement_title": "REST-zero-11监控",
+        "delivery_progress": 0,
+        "product_managers": [
+          "REST归属经理"
+        ],
+        "source_type": "engineering",
+        "is_product_manager_record": false
+      },
+      {
+        "id": "REST-zero-12监控",
+        "hours": 0,
+        "version": "REST-v1",
+        "staff": {
+          "id": "REST-dev",
+          "name": "REST研发甲",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staff_id": "REST-dev",
+        "role": "ai_dev",
+        "staffName": "REST研发甲",
+        "task_id": "REST-task",
+        "created_at": "2026-09-14T10:12:00.000Z",
+        "requirement_title": "REST-zero-12监控",
+        "delivery_progress": 0,
+        "product_managers": [
+          "REST归属经理"
+        ],
+        "source_type": "engineering",
+        "is_product_manager_record": false
+      },
+      {
+        "id": "REST-zero-13监控",
+        "hours": 0,
+        "version": "REST-v1",
+        "staff": {
+          "id": "REST-dev",
+          "name": "REST研发甲",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staff_id": "REST-dev",
+        "role": "ai_dev",
+        "staffName": "REST研发甲",
+        "task_id": "REST-task",
+        "created_at": "2026-09-14T10:13:00.000Z",
+        "requirement_title": "REST-zero-13监控",
+        "delivery_progress": 0,
+        "product_managers": [
+          "REST归属经理"
+        ],
+        "source_type": "engineering",
+        "is_product_manager_record": false
+      },
+      {
+        "id": "REST-zero-14监控",
+        "hours": 0,
+        "version": "REST-v1",
+        "staff": {
+          "id": "REST-dev",
+          "name": "REST研发甲",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staff_id": "REST-dev",
+        "role": "ai_dev",
+        "staffName": "REST研发甲",
+        "task_id": "REST-task",
+        "created_at": "2026-09-14T10:14:00.000Z",
+        "requirement_title": "REST-zero-14监控",
+        "delivery_progress": 0,
+        "product_managers": [
+          "REST归属经理"
+        ],
+        "source_type": "engineering",
+        "is_product_manager_record": false
+      },
+      {
+        "id": "REST-zero-15监控",
+        "hours": 0,
+        "version": "REST-v1",
+        "staff": {
+          "id": "REST-dev",
+          "name": "REST研发甲",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staff_id": "REST-dev",
+        "role": "ai_dev",
+        "staffName": "REST研发甲",
+        "task_id": "REST-task",
+        "created_at": "2026-09-14T10:15:00.000Z",
+        "requirement_title": "REST-zero-15监控",
+        "delivery_progress": 0,
+        "product_managers": [
+          "REST归属经理"
+        ],
+        "source_type": "engineering",
+        "is_product_manager_record": false
+      },
+      {
+        "id": "REST-zero-16监控",
+        "hours": 0,
+        "version": "REST-v1",
+        "staff": {
+          "id": "REST-dev",
+          "name": "REST研发甲",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staff_id": "REST-dev",
+        "role": "ai_dev",
+        "staffName": "REST研发甲",
+        "task_id": "REST-task",
+        "created_at": "2026-09-14T10:16:00.000Z",
+        "requirement_title": "REST-zero-16监控",
+        "delivery_progress": 0,
+        "product_managers": [
+          "REST归属经理"
+        ],
+        "source_type": "engineering",
+        "is_product_manager_record": false
+      },
+      {
+        "id": "REST-zero-17监控",
+        "hours": 0,
+        "version": "REST-v1",
+        "staff": {
+          "id": "REST-dev",
+          "name": "REST研发甲",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staff_id": "REST-dev",
+        "role": "ai_dev",
+        "staffName": "REST研发甲",
+        "task_id": "REST-task",
+        "created_at": "2026-09-14T10:17:00.000Z",
+        "requirement_title": "REST-zero-17监控",
+        "delivery_progress": 0,
+        "product_managers": [
+          "REST归属经理"
+        ],
+        "source_type": "engineering",
+        "is_product_manager_record": false
+      },
+      {
+        "id": "REST-zero-18监控",
+        "hours": 0,
+        "version": "REST-v1",
+        "staff": {
+          "id": "REST-dev",
+          "name": "REST研发甲",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staff_id": "REST-dev",
+        "role": "ai_dev",
+        "staffName": "REST研发甲",
+        "task_id": "REST-task",
+        "created_at": "2026-09-14T10:18:00.000Z",
+        "requirement_title": "REST-zero-18监控",
+        "delivery_progress": 0,
+        "product_managers": [
+          "REST归属经理"
+        ],
+        "source_type": "engineering",
+        "is_product_manager_record": false
+      },
+      {
+        "id": "REST-zero-19监控",
+        "hours": 0,
+        "version": "REST-v1",
+        "staff": {
+          "id": "REST-dev",
+          "name": "REST研发甲",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staff_id": "REST-dev",
+        "role": "ai_dev",
+        "staffName": "REST研发甲",
+        "task_id": "REST-task",
+        "created_at": "2026-09-14T10:19:00.000Z",
+        "requirement_title": "REST-zero-19监控",
+        "delivery_progress": 0,
+        "product_managers": [
+          "REST归属经理"
+        ],
+        "source_type": "engineering",
+        "is_product_manager_record": false
+      },
+      {
+        "id": "REST-zero-20监控",
+        "hours": 0,
+        "version": "REST-v1",
+        "staff": {
+          "id": "REST-dev",
+          "name": "REST研发甲",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staff_id": "REST-dev",
+        "role": "ai_dev",
+        "staffName": "REST研发甲",
+        "task_id": "REST-task",
+        "created_at": "2026-09-14T10:20:00.000Z",
+        "requirement_title": "REST-zero-20监控",
+        "delivery_progress": 0,
+        "product_managers": [
+          "REST归属经理"
+        ],
+        "source_type": "engineering",
+        "is_product_manager_record": false
+      },
+      {
+        "id": "REST-zero-21监控",
+        "hours": 0,
+        "version": "REST-v1",
+        "staff": {
+          "id": "REST-dev",
+          "name": "REST研发甲",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staff_id": "REST-dev",
+        "role": "ai_dev",
+        "staffName": "REST研发甲",
+        "task_id": "REST-task",
+        "created_at": "2026-09-14T10:21:00.000Z",
+        "requirement_title": "REST-zero-21监控",
+        "delivery_progress": 0,
+        "product_managers": [
+          "REST归属经理"
+        ],
+        "source_type": "engineering",
+        "is_product_manager_record": false
+      },
+      {
+        "id": "REST-zero-22监控",
+        "hours": 0,
+        "version": "REST-v1",
+        "staff": {
+          "id": "REST-dev",
+          "name": "REST研发甲",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staff_id": "REST-dev",
+        "role": "ai_dev",
+        "staffName": "REST研发甲",
+        "task_id": "REST-task",
+        "created_at": "2026-09-14T10:22:00.000Z",
+        "requirement_title": "REST-zero-22监控",
+        "delivery_progress": 0,
+        "product_managers": [
+          "REST归属经理"
+        ],
+        "source_type": "engineering",
+        "is_product_manager_record": false
+      },
+      {
+        "id": "REST-zero-23监控",
+        "hours": 0,
+        "version": "REST-v1",
+        "staff": {
+          "id": "REST-dev",
+          "name": "REST研发甲",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staff_id": "REST-dev",
+        "role": "ai_dev",
+        "staffName": "REST研发甲",
+        "task_id": "REST-task",
+        "created_at": "2026-09-14T10:23:00.000Z",
+        "requirement_title": "REST-zero-23监控",
+        "delivery_progress": 0,
+        "product_managers": [
+          "REST归属经理"
+        ],
+        "source_type": "engineering",
+        "is_product_manager_record": false
+      },
+      {
+        "id": "REST-new32呼叫优化",
+        "hours": 32,
+        "version": "REST-v1",
+        "staff": {
+          "id": "REST-dev",
+          "name": "REST研发甲",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staff_id": "REST-dev",
+        "role": "ai_dev",
+        "staffName": "REST研发甲",
+        "task_id": "REST-task",
+        "created_at": "2026-09-16T12:00:00Z",
+        "requirement_title": "REST-new32呼叫优化",
+        "delivery_progress": 0,
+        "product_managers": [
+          "REST归属经理"
+        ],
+        "source_type": "engineering",
+        "is_product_manager_record": false
+      },
+      {
+        "id": "REST-noVersion16旧进度100",
+        "hours": 16,
+        "version": "",
+        "staff": {
+          "id": "REST-dev",
+          "name": "REST研发甲",
+          "role": "ai_dev",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staff_id": "REST-dev",
+        "role": "ai_dev",
+        "staffName": "REST研发甲",
+        "task_id": "REST-task",
+        "created_at": "2026-09-16T13:00:00Z",
+        "requirement_title": "REST-noVersion16旧进度100",
+        "delivery_progress": 100,
+        "product_managers": [
+          "REST归属经理"
+        ],
+        "source_type": "engineering",
+        "is_product_manager_record": false
+      },
+      {
+        "id": "REST-custom48审计",
+        "hours": 48,
+        "version": "REST-v2",
+        "staff": {
+          "id": "REST-audit",
+          "name": "REST审计乙",
+          "role": "rest_audit",
+          "is_active": true,
+          "employment_status": "active"
+        },
+        "staff_id": "REST-audit",
+        "role": "rest_audit",
+        "staffName": "REST审计乙",
+        "task_id": "REST-task",
+        "created_at": "2026-09-16T11:00:00Z",
+        "requirement_title": "REST-custom48审计",
+        "delivery_progress": 0,
+        "product_managers": [
+          "REST归属经理"
+        ],
+        "source_type": "engineering",
+        "is_product_manager_record": false
+      }
+    ],
+    "roleDefinitions": [
+      {
+        "key": "ai_dev",
+        "name": "AI开发工程师",
+        "short_name": "AI开发",
+        "color": "#165DFF",
+        "sort_order": 0,
+        "is_active": true
+      },
+      {
+        "key": "voip",
+        "name": "VOIP工程师",
+        "short_name": "VOIP",
+        "color": "#00B42A",
+        "sort_order": 10,
+        "is_active": true
+      },
+      {
+        "key": "ai_quality",
+        "name": "AI质量工程师",
+        "short_name": "AI质量",
+        "color": "#FF7D00",
+        "sort_order": 20,
+        "is_active": true
+      },
+      {
+        "key": "embedded",
+        "name": "嵌入式工程师",
+        "short_name": "嵌入式",
+        "color": "#14B8A6",
+        "sort_order": 30,
+        "is_active": true
+      },
+      {
+        "key": "ai_pm",
+        "name": "AI产品经理",
+        "short_name": "AI产品",
+        "color": "#722ED1",
+        "sort_order": 40,
+        "is_active": true
+      },
+      {
+        "key": "rest_audit",
+        "name": "REST动态岗位",
+        "short_name": "REST审计",
+        "color": "#123456",
+        "sort_order": 50,
+        "is_active": true
+      }
+    ],
+    "workHours": {
+      "standardHours": 80,
+      "workingDays": 10,
+      "units": [
+        {
+          "staffId": "REST-dev",
+          "staffName": "REST研发甲",
+          "role": "ai_dev",
+          "taskId": "REST-task",
+          "calendarStatus": "official",
+          "standardHours": 40,
+          "workDates": [
+            "2026-09-14",
+            "2026-09-15",
+            "2026-09-16",
+            "2026-09-17",
+            "2026-09-18"
+          ]
+        },
+        {
+          "staffId": "REST-audit",
+          "staffName": "REST审计乙",
+          "role": "rest_audit",
+          "taskId": "REST-task",
+          "calendarStatus": "official",
+          "standardHours": 40,
+          "workDates": [
+            "2026-09-14",
+            "2026-09-15",
+            "2026-09-16",
+            "2026-09-17",
+            "2026-09-18"
+          ]
+        }
+      ],
+      "calendarStatus": "official"
+    },
+    "deliverySummary": {
+      "standardHours": 80,
+      "workingDays": 10,
+      "units": [
+        {
+          "staffId": "REST-dev",
+          "staffName": "REST研发甲",
+          "role": "ai_dev",
+          "taskId": "REST-task",
+          "calendarStatus": "official",
+          "standardHours": 40,
+          "workDates": [
+            "2026-09-14",
+            "2026-09-15",
+            "2026-09-16",
+            "2026-09-17",
+            "2026-09-18"
+          ]
+        },
+        {
+          "staffId": "REST-audit",
+          "staffName": "REST审计乙",
+          "role": "rest_audit",
+          "taskId": "REST-task",
+          "calendarStatus": "official",
+          "standardHours": 40,
+          "workDates": [
+            "2026-09-14",
+            "2026-09-15",
+            "2026-09-16",
+            "2026-09-17",
+            "2026-09-18"
+          ]
+        }
+      ],
+      "calendarStatus": "official",
+      "deliveredHours": 80,
+      "recordedHours": 96,
+      "unversionedHours": 16,
+      "deliveryRate": 100
+    },
+    "summary": {
+      "totalHours": 96,
+      "recordCount": 27,
+      "staffCount": 2,
+      "taskCount": 1
+    },
+    "roleSummary": {
+      "ai_dev": 48,
+      "rest_audit": 48
+    },
+    "pmDistribution": [
+      {
+        "id": "REST-pm",
+        "name": "REST归属经理",
+        "is_active": true,
+        "employment_status": "active",
+        "total": 96,
+        "ai_dev": 48,
+        "rest_audit": 48,
+        "records": [
+          {
+            "id": "REST-zero-00监控",
+            "hours": 0,
+            "version": "REST-v1",
+            "staff": {
+              "id": "REST-dev",
+              "name": "REST研发甲",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staff_id": "REST-dev",
+            "role": "ai_dev",
+            "staffName": "REST研发甲",
+            "task_id": "REST-task",
+            "created_at": "2026-09-14T10:00:00.000Z",
+            "requirement_title": "REST-zero-00监控",
+            "delivery_progress": 0,
+            "product_managers": [
+              "REST归属经理"
+            ],
+            "source_type": "engineering",
+            "is_product_manager_record": false
+          },
+          {
+            "id": "REST-zero-01监控",
+            "hours": 0,
+            "version": "REST-v1",
+            "staff": {
+              "id": "REST-dev",
+              "name": "REST研发甲",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staff_id": "REST-dev",
+            "role": "ai_dev",
+            "staffName": "REST研发甲",
+            "task_id": "REST-task",
+            "created_at": "2026-09-14T10:01:00.000Z",
+            "requirement_title": "REST-zero-01监控",
+            "delivery_progress": 0,
+            "product_managers": [
+              "REST归属经理"
+            ],
+            "source_type": "engineering",
+            "is_product_manager_record": false
+          },
+          {
+            "id": "REST-zero-02监控",
+            "hours": 0,
+            "version": "REST-v1",
+            "staff": {
+              "id": "REST-dev",
+              "name": "REST研发甲",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staff_id": "REST-dev",
+            "role": "ai_dev",
+            "staffName": "REST研发甲",
+            "task_id": "REST-task",
+            "created_at": "2026-09-14T10:02:00.000Z",
+            "requirement_title": "REST-zero-02监控",
+            "delivery_progress": 0,
+            "product_managers": [
+              "REST归属经理"
+            ],
+            "source_type": "engineering",
+            "is_product_manager_record": false
+          },
+          {
+            "id": "REST-zero-03监控",
+            "hours": 0,
+            "version": "REST-v1",
+            "staff": {
+              "id": "REST-dev",
+              "name": "REST研发甲",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staff_id": "REST-dev",
+            "role": "ai_dev",
+            "staffName": "REST研发甲",
+            "task_id": "REST-task",
+            "created_at": "2026-09-14T10:03:00.000Z",
+            "requirement_title": "REST-zero-03监控",
+            "delivery_progress": 0,
+            "product_managers": [
+              "REST归属经理"
+            ],
+            "source_type": "engineering",
+            "is_product_manager_record": false
+          },
+          {
+            "id": "REST-zero-04监控",
+            "hours": 0,
+            "version": "REST-v1",
+            "staff": {
+              "id": "REST-dev",
+              "name": "REST研发甲",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staff_id": "REST-dev",
+            "role": "ai_dev",
+            "staffName": "REST研发甲",
+            "task_id": "REST-task",
+            "created_at": "2026-09-14T10:04:00.000Z",
+            "requirement_title": "REST-zero-04监控",
+            "delivery_progress": 0,
+            "product_managers": [
+              "REST归属经理"
+            ],
+            "source_type": "engineering",
+            "is_product_manager_record": false
+          },
+          {
+            "id": "REST-zero-05监控",
+            "hours": 0,
+            "version": "REST-v1",
+            "staff": {
+              "id": "REST-dev",
+              "name": "REST研发甲",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staff_id": "REST-dev",
+            "role": "ai_dev",
+            "staffName": "REST研发甲",
+            "task_id": "REST-task",
+            "created_at": "2026-09-14T10:05:00.000Z",
+            "requirement_title": "REST-zero-05监控",
+            "delivery_progress": 0,
+            "product_managers": [
+              "REST归属经理"
+            ],
+            "source_type": "engineering",
+            "is_product_manager_record": false
+          },
+          {
+            "id": "REST-zero-06监控",
+            "hours": 0,
+            "version": "REST-v1",
+            "staff": {
+              "id": "REST-dev",
+              "name": "REST研发甲",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staff_id": "REST-dev",
+            "role": "ai_dev",
+            "staffName": "REST研发甲",
+            "task_id": "REST-task",
+            "created_at": "2026-09-14T10:06:00.000Z",
+            "requirement_title": "REST-zero-06监控",
+            "delivery_progress": 0,
+            "product_managers": [
+              "REST归属经理"
+            ],
+            "source_type": "engineering",
+            "is_product_manager_record": false
+          },
+          {
+            "id": "REST-zero-07监控",
+            "hours": 0,
+            "version": "REST-v1",
+            "staff": {
+              "id": "REST-dev",
+              "name": "REST研发甲",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staff_id": "REST-dev",
+            "role": "ai_dev",
+            "staffName": "REST研发甲",
+            "task_id": "REST-task",
+            "created_at": "2026-09-14T10:07:00.000Z",
+            "requirement_title": "REST-zero-07监控",
+            "delivery_progress": 0,
+            "product_managers": [
+              "REST归属经理"
+            ],
+            "source_type": "engineering",
+            "is_product_manager_record": false
+          },
+          {
+            "id": "REST-zero-08监控",
+            "hours": 0,
+            "version": "REST-v1",
+            "staff": {
+              "id": "REST-dev",
+              "name": "REST研发甲",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staff_id": "REST-dev",
+            "role": "ai_dev",
+            "staffName": "REST研发甲",
+            "task_id": "REST-task",
+            "created_at": "2026-09-14T10:08:00.000Z",
+            "requirement_title": "REST-zero-08监控",
+            "delivery_progress": 0,
+            "product_managers": [
+              "REST归属经理"
+            ],
+            "source_type": "engineering",
+            "is_product_manager_record": false
+          },
+          {
+            "id": "REST-zero-09监控",
+            "hours": 0,
+            "version": "REST-v1",
+            "staff": {
+              "id": "REST-dev",
+              "name": "REST研发甲",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staff_id": "REST-dev",
+            "role": "ai_dev",
+            "staffName": "REST研发甲",
+            "task_id": "REST-task",
+            "created_at": "2026-09-14T10:09:00.000Z",
+            "requirement_title": "REST-zero-09监控",
+            "delivery_progress": 0,
+            "product_managers": [
+              "REST归属经理"
+            ],
+            "source_type": "engineering",
+            "is_product_manager_record": false
+          },
+          {
+            "id": "REST-zero-10监控",
+            "hours": 0,
+            "version": "REST-v1",
+            "staff": {
+              "id": "REST-dev",
+              "name": "REST研发甲",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staff_id": "REST-dev",
+            "role": "ai_dev",
+            "staffName": "REST研发甲",
+            "task_id": "REST-task",
+            "created_at": "2026-09-14T10:10:00.000Z",
+            "requirement_title": "REST-zero-10监控",
+            "delivery_progress": 0,
+            "product_managers": [
+              "REST归属经理"
+            ],
+            "source_type": "engineering",
+            "is_product_manager_record": false
+          },
+          {
+            "id": "REST-zero-11监控",
+            "hours": 0,
+            "version": "REST-v1",
+            "staff": {
+              "id": "REST-dev",
+              "name": "REST研发甲",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staff_id": "REST-dev",
+            "role": "ai_dev",
+            "staffName": "REST研发甲",
+            "task_id": "REST-task",
+            "created_at": "2026-09-14T10:11:00.000Z",
+            "requirement_title": "REST-zero-11监控",
+            "delivery_progress": 0,
+            "product_managers": [
+              "REST归属经理"
+            ],
+            "source_type": "engineering",
+            "is_product_manager_record": false
+          },
+          {
+            "id": "REST-zero-12监控",
+            "hours": 0,
+            "version": "REST-v1",
+            "staff": {
+              "id": "REST-dev",
+              "name": "REST研发甲",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staff_id": "REST-dev",
+            "role": "ai_dev",
+            "staffName": "REST研发甲",
+            "task_id": "REST-task",
+            "created_at": "2026-09-14T10:12:00.000Z",
+            "requirement_title": "REST-zero-12监控",
+            "delivery_progress": 0,
+            "product_managers": [
+              "REST归属经理"
+            ],
+            "source_type": "engineering",
+            "is_product_manager_record": false
+          },
+          {
+            "id": "REST-zero-13监控",
+            "hours": 0,
+            "version": "REST-v1",
+            "staff": {
+              "id": "REST-dev",
+              "name": "REST研发甲",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staff_id": "REST-dev",
+            "role": "ai_dev",
+            "staffName": "REST研发甲",
+            "task_id": "REST-task",
+            "created_at": "2026-09-14T10:13:00.000Z",
+            "requirement_title": "REST-zero-13监控",
+            "delivery_progress": 0,
+            "product_managers": [
+              "REST归属经理"
+            ],
+            "source_type": "engineering",
+            "is_product_manager_record": false
+          },
+          {
+            "id": "REST-zero-14监控",
+            "hours": 0,
+            "version": "REST-v1",
+            "staff": {
+              "id": "REST-dev",
+              "name": "REST研发甲",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staff_id": "REST-dev",
+            "role": "ai_dev",
+            "staffName": "REST研发甲",
+            "task_id": "REST-task",
+            "created_at": "2026-09-14T10:14:00.000Z",
+            "requirement_title": "REST-zero-14监控",
+            "delivery_progress": 0,
+            "product_managers": [
+              "REST归属经理"
+            ],
+            "source_type": "engineering",
+            "is_product_manager_record": false
+          },
+          {
+            "id": "REST-zero-15监控",
+            "hours": 0,
+            "version": "REST-v1",
+            "staff": {
+              "id": "REST-dev",
+              "name": "REST研发甲",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staff_id": "REST-dev",
+            "role": "ai_dev",
+            "staffName": "REST研发甲",
+            "task_id": "REST-task",
+            "created_at": "2026-09-14T10:15:00.000Z",
+            "requirement_title": "REST-zero-15监控",
+            "delivery_progress": 0,
+            "product_managers": [
+              "REST归属经理"
+            ],
+            "source_type": "engineering",
+            "is_product_manager_record": false
+          },
+          {
+            "id": "REST-zero-16监控",
+            "hours": 0,
+            "version": "REST-v1",
+            "staff": {
+              "id": "REST-dev",
+              "name": "REST研发甲",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staff_id": "REST-dev",
+            "role": "ai_dev",
+            "staffName": "REST研发甲",
+            "task_id": "REST-task",
+            "created_at": "2026-09-14T10:16:00.000Z",
+            "requirement_title": "REST-zero-16监控",
+            "delivery_progress": 0,
+            "product_managers": [
+              "REST归属经理"
+            ],
+            "source_type": "engineering",
+            "is_product_manager_record": false
+          },
+          {
+            "id": "REST-zero-17监控",
+            "hours": 0,
+            "version": "REST-v1",
+            "staff": {
+              "id": "REST-dev",
+              "name": "REST研发甲",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staff_id": "REST-dev",
+            "role": "ai_dev",
+            "staffName": "REST研发甲",
+            "task_id": "REST-task",
+            "created_at": "2026-09-14T10:17:00.000Z",
+            "requirement_title": "REST-zero-17监控",
+            "delivery_progress": 0,
+            "product_managers": [
+              "REST归属经理"
+            ],
+            "source_type": "engineering",
+            "is_product_manager_record": false
+          },
+          {
+            "id": "REST-zero-18监控",
+            "hours": 0,
+            "version": "REST-v1",
+            "staff": {
+              "id": "REST-dev",
+              "name": "REST研发甲",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staff_id": "REST-dev",
+            "role": "ai_dev",
+            "staffName": "REST研发甲",
+            "task_id": "REST-task",
+            "created_at": "2026-09-14T10:18:00.000Z",
+            "requirement_title": "REST-zero-18监控",
+            "delivery_progress": 0,
+            "product_managers": [
+              "REST归属经理"
+            ],
+            "source_type": "engineering",
+            "is_product_manager_record": false
+          },
+          {
+            "id": "REST-zero-19监控",
+            "hours": 0,
+            "version": "REST-v1",
+            "staff": {
+              "id": "REST-dev",
+              "name": "REST研发甲",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staff_id": "REST-dev",
+            "role": "ai_dev",
+            "staffName": "REST研发甲",
+            "task_id": "REST-task",
+            "created_at": "2026-09-14T10:19:00.000Z",
+            "requirement_title": "REST-zero-19监控",
+            "delivery_progress": 0,
+            "product_managers": [
+              "REST归属经理"
+            ],
+            "source_type": "engineering",
+            "is_product_manager_record": false
+          },
+          {
+            "id": "REST-zero-20监控",
+            "hours": 0,
+            "version": "REST-v1",
+            "staff": {
+              "id": "REST-dev",
+              "name": "REST研发甲",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staff_id": "REST-dev",
+            "role": "ai_dev",
+            "staffName": "REST研发甲",
+            "task_id": "REST-task",
+            "created_at": "2026-09-14T10:20:00.000Z",
+            "requirement_title": "REST-zero-20监控",
+            "delivery_progress": 0,
+            "product_managers": [
+              "REST归属经理"
+            ],
+            "source_type": "engineering",
+            "is_product_manager_record": false
+          },
+          {
+            "id": "REST-zero-21监控",
+            "hours": 0,
+            "version": "REST-v1",
+            "staff": {
+              "id": "REST-dev",
+              "name": "REST研发甲",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staff_id": "REST-dev",
+            "role": "ai_dev",
+            "staffName": "REST研发甲",
+            "task_id": "REST-task",
+            "created_at": "2026-09-14T10:21:00.000Z",
+            "requirement_title": "REST-zero-21监控",
+            "delivery_progress": 0,
+            "product_managers": [
+              "REST归属经理"
+            ],
+            "source_type": "engineering",
+            "is_product_manager_record": false
+          },
+          {
+            "id": "REST-zero-22监控",
+            "hours": 0,
+            "version": "REST-v1",
+            "staff": {
+              "id": "REST-dev",
+              "name": "REST研发甲",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staff_id": "REST-dev",
+            "role": "ai_dev",
+            "staffName": "REST研发甲",
+            "task_id": "REST-task",
+            "created_at": "2026-09-14T10:22:00.000Z",
+            "requirement_title": "REST-zero-22监控",
+            "delivery_progress": 0,
+            "product_managers": [
+              "REST归属经理"
+            ],
+            "source_type": "engineering",
+            "is_product_manager_record": false
+          },
+          {
+            "id": "REST-zero-23监控",
+            "hours": 0,
+            "version": "REST-v1",
+            "staff": {
+              "id": "REST-dev",
+              "name": "REST研发甲",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staff_id": "REST-dev",
+            "role": "ai_dev",
+            "staffName": "REST研发甲",
+            "task_id": "REST-task",
+            "created_at": "2026-09-14T10:23:00.000Z",
+            "requirement_title": "REST-zero-23监控",
+            "delivery_progress": 0,
+            "product_managers": [
+              "REST归属经理"
+            ],
+            "source_type": "engineering",
+            "is_product_manager_record": false
+          },
+          {
+            "id": "REST-new32呼叫优化",
+            "hours": 32,
+            "version": "REST-v1",
+            "staff": {
+              "id": "REST-dev",
+              "name": "REST研发甲",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staff_id": "REST-dev",
+            "role": "ai_dev",
+            "staffName": "REST研发甲",
+            "task_id": "REST-task",
+            "created_at": "2026-09-16T12:00:00Z",
+            "requirement_title": "REST-new32呼叫优化",
+            "delivery_progress": 0,
+            "product_managers": [
+              "REST归属经理"
+            ],
+            "source_type": "engineering",
+            "is_product_manager_record": false
+          },
+          {
+            "id": "REST-noVersion16旧进度100",
+            "hours": 16,
+            "version": "",
+            "staff": {
+              "id": "REST-dev",
+              "name": "REST研发甲",
+              "role": "ai_dev",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staff_id": "REST-dev",
+            "role": "ai_dev",
+            "staffName": "REST研发甲",
+            "task_id": "REST-task",
+            "created_at": "2026-09-16T13:00:00Z",
+            "requirement_title": "REST-noVersion16旧进度100",
+            "delivery_progress": 100,
+            "product_managers": [
+              "REST归属经理"
+            ],
+            "source_type": "engineering",
+            "is_product_manager_record": false
+          },
+          {
+            "id": "REST-custom48审计",
+            "hours": 48,
+            "version": "REST-v2",
+            "staff": {
+              "id": "REST-audit",
+              "name": "REST审计乙",
+              "role": "rest_audit",
+              "is_active": true,
+              "employment_status": "active"
+            },
+            "staff_id": "REST-audit",
+            "role": "rest_audit",
+            "staffName": "REST审计乙",
+            "task_id": "REST-task",
+            "created_at": "2026-09-16T11:00:00Z",
+            "requirement_title": "REST-custom48审计",
+            "delivery_progress": 0,
+            "product_managers": [
+              "REST归属经理"
+            ],
+            "source_type": "engineering",
+            "is_product_manager_record": false
+          }
+        ]
+      }
+    ],
+    "productManagerRecords": [],
+    "productDemandDistribution": [],
+    "demandSources": [],
+    "matchGroups": []
+  },
+  "allWorkHours": {
+    "standardHours": 120,
+    "workingDays": 15,
+    "units": [
+      {
+        "staffId": "REST-dev",
+        "staffName": "REST研发甲",
+        "role": "ai_dev",
+        "taskId": "REST-task",
+        "calendarStatus": "official",
+        "standardHours": 40,
+        "workDates": [
+          "2026-09-14",
+          "2026-09-15",
+          "2026-09-16",
+          "2026-09-17",
+          "2026-09-18"
+        ]
+      },
+      {
+        "staffId": "REST-audit",
+        "staffName": "REST审计乙",
+        "role": "rest_audit",
+        "taskId": "REST-task",
+        "calendarStatus": "official",
+        "standardHours": 40,
+        "workDates": [
+          "2026-09-14",
+          "2026-09-15",
+          "2026-09-16",
+          "2026-09-17",
+          "2026-09-18"
+        ]
+      },
+      {
+        "staffId": "REST-dev",
+        "staffName": "REST研发甲",
+        "role": "ai_dev",
+        "taskId": "REST-history",
+        "calendarStatus": "official",
+        "standardHours": 40,
+        "workDates": [
+          "2025-01-06",
+          "2025-01-07",
+          "2025-01-08",
+          "2025-01-09",
+          "2025-01-10"
+        ]
+      }
+    ],
+    "calendarStatus": "official"
+  }
+}

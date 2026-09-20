@@ -1,0 +1,119 @@
+{
+  "run": "2026-09-16T14-51-40-923Z",
+  "results": [
+    {
+      "run": "2026-09-16T14-51-40-923Z",
+      "id": "SSZ-LAYOUT",
+      "status": "PASS",
+      "evidence": {
+        "removedTabs": true,
+        "focusTabsRetained": true,
+        "dimensions": {
+          "viewport": 390,
+          "width": 390
+        },
+        "filterBounds": {
+          "year": {
+            "x": 12,
+            "y": 272.96875,
+            "width": 120,
+            "height": 32
+          },
+          "quarter": {
+            "x": 142,
+            "y": 272.96875,
+            "width": 100,
+            "height": 32
+          }
+        },
+        "expandedBox": {
+          "x": 32,
+          "y": 84.1875,
+          "width": 326,
+          "height": 336
+        },
+        "desktopFirstRow": {
+          "x": 80,
+          "y": 302.272705078125,
+          "width": 1440,
+          "height": 32
+        },
+        "errors": [],
+        "failures": [],
+        "writes": []
+      }
+    }
+  ],
+  "errors": [],
+  "failures": [],
+  "writes": [],
+  "requests": [
+    {
+      "suffix": "/index.js",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/roles",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/tasks",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/pm",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/roles",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/stats",
+      "params": {
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all"
+      },
+      "live": false
+    },
+    {
+      "suffix": "/stats",
+      "params": {
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all"
+      },
+      "live": false
+    },
+    {
+      "suffix": "/stats",
+      "params": {
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all"
+      },
+      "live": false
+    },
+    {
+      "suffix": "/pm",
+      "params": {},
+      "live": false
+    },
+    {
+      "suffix": "/stats",
+      "params": {
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all"
+      },
+      "live": false
+    }
+  ],
+  "exportsSeen": []
+}

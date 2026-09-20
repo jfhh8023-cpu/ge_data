@@ -1,0 +1,283 @@
+{
+  "errors": [],
+  "failures": [],
+  "writes": [],
+  "requests": [
+    {
+      "suffix": "/index.js",
+      "params": {}
+    },
+    {
+      "suffix": "/roles",
+      "params": {}
+    },
+    {
+      "suffix": "/tasks",
+      "params": {}
+    },
+    {
+      "suffix": "/pm",
+      "params": {}
+    },
+    {
+      "suffix": "/roles",
+      "params": {}
+    },
+    {
+      "suffix": "/stats",
+      "params": {
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all"
+      }
+    },
+    {
+      "suffix": "/stats/progress-details",
+      "params": {
+        "scope": "all",
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all",
+        "sourceType": "",
+        "role": "",
+        "demandSourceId": ""
+      }
+    },
+    {
+      "suffix": "/index.js",
+      "params": {}
+    },
+    {
+      "suffix": "/roles",
+      "params": {}
+    },
+    {
+      "suffix": "/tasks",
+      "params": {}
+    },
+    {
+      "suffix": "/pm",
+      "params": {}
+    },
+    {
+      "suffix": "/roles",
+      "params": {}
+    },
+    {
+      "suffix": "/stats",
+      "params": {
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all"
+      }
+    },
+    {
+      "suffix": "/index.js",
+      "params": {}
+    },
+    {
+      "suffix": "/roles",
+      "params": {}
+    },
+    {
+      "suffix": "/tasks",
+      "params": {}
+    },
+    {
+      "suffix": "/pm",
+      "params": {}
+    },
+    {
+      "suffix": "/roles",
+      "params": {}
+    },
+    {
+      "suffix": "/stats",
+      "params": {
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all"
+      }
+    },
+    {
+      "suffix": "/index.js",
+      "params": {}
+    },
+    {
+      "suffix": "/roles",
+      "params": {}
+    },
+    {
+      "suffix": "/tasks",
+      "params": {}
+    },
+    {
+      "suffix": "/pm",
+      "params": {}
+    },
+    {
+      "suffix": "/roles",
+      "params": {}
+    },
+    {
+      "suffix": "/stats",
+      "params": {
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all"
+      }
+    },
+    {
+      "suffix": "/stats/export.xlsx",
+      "params": {
+        "scope": "current",
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all",
+        "sourceType": "",
+        "role": "ai_dev",
+        "versionType": "versioned",
+        "demandSourceId": ""
+      }
+    },
+    {
+      "suffix": "/stats/export.xlsx",
+      "params": {
+        "scope": "current",
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all",
+        "sourceType": "",
+        "role": "ai_dev",
+        "versionType": "no_version",
+        "demandSourceId": ""
+      }
+    },
+    {
+      "suffix": "/stats/progress-details",
+      "params": {
+        "scope": "all",
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all",
+        "sourceType": "",
+        "role": "ai_dev",
+        "demandSourceId": ""
+      }
+    },
+    {
+      "suffix": "/stats/export.xlsx",
+      "params": {
+        "scope": "all",
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all",
+        "sourceType": "",
+        "role": "ai_dev",
+        "versionType": "",
+        "demandSourceId": ""
+      }
+    },
+    {
+      "suffix": "/stats/export.xlsx",
+      "params": {
+        "scope": "all",
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all",
+        "sourceType": "",
+        "role": "ai_dev",
+        "versionType": "versioned",
+        "demandSourceId": ""
+      }
+    },
+    {
+      "suffix": "/stats/export.xlsx",
+      "params": {
+        "scope": "all",
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all",
+        "sourceType": "",
+        "role": "ai_dev",
+        "versionType": "no_version",
+        "demandSourceId": ""
+      }
+    },
+    {
+      "suffix": "/stats/export.xlsx",
+      "params": {
+        "scope": "all",
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all",
+        "sourceType": "",
+        "role": "ai_dev",
+        "versionType": "",
+        "demandSourceId": ""
+      }
+    }
+  ],
+  "exports": [
+    {
+      "scope": "current",
+      "year": "2026",
+      "quarter": "Q3",
+      "taskId": "all",
+      "sourceType": "",
+      "role": "ai_dev",
+      "versionType": "versioned",
+      "demandSourceId": ""
+    },
+    {
+      "scope": "current",
+      "year": "2026",
+      "quarter": "Q3",
+      "taskId": "all",
+      "sourceType": "",
+      "role": "ai_dev",
+      "versionType": "no_version",
+      "demandSourceId": ""
+    },
+    {
+      "scope": "all",
+      "year": "2026",
+      "quarter": "Q3",
+      "taskId": "all",
+      "sourceType": "",
+      "role": "ai_dev",
+      "versionType": "",
+      "demandSourceId": ""
+    },
+    {
+      "scope": "all",
+      "year": "2026",
+      "quarter": "Q3",
+      "taskId": "all",
+      "sourceType": "",
+      "role": "ai_dev",
+      "versionType": "versioned",
+      "demandSourceId": ""
+    },
+    {
+      "scope": "all",
+      "year": "2026",
+      "quarter": "Q3",
+      "taskId": "all",
+      "sourceType": "",
+      "role": "ai_dev",
+      "versionType": "no_version",
+      "demandSourceId": ""
+    },
+    {
+      "scope": "all",
+      "year": "2026",
+      "quarter": "Q3",
+      "taskId": "all",
+      "sourceType": "",
+      "role": "ai_dev",
+      "versionType": "",
+      "demandSourceId": ""
+    }
+  ]
+}

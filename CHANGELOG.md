@@ -1,5 +1,36 @@
 # Changelog
 
+## v3.4.0 — 进度跟踪 / 有效工时 / 周期加权交付率 / 交付状态提示 (2026-09-17)
+
+生产发布：2026-09-17 17:56（北京时间），源提交 `c1b19af`，详见 `docs/@development/production_release_20260917.md`。
+
+### 新增
+
+- **REQ-055 需求来源 / 进度跟踪**：新增 `demand_sources` 表与 `/api/demand-sources`；`work_records.delivery_progress` 可空列；AI 产品经理独立 `product_manager_work_records`
+- **REQ-056~059 统计页重构**：分析分页、历史自然周进度、版本周列、产品经理分组图、部门/岗位双图
+- **REQ-060~064 交付率与有效工时**：`EffectiveHoursService`（五类全额工时：请假/培训/公司会议/出差/团建，版本自动 vYYMMDD）、`WorkHoursCompletionService`（工作日 ×8h 应交付容量）、`DeliverySummaryService`
+- **REQ-065~066 周期加权交付率**：加权已交付 ÷ 应交付；同人+版本+标题分组取所选范围最新周期进度；历史 null 按 100% 计算但原值保留、明确 0 按 0
+- **REQ-067~068 卡片脚注**：先加实际填报进度/覆盖率脚注，后按用户要求移除；四指标同行保留
+- **REQ-069 进度输入与周期交付状态**：进度选项倒序 100、90…10、1；卡片状态五态（暂无法计算 / 需确认 / 暂无有效工时 / 100% / 部分需跨周期完成+查看未完成列表）
+- 生产数据同步到本地脚本与备份记录（`docs/@development/production_data_sync_20260917.md`）
+
+### 后端
+
+- 新模型：`DemandSource`、`ProductManagerWorkRecord`；新服务：`DeliverySummaryService`、`DemandSourceService`、`EffectiveHoursService`、`WorkHoursCompletionService`
+- `app.js` 启动时 `describeTable` 补列（`demand_source_ids` / `delivery_progress`），无破坏性迁移
+- `routes/fill.js`：草稿/提交统一 `normalizeSavedRows`，历史空进度保留、防伪造 `existing_record_id`
+
+### 前端
+
+- 新组件：`DeliverySummary`、`DeliveryStatusNotice`、`IncompleteRequirementsDialog`、`HoursCompletion`、`StatsCountsCard`、`StatsHoursCard`、`StatsGroupedRecordTable`、`StatsProgressTable`、`StaffDeliveryList`、`ProductHoursChart`、`DepartmentPeopleDialog`
+- 新工具：`utils/deliverySummary.js`、`deliveryStatus.js`、`effectiveHours.js`、`workHours.js`、`progress.js`、`recordOrder.js`
+- `FillPage.vue`：五类特殊行、需求方多选与权重分配、进度必选校验
+
+### 发版流程
+
+- 未直接使用 `deploy/deploy.py`（存在默认导库/覆盖 .env 风险）；改为候选清单 hash 校验 + 双端备份 + 隔离库恢复演练 + 受限路径切换 + `rollback.sh`（只回退代码、保留业务库）
+- 发布后核验：24 表中 22 表列 hash 与行数完全一致；880 条工时 / 11273.5h 不变
+
 ## v3.3.0 — 柱状图标签优化 + 值班通知名句搭配 (2026-06-10)
 
 ### 新增

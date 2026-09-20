@@ -1,0 +1,155 @@
+{
+  "run": "2026-09-16T16-51-03-201Z",
+  "results": [
+    {
+      "run": "2026-09-16T16-51-03-201Z",
+      "id": "PERIOD-VISUAL",
+      "status": "PASS",
+      "evidence": {
+        "colors": [
+          "rgb(239, 250, 250)",
+          "rgb(255, 255, 255)",
+          "rgb(255, 255, 255)",
+          "rgb(255, 255, 255)",
+          "rgb(255, 255, 255)",
+          "rgb(255, 255, 255)"
+        ],
+        "departmentHover": "rgb(227, 246, 246)",
+        "dimensions": {
+          "width": 390,
+          "viewport": 390
+        },
+        "bounds": {
+          "x": 15.59375,
+          "y": 17.75,
+          "width": 358.796875,
+          "height": 776.46875
+        },
+        "selectors": [
+          {
+            "text": "其他周期",
+            "x": 31.59375,
+            "right": 146.59375,
+            "width": 115
+          },
+          {
+            "text": "2026年",
+            "x": 152.59375,
+            "right": 252.59375,
+            "width": 100
+          },
+          {
+            "text": "Q2",
+            "x": 258.59375,
+            "right": 353.59375,
+            "width": 95
+          },
+          {
+            "text": "语音业务线-2026年第26周工时统计",
+            "x": 31.59375,
+            "right": 241.59375,
+            "width": 210
+          }
+        ],
+        "bodyBounds": {
+          "x": 31.59375,
+          "y": 95.75,
+          "width": 326.796875,
+          "height": 682.46875
+        },
+        "pagination": {
+          "x": 31.59375,
+          "y": 704.1875,
+          "width": 326.796875,
+          "height": 72
+        },
+        "jumper": {
+          "x": 244.390625,
+          "y": 744.1875,
+          "width": 114,
+          "height": 32
+        },
+        "peopleScroll": {
+          "top": 180,
+          "height": 63,
+          "content": 475
+        },
+        "errors": [],
+        "writes": []
+      }
+    }
+  ],
+  "requests": [
+    {
+      "suffix": "/index.js",
+      "params": {}
+    },
+    {
+      "suffix": "/roles",
+      "params": {}
+    },
+    {
+      "suffix": "/tasks",
+      "params": {}
+    },
+    {
+      "suffix": "/pm",
+      "params": {}
+    },
+    {
+      "suffix": "/roles",
+      "params": {}
+    },
+    {
+      "suffix": "/stats",
+      "params": {
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all"
+      }
+    },
+    {
+      "suffix": "/stats/progress-details",
+      "params": {
+        "scope": "current",
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all",
+        "sourceType": "",
+        "role": "",
+        "demandSourceId": "",
+        "staffId": ""
+      }
+    },
+    {
+      "suffix": "/stats/progress-details",
+      "params": {
+        "scope": "current",
+        "year": "2026",
+        "quarter": "Q2",
+        "taskId": "all",
+        "sourceType": "",
+        "role": "",
+        "demandSourceId": "",
+        "staffId": ""
+      }
+    },
+    {
+      "suffix": "/stats/progress-details",
+      "params": {
+        "scope": "current",
+        "year": "2026",
+        "quarter": "Q2",
+        "taskId": "a4fb4a3b-e238-4a64-8001-a35842f09405",
+        "sourceType": "",
+        "role": "",
+        "demandSourceId": "",
+        "staffId": ""
+      }
+    }
+  ],
+  "exportsSeen": [],
+  "completions": [],
+  "errors": [],
+  "writes": []
+}

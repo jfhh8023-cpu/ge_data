@@ -1,0 +1,333 @@
+{
+  "run": "2026-09-16T13-54-14-621Z",
+  "results": [
+    {
+      "case": "department",
+      "status": "PASS",
+      "department": {
+        "viewport": {
+          "width": 1600,
+          "height": 900,
+          "scrollWidth": 1600
+        },
+        "cards": [
+          {
+            "label": "Q3 · 部门",
+            "total": "2,504.0h",
+            "delivered": "1,673h",
+            "rate": "38.44%",
+            "card": {
+              "x": 40,
+              "y": 197,
+              "width": 206,
+              "height": 110.671875,
+              "right": 246,
+              "bottom": 307.671875
+            },
+            "labelRect": {
+              "x": 51,
+              "y": 206,
+              "width": 53.65625,
+              "height": 21,
+              "right": 104.65625,
+              "bottom": 227
+            },
+            "totalRect": {
+              "x": 134.84375,
+              "y": 206,
+              "width": 100.15625,
+              "height": 47,
+              "right": 235,
+              "bottom": 253
+            },
+            "deliveryRect": {
+              "x": 51,
+              "y": 257,
+              "width": 184,
+              "height": 41.671875,
+              "right": 235,
+              "bottom": 298.671875
+            }
+          },
+          {
+            "label": "AI开发工程师",
+            "total": "724.0h",
+            "delivered": "708h",
+            "rate": "45.62%",
+            "card": {
+              "x": 256,
+              "y": 197,
+              "width": 206,
+              "height": 110.671875,
+              "right": 462,
+              "bottom": 307.671875
+            },
+            "labelRect": {
+              "x": 267,
+              "y": 206,
+              "width": 73.0625,
+              "height": 21,
+              "right": 340.0625,
+              "bottom": 227
+            },
+            "totalRect": {
+              "x": 373.40625,
+              "y": 206,
+              "width": 77.59375,
+              "height": 47,
+              "right": 451,
+              "bottom": 253
+            },
+            "deliveryRect": {
+              "x": 267,
+              "y": 257,
+              "width": 184,
+              "height": 41.671875,
+              "right": 451,
+              "bottom": 298.671875
+            }
+          },
+          {
+            "label": "VOIP工程师",
+            "total": "490.0h",
+            "delivered": "18h",
+            "rate": "3.21%",
+            "card": {
+              "x": 472,
+              "y": 197,
+              "width": 206,
+              "height": 110.671875,
+              "right": 678,
+              "bottom": 307.671875
+            },
+            "labelRect": {
+              "x": 483,
+              "y": 206,
+              "width": 66.28125,
+              "height": 21,
+              "right": 549.28125,
+              "bottom": 227
+            },
+            "totalRect": {
+              "x": 589.40625,
+              "y": 206,
+              "width": 77.59375,
+              "height": 47,
+              "right": 667,
+              "bottom": 253
+            },
+            "deliveryRect": {
+              "x": 483,
+              "y": 257,
+              "width": 184,
+              "height": 41.671875,
+              "right": 667,
+              "bottom": 298.671875
+            }
+          },
+          {
+            "label": "AI质量工程师",
+            "total": "489.0h",
+            "delivered": "415h",
+            "rate": "74.11%",
+            "card": {
+              "x": 688,
+              "y": 197,
+              "width": 206,
+              "height": 110.671875,
+              "right": 894,
+              "bottom": 307.671875
+            },
+            "labelRect": {
+              "x": 699,
+              "y": 206,
+              "width": 73.0625,
+              "height": 21,
+              "right": 772.0625,
+              "bottom": 227
+            },
+            "totalRect": {
+              "x": 805.40625,
+              "y": 206,
+              "width": 77.59375,
+              "height": 47,
+              "right": 883,
+              "bottom": 253
+            },
+            "deliveryRect": {
+              "x": 699,
+              "y": 257,
+              "width": 184,
+              "height": 41.671875,
+              "right": 883,
+              "bottom": 298.671875
+            }
+          },
+          {
+            "label": "嵌入式工程师",
+            "total": "400.0h",
+            "delivered": "400h",
+            "rate": "142.86%",
+            "card": {
+              "x": 904,
+              "y": 197,
+              "width": 206,
+              "height": 110.671875,
+              "right": 1110,
+              "bottom": 307.671875
+            },
+            "labelRect": {
+              "x": 915,
+              "y": 206,
+              "width": 72,
+              "height": 21,
+              "right": 987,
+              "bottom": 227
+            },
+            "totalRect": {
+              "x": 1021.40625,
+              "y": 206,
+              "width": 77.59375,
+              "height": 47,
+              "right": 1099,
+              "bottom": 253
+            },
+            "deliveryRect": {
+              "x": 915,
+              "y": 257,
+              "width": 184,
+              "height": 41.671875,
+              "right": 1099,
+              "bottom": 298.671875
+            }
+          },
+          {
+            "label": "AI产品经理",
+            "total": "401.0h",
+            "delivered": "132h",
+            "rate": "9.43%",
+            "card": {
+              "x": 1120,
+              "y": 197,
+              "width": 206,
+              "height": 110.671875,
+              "right": 1326,
+              "bottom": 307.671875
+            },
+            "labelRect": {
+              "x": 1131,
+              "y": 206,
+              "width": 61.0625,
+              "height": 21,
+              "right": 1192.0625,
+              "bottom": 227
+            },
+            "totalRect": {
+              "x": 1237.40625,
+              "y": 206,
+              "width": 77.59375,
+              "height": 47,
+              "right": 1315,
+              "bottom": 253
+            },
+            "deliveryRect": {
+              "x": 1131,
+              "y": 257,
+              "width": 184,
+              "height": 41.671875,
+              "right": 1315,
+              "bottom": 298.671875
+            }
+          }
+        ],
+        "counts": [
+          {
+            "key": "records",
+            "value": 147,
+            "box": {
+              "x": 1347,
+              "y": 206,
+              "width": 96,
+              "height": 43,
+              "right": 1443,
+              "bottom": 249
+            }
+          },
+          {
+            "key": "requirements",
+            "value": 86,
+            "box": {
+              "x": 1453,
+              "y": 206,
+              "width": 96,
+              "height": 43,
+              "right": 1549,
+              "bottom": 249
+            }
+          },
+          {
+            "key": "tasks",
+            "value": 7,
+            "box": {
+              "x": 1347,
+              "y": 253,
+              "width": 96,
+              "height": 43,
+              "right": 1443,
+              "bottom": 296
+            }
+          },
+          {
+            "key": "staff",
+            "value": 16,
+            "box": {
+              "x": 1453,
+              "y": 253,
+              "width": 96,
+              "height": 43,
+              "right": 1549,
+              "bottom": 296
+            }
+          }
+        ],
+        "countsCard": {
+          "x": 1336,
+          "y": 197,
+          "width": 224,
+          "height": 108,
+          "right": 1560,
+          "bottom": 305
+        },
+        "charts": [
+          {
+            "x": 40,
+            "y": 339.671875,
+            "width": 966.84375,
+            "height": 506.84375,
+            "right": 1006.84375,
+            "bottom": 846.515625
+          },
+          {
+            "x": 1022.84375,
+            "y": 339.671875,
+            "width": 537.15625,
+            "height": 506.84375,
+            "right": 1560,
+            "bottom": 846.515625
+          }
+        ]
+      },
+      "requirementText": "需求总数统计明细\n按版本号去重总数\n37\n无版本号需求总数\n49\n按AI产品经理分组：\nAI产品经理\n\t\n去重版本数\n\t\n无版本号数\n\t\n小计\n吴浩鑫\n\t\n16\n\t\n3\n\t\n19\n\n\n罗晓璇\n\t\n9\n\t\n1\n\t\n10\n\n\n杨瑞\n\t\n8\n\t\n0\n\t\n8\n\n\n罗思宇\n\t\n3\n\t\n0\n\t\n3\n\n\n嵌入式项目\n\t\n2\n\t\n0\n\t\n2\n\n\n汪晨\n\t\n1\n\t\n1\n\t\n2\n\n\n钟冠\n\t\n1\n\t\n24\n\t\n25\n\n\n不在上述\n\t\n0\n\t\n4\n\t\n4\n\n\n其他-底层【语音底层】\n\t\n0\n\t\n16\n\t\n16",
+      "staffRows": 16
+    },
+    {
+      "status": "FAIL",
+      "message": "Expected values to be strictly deep-equal:\n+ actual - expected\n\n  {\n    records: 18,\n+   requirements: 15,\n-   requirements: 18,\n    staff: 5,\n    tasks: 1\n  }\n",
+      "stack": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:\n+ actual - expected\n\n  {\n    records: 18,\n+   requirements: 15,\n-   requirements: 18,\n    staff: 5,\n    tasks: 1\n  }\n\n    at checkCounts ([stdin]:40:51)\n    at [stdin]:68:5",
+      "body": "DevTracker\nv3.0.2\n任务收集\n需求工时统计\n周期统计（季度）\n+ 新建收集\n管理员\n🔐\n团\n周期统计（季度）｜2026-06-29 至 2026-08-16\n\n部门工时趋势与个人贡献分析 · 当前范围：2026年 Q3 / Q3\n\n📊 周期数据分析\n📤 导出Excel\n🔄\n2026年\nQ3\n全部周期\n自然周\n38周\n37周\n36周\n35周\n34周\n33周\n32周\n31周\n30周\n部门展示\nAI产品展示\nAI研发展示\n研发聚焦\n产品经理聚焦\nQ3 · AI产品经理\n总工时\n401.0h\n已交付工时\n132h\n交付率\n9.43%\n提交记录数 ↗\n18\n统计需求总数 ↗\n15\n收集任务数 ↗\n1\n产品人员数 ↗\n5\n\n有版本工时计入交付率，无版本工时仅记录。\n\nAI产品经理工时分布（按人员与需求方） — Q3\n点击产品经理名称筛选下方列表\n隐藏零值\n内部需求\n客户需求\n对外服务\n其他需求\n总计\n200\n25\n225\n张三\n14\n16\n12\n14\n56\n示例产品-陈七\n12\n14\n10\n12\n48\n示例产品-赵六\n10\n12\n8\n10\n40\n示例产品-王五\n8\n10\n6\n8\n32\n示例产品-李四\nⓘ 当前筛选：全部产品经理\nAI产品经理工时明细\n独立存储 · 全部产品经理\n创建时间倒序\n工时降序 ↓\n工时升序 ↑\n#\n\t\n人员\n\t\n版本号\n\t\n需求名称\n\t\n需求方\n\t\n工时/h\n\t\n创建时间\n\t\n来源\n1\n\t\n示例产品-李四\n\t\nDEMO-2026.09.1\n\t\n【本地示例】产品图表展示 内部需求（20260916）\n\t\n内部需求\n\t\n8.0\n🥈\n\t\n2026/9/16 21:30:00\n\t\nAI产品经理\n\n\n2\n\t\n示例产品-李四\n\t\nDEMO-2026.09.1\n\t\n【本地示例】产品图表展示 客户需求（20260916）\n\t\n客户需求\n\t\n10.0\n🥇\n\t\n2026/9/16 21:29:59\n\t\nAI产品经理\n\n\n3\n\t\n示例产品-李四\n\t\nDEMO-2026.09.1\n\t\n【本地示例】产品图表展示 对外服务（20260916）\n\t\n对外服务\n\t\n6.0\n🥉\n\t\n2026/9/16 21:29:58\n\t\nAI产品经理\n\n\n4\n\t\n示例产品-李四\n\t\n-\n\t\n【本地示例】产品图表展示 其他需求（20260916）\n\t\n其他需求\n\t\n8.0\n🥈\n\t\n2026/9/16 21:29:57\n\t\nAI产品经理\n\n\n5\n\t\n示例产品-王五\n\t\nDEMO-2026.09.2\n\t\n【本地示例】产品图表展示 内部需求（20260916）\n\t\n内部需求\n\t\n10.0\n🥈\n\t\n2026/9/16 21:29:56\n\t\nAI产品经理\n\n\n6\n\t\n示例产品-王五\n\t\nDEMO-2026.09.2\n\t\n【本地示例】产品图表展示 客户需求（20260916）\n\t\n客户需求\n\t\n12.0\n🥇\n\t\n2026/9/16 21:29:55\n\t\nAI产品经理\n\n\n7\n\t\n示例产品-王五\n\t\nDEMO-2026.09.2\n\t\n【本地示例】产品图表展示 对外服务（20260916）\n\t\n对外服务\n\t\n8.0\n🥉\n\t\n2026/9/16 21:29:54\n\t\nAI产品经理\n\n\n8\n\t\n示例产品-王五\n\t\n-\n\t\n【本地示例】产品图表展示 其他需求（20260916）\n\t\n其他需求\n\t\n10.0\n🥈\n\t\n2026/9/16 21:29:53\n\t\nAI产品经理\n\n\n9\n\t\n示例产品-赵六\n\t\nDEMO-2026.09.3\n\t\n【本地示例】产品图表展示 内部需求（20260916）\n\t\n内部需求\n\t\n12.0\n🥈\n\t\n2026/9/16 21:29:52\n\t\nAI产品经理\n\n\n10\n\t\n示例产品-赵六\n\t\nDEMO-2026.09.3\n\t\n【本地示例】产品图表展示 客户需求（20260916）\n\t\n客户需求\n\t\n14.0\n🥇\n\t\n2026/9/16 21:29:51\n\t\nAI产品经理\n\n\n11\n\t\n示例产品-赵六\n\t\nDEMO-2026.09.3\n\t\n【本地示例】产品图表展示 对外服务（20260916）\n\t\n对外服务\n\t\n10.0\n🥉\n\t\n2026/9/16 21:29:50\n\t\nAI产品经理\n\n\n12\n\t\n示例产品-赵六\n\t\n-\n\t\n【本地示例】产品图表展示 其他需求（20260916）\n\t\n其他需求\n\t\n12.0\n🥈\n\t\n2026/9/16 21:29:49\n\t\nAI产品经理\n\n\n13\n\t\n示例产品-陈七\n\t\nDEMO-2026.09.4\n\t\n【本地示例】产品图表展示 内部需求（20260916）\n\t\n内部需求\n\t\n14.0\n🥈\n\t\n2026/9/16 21:29:48\n\t\nAI产品经理\n\n\n14\n\t\n示例产品-陈七\n\t\nDEMO-2026.09.4\n\t\n【本地示例】产品图表展示 客户需求（20260916）\n\t\n客户需求\n\t\n16.0\n🥇\n\t\n2026/9/16 21:29:47\n\t\nAI产品经理\n\n\n15\n\t\n示例产品-陈七\n\t\nDEMO-2026.09.4\n\t\n【本地示例】产品图表展示 对外服务（20260916）\n\t\n对外服务\n\t\n12.0\n🥉\n\t\n2026/9/16 21:29:46\n\t\nAI产品经理\n\n\n16\n\t\n示例产品-陈七\n\t\n-\n\t\n【本地示例】产品图表展示 其他需求（20260916）\n\t\n其他需求\n\t\n14.0\n🥈\n\t\n2026/9/16 21:29:45\n\t\nAI产品经理\n\n\n17\n\t\n张三\n\t\n-\n\t\n234324324\n\t\n客户需求\n\t\n25.0\n🥈\n\t\n2026/9/12 17:25:02\n\t\nAI产品经理\n\n\n18\n\t\n张三\n\t\n-\n\t\n22222222\n\t\n内部需求\n\t\n200.0\n🥇\n\t\n2026/9/12 17:25:02\n\t\nAI产品经理\nDevTracker v3.0.2© 2026   2698-jfzhu8023"
+    }
+  ],
+  "errors": [],
+  "failures": [],
+  "writes": []
+}

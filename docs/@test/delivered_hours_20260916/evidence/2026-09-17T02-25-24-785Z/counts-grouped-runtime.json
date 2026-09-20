@@ -1,0 +1,458 @@
+{
+  "run": "2026-09-17T02-25-24-785Z",
+  "results": [
+    {
+      "run": "2026-09-17T02-25-24-785Z",
+      "id": "COUNTS-PEOPLE",
+      "status": "PASS",
+      "evidence": {
+        "quarter": {
+          "records": 147,
+          "requirements": 142,
+          "tasks": 7,
+          "staff": 16
+        },
+        "people": {
+          "engineering": [
+            "任选\n\t\n嵌入式工程师",
+            "赵鲁鹏\n\t\nVOIP工程师",
+            "张希亮\n\t\nAI开发工程师",
+            "唐兵\n\t\nAI开发工程师",
+            "邬涛\n\t\nAI开发工程师",
+            "温嘉敦\n\t\nAI开发工程师",
+            "赖香山\n\t\nVOIP工程师",
+            "刘君\n\t\nAI开发工程师",
+            "郑家成\n\t\nAI开发工程师",
+            "朱俊锋\n\t\nAI质量工程师",
+            "艾婉\n\t\nAI质量工程师"
+          ],
+          "product": [
+            "张三\n\t\nAI产品经理",
+            "示例产品-陈七\n\t\nAI产品经理",
+            "示例产品-赵六\n\t\nAI产品经理",
+            "示例产品-王五\n\t\nAI产品经理",
+            "示例产品-李四\n\t\nAI产品经理"
+          ]
+        },
+        "periodResults": [
+          {
+            "week": 29,
+            "values": {
+              "records": 17,
+              "requirements": 17,
+              "tasks": 1,
+              "staff": 15
+            }
+          },
+          {
+            "week": 33,
+            "values": {
+              "records": 18,
+              "requirements": 15,
+              "tasks": 1,
+              "staff": 16
+            }
+          }
+        ],
+        "countersUnaffectedByRoleAndPerson": true,
+        "fourCountLinks": true
+      }
+    },
+    {
+      "run": "2026-09-17T02-25-24-785Z",
+      "id": "GROUPED-LIVE",
+      "status": "PASS",
+      "evidence": {
+        "count": 147,
+        "groups": 14,
+        "sum": 2504,
+        "groupedTotals": [
+          {
+            "group": "product:b570a217-91f9-550c-a3dc-ff55e6e1054a",
+            "hours": 32
+          },
+          {
+            "group": "product:8b8882e7-7be2-5ba0-b01c-3ad8880f60ed",
+            "hours": 40
+          },
+          {
+            "group": "product:3999b684-3dd7-5d03-a388-ff71ba404078",
+            "hours": 48
+          },
+          {
+            "group": "product:233c01f8-c0e2-55dd-88a6-1318160d4ce6",
+            "hours": 56
+          },
+          {
+            "group": "product:1e087bd2-eda4-4671-a422-20e74184aae2",
+            "hours": 225
+          },
+          {
+            "group": "engineering:钟冠",
+            "hours": 326
+          },
+          {
+            "group": "engineering:嵌入式项目",
+            "hours": 400
+          },
+          {
+            "group": "engineering:其他-底层【语音底层】",
+            "hours": 182
+          },
+          {
+            "group": "engineering:罗晓璇",
+            "hours": 163
+          },
+          {
+            "group": "engineering:吴浩鑫",
+            "hours": 353
+          },
+          {
+            "group": "engineering:杨瑞",
+            "hours": 399
+          },
+          {
+            "group": "engineering:不在上述",
+            "hours": 27
+          },
+          {
+            "group": "engineering:罗思宇",
+            "hours": 225
+          },
+          {
+            "group": "engineering:汪晨",
+            "hours": 28
+          }
+        ],
+        "mergedCells": 27,
+        "medals": 56,
+        "groupSortingAndRestore": true,
+        "roleFiltered": {
+          "records": 40,
+          "hours": 724
+        }
+      }
+    },
+    {
+      "run": "2026-09-17T02-25-24-785Z",
+      "id": "COUNTS-EMPTY-FIXTURE",
+      "status": "PASS",
+      "evidence": {
+        "displayedRecords": 147,
+        "submittedPayloadRecords": 148,
+        "total": 2504,
+        "firstManagerOnly": true,
+        "collectionTasks": 8,
+        "emptyTaskRow": [
+          "2026-第39周 2026-09-21~2026-09-27",
+          "0",
+          "0%",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0"
+        ]
+      }
+    },
+    {
+      "run": "2026-09-17T02-25-24-785Z",
+      "id": "COUNTS-LAYOUT",
+      "status": "PASS",
+      "evidence": {
+        "observations": [
+          {
+            "size": {
+              "width": 1600,
+              "height": 900
+            },
+            "boxes": [
+              {
+                "kind": "dt-delivery-card is-selected-scope",
+                "x": 40,
+                "y": 197,
+                "width": 206,
+                "height": 115.5
+              },
+              {
+                "kind": "dt-delivery-card",
+                "x": 256,
+                "y": 197,
+                "width": 206,
+                "height": 115.5
+              },
+              {
+                "kind": "dt-delivery-card",
+                "x": 472,
+                "y": 197,
+                "width": 206,
+                "height": 115.5
+              },
+              {
+                "kind": "dt-delivery-card",
+                "x": 688,
+                "y": 197,
+                "width": 206,
+                "height": 115.5
+              },
+              {
+                "kind": "dt-delivery-card",
+                "x": 904,
+                "y": 197,
+                "width": 206,
+                "height": 115.5
+              },
+              {
+                "kind": "dt-delivery-card",
+                "x": 1120,
+                "y": 197,
+                "width": 206,
+                "height": 115.5
+              },
+              {
+                "kind": "stats-counts-card has-caption",
+                "x": 1336,
+                "y": 197,
+                "width": 224,
+                "height": 115.5
+              }
+            ],
+            "columns": [
+              {
+                "x": 366,
+                "y": 138.32830810546875,
+                "width": 426,
+                "height": 414
+              },
+              {
+                "x": 808,
+                "y": 138.32830810546875,
+                "width": 426,
+                "height": 414
+              }
+            ]
+          },
+          {
+            "size": {
+              "width": 1920,
+              "height": 1080
+            },
+            "boxes": [
+              {
+                "kind": "dt-delivery-card is-selected-scope",
+                "x": 40,
+                "y": 197,
+                "width": 259.328125,
+                "height": 115.5
+              },
+              {
+                "kind": "dt-delivery-card",
+                "x": 309.328125,
+                "y": 197,
+                "width": 259.328125,
+                "height": 115.5
+              },
+              {
+                "kind": "dt-delivery-card",
+                "x": 578.65625,
+                "y": 197,
+                "width": 259.34375,
+                "height": 115.5
+              },
+              {
+                "kind": "dt-delivery-card",
+                "x": 848,
+                "y": 197,
+                "width": 259.328125,
+                "height": 115.5
+              },
+              {
+                "kind": "dt-delivery-card",
+                "x": 1117.328125,
+                "y": 197,
+                "width": 259.328125,
+                "height": 115.5
+              },
+              {
+                "kind": "dt-delivery-card",
+                "x": 1386.65625,
+                "y": 197,
+                "width": 259.34375,
+                "height": 115.5
+              },
+              {
+                "kind": "stats-counts-card has-caption",
+                "x": 1656,
+                "y": 197,
+                "width": 224,
+                "height": 115.5
+              }
+            ],
+            "columns": [
+              {
+                "x": 526,
+                "y": 148.359375,
+                "width": 426,
+                "height": 414
+              },
+              {
+                "x": 968,
+                "y": 148.359375,
+                "width": 426,
+                "height": 414
+              }
+            ]
+          },
+          {
+            "size": {
+              "width": 1280,
+              "height": 720
+            },
+            "boxes": [
+              {
+                "kind": "dt-delivery-card is-selected-scope",
+                "x": 40,
+                "y": 197,
+                "width": 393.328125,
+                "height": 115.5
+              },
+              {
+                "kind": "dt-delivery-card",
+                "x": 443.328125,
+                "y": 197,
+                "width": 393.328125,
+                "height": 115.5
+              },
+              {
+                "kind": "dt-delivery-card",
+                "x": 846.65625,
+                "y": 197,
+                "width": 393.34375,
+                "height": 115.5
+              },
+              {
+                "kind": "dt-delivery-card",
+                "x": 40,
+                "y": 322.5,
+                "width": 393.328125,
+                "height": 115.5
+              },
+              {
+                "kind": "dt-delivery-card",
+                "x": 443.328125,
+                "y": 322.5,
+                "width": 393.328125,
+                "height": 115.5
+              },
+              {
+                "kind": "dt-delivery-card",
+                "x": 846.65625,
+                "y": 322.5,
+                "width": 393.34375,
+                "height": 115.5
+              },
+              {
+                "kind": "stats-counts-card has-caption",
+                "x": 40,
+                "y": 448,
+                "width": 393.328125,
+                "height": 115.5
+              }
+            ],
+            "columns": [
+              {
+                "x": 206,
+                "y": 127.51781463623047,
+                "width": 426,
+                "height": 375.59375
+              },
+              {
+                "x": 648,
+                "y": 127.51781463623047,
+                "width": 426,
+                "height": 375.59375
+              }
+            ]
+          },
+          {
+            "size": {
+              "width": 390,
+              "height": 844
+            },
+            "boxes": [
+              {
+                "kind": "dt-delivery-card is-selected-scope",
+                "x": 28,
+                "y": 445.96875,
+                "width": 163,
+                "height": 110.59375
+              },
+              {
+                "kind": "dt-delivery-card",
+                "x": 199,
+                "y": 445.96875,
+                "width": 163,
+                "height": 110.59375
+              },
+              {
+                "kind": "dt-delivery-card",
+                "x": 28,
+                "y": 564.5625,
+                "width": 163,
+                "height": 110.59375
+              },
+              {
+                "kind": "dt-delivery-card",
+                "x": 199,
+                "y": 564.5625,
+                "width": 163,
+                "height": 110.59375
+              },
+              {
+                "kind": "dt-delivery-card",
+                "x": 28,
+                "y": 683.15625,
+                "width": 163,
+                "height": 110.59375
+              },
+              {
+                "kind": "dt-delivery-card",
+                "x": 199,
+                "y": 683.15625,
+                "width": 163,
+                "height": 110.59375
+              },
+              {
+                "kind": "stats-counts-card has-caption",
+                "x": 28,
+                "y": 801.75,
+                "width": 163,
+                "height": 110.59375
+              }
+            ],
+            "columns": [
+              {
+                "x": 32,
+                "y": 134.1875,
+                "width": 326,
+                "height": 414
+              },
+              {
+                "x": 32,
+                "y": 562.1875,
+                "width": 326,
+                "height": 222
+              }
+            ]
+          }
+        ],
+        "errors": [],
+        "writes": []
+      }
+    }
+  ],
+  "errors": [],
+  "writes": []
+}

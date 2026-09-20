@@ -9,7 +9,7 @@
 
 ## 当前版本
 
-**v3.3.0** (2026-06-10)
+**v3.4.0** (2026-09-17)
 
 ## 快速开始
 
@@ -19,7 +19,7 @@ cd backend
 npm install
 node src/app.js
 
-# 前端（端口 5173，自动代理到 3001）
+# 前端（端口 5176，自动代理到 3001）
 cd frontend
 npm install
 npm run dev

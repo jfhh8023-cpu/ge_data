@@ -1,0 +1,59 @@
+{
+  "run": "2026-09-16T15-11-09-998Z",
+  "digits": [
+    {
+      "text": "280h",
+      "cellRight": 82.65625,
+      "cellWidth": 45.65625,
+      "textRight": 71.9375,
+      "textWidth": 34.9375,
+      "client": 46,
+      "scroll": 46
+    },
+    {
+      "text": "400h",
+      "cellRight": 132.328125,
+      "cellWidth": 45.671875,
+      "textRight": 121.59375,
+      "textWidth": 34.9375,
+      "client": 46,
+      "scroll": 46
+    },
+    {
+      "text": "142.86%",
+      "cellRight": 182,
+      "cellWidth": 45.671875,
+      "textRight": 204.84375,
+      "textWidth": 64.515625,
+      "client": 46,
+      "scroll": 69
+    },
+    {
+      "text": "280",
+      "cellRight": 103.6875,
+      "cellWidth": 31.890625,
+      "textRight": 101.6875,
+      "textWidth": 19.359375,
+      "client": 32,
+      "scroll": 32
+    },
+    {
+      "text": "400",
+      "cellRight": 135.578125,
+      "cellWidth": 31.890625,
+      "textRight": 133.578125,
+      "textWidth": 19.359375,
+      "client": 32,
+      "scroll": 32
+    },
+    {
+      "text": "142.86%",
+      "cellRight": 182,
+      "cellWidth": 46.421875,
+      "textRight": 188.890625,
+      "textWidth": 51.3125,
+      "client": 46,
+      "scroll": 64
+    }
+  ]
+}

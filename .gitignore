@@ -42,3 +42,6 @@ deploy/__pycache__/
 
 # 钉钉登录会话（含敏感 Cookie，绝不入 Git）
 backend/src/config/dingtalk-session.json
+
+# production handoff snapshots contain credentials
+docs/@development/production_deployment_handoff_*/

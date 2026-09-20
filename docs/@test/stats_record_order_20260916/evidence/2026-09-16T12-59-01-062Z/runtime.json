@@ -1,0 +1,10 @@
+{
+  "errors": [],
+  "failedResponses": [],
+  "interceptedWrites": [
+    {
+      "path": "/excel/upload",
+      "method": "POST"
+    }
+  ]
+}

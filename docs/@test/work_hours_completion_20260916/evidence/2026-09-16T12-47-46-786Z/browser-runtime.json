@@ -1,0 +1,11 @@
+{
+  "errors": [],
+  "failedResponses": [],
+  "interceptedWrites": [
+    {
+      "method": "PUT",
+      "path": "/fill/REQ060-fixture/editing",
+      "intercepted": true
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+# 生产同步后只读验收
+
+批次：2026-09-17T03-01-37-190Z
+
+- SYNC-API: PASS
+- SYNC-STATS: PASS
+- SYNC-TASKS: PASS

@@ -1,0 +1,37 @@
+{
+  "status": "PASS",
+  "periodDropdown": "Q3→W32 empty 0h→all 225h",
+  "geometry": {
+    "card": {
+      "x": 39,
+      "right": 539.65625,
+      "width": 500.65625
+    },
+    "values": [
+      {
+        "text": "25.0",
+        "x": 485.671875,
+        "right": 511.3125,
+        "width": 25.640625
+      },
+      {
+        "text": "200.0",
+        "x": 481.984375,
+        "right": 515.015625,
+        "width": 33.03125
+      }
+    ],
+    "headers": [
+      "#",
+      "版本",
+      "需求标题",
+      "需求方",
+      "人员",
+      "工时"
+    ]
+  },
+  "leaveRoute": "/tasks",
+  "undefinedLegacyRequest": [],
+  "errors": [],
+  "writes": []
+}

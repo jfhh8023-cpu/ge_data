@@ -1,0 +1,8 @@
+{
+  "mode": "real local API and real browser, all non-GET requests blocked",
+  "actualHours": 2328,
+  "standardHours": 3232,
+  "completionRate": 72.03,
+  "shown": "工时完成度 ⓘ\n72.03%\n已填 2,328h / 应填 3,232h",
+  "pageErrors": []
+}

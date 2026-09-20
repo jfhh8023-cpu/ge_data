@@ -1,0 +1,135 @@
+{
+  "run": "2026-09-17T02-45-27-943Z",
+  "results": [
+    {
+      "run": "2026-09-17T02-45-27-943Z",
+      "id": "PERSONAL-WINDOW",
+      "status": "PASS",
+      "evidence": {
+        "staffId": "1e087bd2-eda4-4671-a422-20e74184aae2",
+        "staffName": "张三",
+        "query": {},
+        "records": 2,
+        "totalHours": 225,
+        "visiblePeriods": 1,
+        "availablePeriods": 7,
+        "routePattern": "/stats/product-manager/:staffId",
+        "adminQueryPreserved": true,
+        "sourceUnchanged": true,
+        "chartTotal": 225,
+        "removedHint": true,
+        "legacyLeftEntry": "PASS /pm/view/:token (token not persisted)"
+      }
+    },
+    {
+      "run": "2026-09-17T02-45-27-943Z",
+      "id": "PERSONAL-PERIOD",
+      "status": "PASS",
+      "evidence": {
+        "weekly": {
+          "staffId": "1e087bd2-eda4-4671-a422-20e74184aae2",
+          "staffName": "张三",
+          "query": {
+            "taskId": "b025fb94-4a06-43a8-8d17-716a8c88e5bc"
+          },
+          "records": 2,
+          "totalHours": 225,
+          "visiblePeriods": 1,
+          "availablePeriods": 1
+        },
+        "sorting": {
+          "descending": [
+            "2026-08-10 ~ 2026-08-16",
+            "2026-08-03 ~ 2026-08-09"
+          ],
+          "reversedAndRestored": true
+        },
+        "empty": {
+          "staffId": "1e087bd2-eda4-4671-a422-20e74184aae2",
+          "staffName": "张三",
+          "query": {
+            "year": "2027",
+            "quarter": "Q1"
+          },
+          "records": 0,
+          "totalHours": 0,
+          "visiblePeriods": 0,
+          "availablePeriods": 0
+        }
+      }
+    },
+    {
+      "run": "2026-09-17T02-45-27-943Z",
+      "id": "PERSONAL-LAYOUT",
+      "status": "PASS",
+      "evidence": {
+        "desktop": {
+          "x": 39,
+          "y": 78,
+          "width": 1522,
+          "height": 62
+        },
+        "mobile": {
+          "x": 27,
+          "y": 149.421875,
+          "width": 336,
+          "height": 112.09375
+        },
+        "errors": [],
+        "writes": []
+      }
+    }
+  ],
+  "requests": [
+    {
+      "path": "/api/stats/personal/1e087bd2-eda4-4671-a422-20e74184aae2",
+      "params": {
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all"
+      }
+    },
+    {
+      "path": "/api/stats/personal/1e087bd2-eda4-4671-a422-20e74184aae2",
+      "params": {
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "b025fb94-4a06-43a8-8d17-716a8c88e5bc"
+      }
+    },
+    {
+      "path": "/api/stats/personal/1e087bd2-eda4-4671-a422-20e74184aae2",
+      "params": {
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all"
+      }
+    },
+    {
+      "path": "/api/stats/personal/1e087bd2-eda4-4671-a422-20e74184aae2",
+      "params": {
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all"
+      }
+    },
+    {
+      "path": "/api/stats/personal/1e087bd2-eda4-4671-a422-20e74184aae2",
+      "params": {
+        "year": "2027",
+        "quarter": "Q1",
+        "taskId": "all"
+      }
+    },
+    {
+      "path": "/api/stats/personal/1e087bd2-eda4-4671-a422-20e74184aae2",
+      "params": {
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all"
+      }
+    }
+  ],
+  "errors": [],
+  "writes": []
+}

@@ -1,0 +1,120 @@
+{
+  "errors": [],
+  "failures": [],
+  "writes": [],
+  "requests": [
+    {
+      "suffix": "/index.js",
+      "params": {}
+    },
+    {
+      "suffix": "/roles",
+      "params": {}
+    },
+    {
+      "suffix": "/tasks",
+      "params": {}
+    },
+    {
+      "suffix": "/pm",
+      "params": {}
+    },
+    {
+      "suffix": "/roles",
+      "params": {}
+    },
+    {
+      "suffix": "/stats",
+      "params": {
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all"
+      }
+    },
+    {
+      "suffix": "/index.js",
+      "params": {}
+    },
+    {
+      "suffix": "/roles",
+      "params": {}
+    },
+    {
+      "suffix": "/tasks",
+      "params": {}
+    },
+    {
+      "suffix": "/pm",
+      "params": {}
+    },
+    {
+      "suffix": "/roles",
+      "params": {}
+    },
+    {
+      "suffix": "/stats",
+      "params": {
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all"
+      }
+    },
+    {
+      "suffix": "/index.js",
+      "params": {}
+    },
+    {
+      "suffix": "/roles",
+      "params": {}
+    },
+    {
+      "suffix": "/tasks",
+      "params": {}
+    },
+    {
+      "suffix": "/pm",
+      "params": {}
+    },
+    {
+      "suffix": "/roles",
+      "params": {}
+    },
+    {
+      "suffix": "/stats",
+      "params": {
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all"
+      }
+    },
+    {
+      "suffix": "/index.js",
+      "params": {}
+    },
+    {
+      "suffix": "/roles",
+      "params": {}
+    },
+    {
+      "suffix": "/tasks",
+      "params": {}
+    },
+    {
+      "suffix": "/pm",
+      "params": {}
+    },
+    {
+      "suffix": "/roles",
+      "params": {}
+    },
+    {
+      "suffix": "/stats",
+      "params": {
+        "year": "2026",
+        "quarter": "Q3",
+        "taskId": "all"
+      }
+    }
+  ],
+  "exports": []
+}

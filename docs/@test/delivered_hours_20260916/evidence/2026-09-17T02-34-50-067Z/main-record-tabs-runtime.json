@@ -1,0 +1,72 @@
+{
+  "run": "2026-09-17T02-34-50-067Z",
+  "results": [
+    {
+      "run": "2026-09-17T02-34-50-067Z",
+      "id": "TABS-DATA",
+      "status": "FAIL",
+      "message": "Expected values to be strictly deep-equal:\n+ actual - expected\n\n  [\n+   NaN,\n+   NaN,\n-   2952,\n-   1541,\n    52.2\n  ]\n",
+      "stack": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:\n+ actual - expected\n\n  [\n+   NaN,\n+   NaN,\n-   2952,\n-   1541,\n    52.2\n  ]\n\n    at analysisMatches (D:\\PythonTEST\\My_Other_Tool_System\\get_data\\get_data_cursor\\backend\\scripts\\verify_main_record_tabs_ui.js:26:10)\n    at async D:\\PythonTEST\\My_Other_Tool_System\\get_data\\get_data_cursor\\backend\\scripts\\verify_main_record_tabs_ui.js:49:95\n    at async check (D:\\PythonTEST\\My_Other_Tool_System\\get_data\\get_data_cursor\\backend\\scripts\\verify_main_record_tabs_ui.js:32:72)\n    at async run (D:\\PythonTEST\\My_Other_Tool_System\\get_data\\get_data_cursor\\backend\\scripts\\verify_main_record_tabs_ui.js:41:5)",
+      "body": "\t\nAI质量\n\t\n39\n🥈\n\n\n96\n\t\nv4.992.0\n\t\nAI语音供应商要计产品成本（方便给业务员算业绩）\n\t\n朱俊锋\n\t\nAI质量\n\t\n6\n\n\n97\n\t\nv4.994.0\n\t\n【IVR+AI语音】策略模板配置\n\t\n刘君\n\t\nAI开发\n\t\n16\n\n\n98\n\t\nv4.944.0\n\t\n【IVR+AI语音】-策略模板配置\n\t\n艾婉\n\t\nAI质量\n\t\n44\n🥇\n\n\n99\n\t\n策略模板配置\n\t\n温嘉敦\n\t\nAI开发\n\t\n24\n\n\n100\n\t\nV4.944.0\n\t\n【IVR+AI语音】策略模板配置\n\t\n刘君\n\t\nAI开发\n\t\n32\n🥉\n\n\n101\n\t\nv4.944.0\n\t\n策略模板配置优化\n\t\n艾婉\n\t\nAI质量\n\t\n18\n\n\n102\n\t\nv4.944.0-策略模板配置\n\t\n朱俊锋\n\t\nAI质量\n\t\n16\n\n\n103\n\t\nv4.944.0-策略模板配置，用例输出\n\t\n朱俊锋\n\t\nAI质量\n\t\n6\n\n\n104\n\t\n【IVR+AI语音】策略模板配置\n\t\n刘君\n\t\nAI开发\n\t\n24\n\n\n105\n\t\nv4.894.0\n\t\n智能体自动重乎进阶线验收\n\t\n艾婉\n\t\nAI质量\n\t\n2\n\n\n106\n\t\nv4.944.0\n\t\nv4.944.0-策略模板配置\n\t\n郑家成\n\t\nAI开发\n\t\n8\n\n\n107\n\t\nv4.894.0\n\t\nv4.894.0-自动重呼设置优化（智能体进阶配置）\n\t\n朱俊锋\n\t\nAI质量\n\t\n24\n\n\n108\n\t\n自动重呼设置优化编写测试用例\n\t\n艾婉\n\t\nAI质量\n\t\n6\n\n\n109\n\t\n自动重呼设置优化功能测试\n\t\n艾婉\n\t\nAI质量\n\t\n28\n\n\n110\n\t\n☆ArK【AI语音-应用层】v4.894.0-自动重呼设置优化（智能体进阶配置）\n\t\n唐兵\n\t\nAI开发\n\t\n8\n\n\n111\n\t\n自动重呼设置优化（智能体进阶配置）\n\t\n温嘉敦\n\t\nAI开发\n\t\n16\n\n\n\t\n合计\n399小时\n\n\n112\n\t\n不在上述\n\t\n-\n\t\n线上问题跟进\n\t\n艾婉\n\t\nAI质量\n\t\n4\n🥉\n\n\n113\n\t\n-\n\t\nAI测试小工具\n\t\n艾婉\n\t\nAI质量\n\t\n8\n🥈\n\n\n114\n\t\n-\n\t\n巴基斯坦本地服务器SKS服务部署2套\n\t\n赖香山\n\t\nVOIP\n\t\n3\n\n\n115\n\t\n-\n\t\n其他临时需求及内容\n\t\n朱俊锋\n\t\nAI质量\n\t\n12\n🥇\n\n\n\t\n合计\n27小时\n\n\n116\n\t\n罗思宇\n\t\nv4.940.0\n\t\n语音C客户-v1.1（ai总结报告）\n\t\n温嘉敦\n\t\nAI开发\n\t\n16\n\n\n117\n\t\nC客户-v1.1（ai总结报告+送量规律）编写测试用例\n\t\n艾婉\n\t\nAI质量\n\t\n5\n\n\n118\n\t\nC客户-V1.1（ai总结报告+送量规律）功能测试\n\t\n艾婉\n\t\nAI质量\n\t\n20\n🥉\n\n\n119\n\t\nv4.864.0\n\t\n☆ArK【OKR】v4.864.0语音客户：生命周期管理【研发反讲+测试用例评审】\n\t\n唐兵\n\t\nAI开发\n\t\n50\n🥇\n\n\n120\n\t\nV4.864.0\n\t\n语音客户看板功能测试\n\t\n艾婉\n\t\nAI质量\n\t\n35\n🥈\n\n\n121\n\t\n客户看板需求编写测试用例\n\t\n艾婉\n\t\nAI质量\n\t\n6\n\n\n122\n\t\n客户看板1.1需求评审\n\t\n艾婉\n\t\nAI质量\n\t\n2\n\n\n123\n\t\nv4.864.0\n\t\n语音客户：生命周期管理\n\t\n温嘉敦\n\t\nAI开发\n\t\n16\n\n\n124\n\t\nv4.864.0语音客户：生命周期管理\n\t\n朱俊锋\n\t\nAI质量\n\t\n6\n\n\n125\n\t\n客户：生命周期管理功能测试\n\t\n艾婉\n\t\nAI质量\n\t\n16\n\n\n126\n\t\n客户：生命周期管理用例评审\n\t\n艾婉\n\t\nAI质量\n\t\n3\n\n\n127\n\t\n☆ArK【OKR】v4.864.0语音客户：生命周期管理【研发反讲+测试用例评审】\n\t\n唐兵\n\t\nAI开发\n\t\n50\n🥇\n\n\n\t\n合计\n225小时\n\n\n128\n\t\n汪晨\n\t\n-\n\t\n复核录音下载\n\t\n赖香山\n\t\nVOIP\n\t\n4\n🥈\n\n\n129\n\t\nv4.871.1\n\t\nv4.871.1-R端语音资源新增需求\n\t\n朱俊锋\n\t\nAI质量\n\t\n24\n🥇\n\n\n\t\n合计\n28小时\n2026年 Q3 / Q3｜AI研发工时明细\nAI研发\n当前周期\n当前周期应交付工时\n2,952h\n含版本号已交付\n1,541h\n交付率\n52.2%\n总工时 2103.0h\n记录 129\n需求 127\n收集任务 7\n\n有版本工时计入交付率，无版本仅记录。\n\n人员交付情况\n11 人 · 工时单位 h\n姓名\t应交付\t含版本号已交付\t交付率\n朱俊锋\t280\t199\t71.07%\n任选\t280\t400\t142.86%\n赵鲁鹏\t280\t18\t6.43%\n赖香山\t280\t0\t0%\n刘君\t280\t240\t85.71%\n唐兵\t280\t204\t72.86%\n温嘉敦\t280\t184\t65.71%\n艾婉\t280\t216\t77.14%\n郑家成\t280\t80\t28.57%\n张希亮\t152\t0\t0%\n邬涛\t280\t0\t0%\n当前周期\n2026-06-29 至 2026-08-16 · AI研发\n导出 Excel\n打开完整报告页\nAI开发\n724.0h\nVOIP\n490.0h\nAI质量\n489.0h\n嵌入式\n400.0h\n总览\n人员\n工时记录\n全部追踪和进度\n普通版本（有版本号）\n无版本号版本\nAI产品经理\n周期\n版本\n需求\n关键词\n数据质量\n需求进度\n人员\n\t\n应交付工时/h\n\t\n含版本号已交付/h\n\t\n交付率\n\t\n已填总工时/h\n\t\n工时占比\n\t\n记录数\n\t\n周期数\n\t\n需求数\n朱俊锋（AI质量）\n\t\n280\n\t\n199\n\t\n71.07%\n\t\n261\n\t\n12.4%\n\t\n22\n\t\n6\n\t\n22\n\n\n任选（嵌入式）\n\t\n280\n\t\n400\n\t\n142.86%\n\t\n400\n\t\n19%\n\t\n2\n\t\n1\n\t\n2\n\n\n赵鲁鹏（VOIP）\n\t\n280\n\t\n18\n\t\n6.43%\n\t\n297\n\t\n14.1%\n\t\n27\n\t\n6\n\t\n27\n\n\n赖香山（VOIP）\n\t\n280\n\t\n0\n\t\n0%\n\t\n193\n\t\n9.2%\n\t\n18\n\t\n6\n\t\n18\n\n\n刘君（AI开发）\n\t\n280\n\t\n240\n\t\n85.71%\n\t\n240\n\t\n11.4%\n\t\n12\n\t\n6\n\t\n12\n\n\n唐兵（AI开发）\n\t\n280\n\t\n204\n\t\n72.86%\n\t\n204\n\t\n9.7%\n\t\n9\n\t\n4\n\t\n9\n\n\n温嘉敦（AI开发）\n\t\n280\n\t\n184\n\t\n65.71%\n\t\n200\n\t\n9.5%\n\t\n15\n\t\n5\n\t\n15\n\n\n艾婉（AI质量）\n\t\n280\n\t\n216\n\t\n77.14%\n\t\n228\n\t\n10.8%\n\t\n20\n\t\n5\n\t\n20\n\n\n郑家成（AI开发）\n\t\n280\n\t\n80\n\t\n28.57%\n\t\n80\n\t\n3.8%\n\t\n4\n\t\n3\n\t\n4\n\n\n张希亮（AI开发）\n\t\n152\n\t\n0\n\t\n0%\n\t\n0\n\t\n0%\n\t\n0\n\t\n0\n\t\n0\n\n\n邬涛（AI开发）\n\t\n280\n\t\n0\n\t\n0%\n\t\n0\n\t\n0%\n\t\n0\n\t\n0\n\t\n0\n共 11 条\n20条/页\n1\n前往\n页\nDevTracker v3.0.2© 2026   2698-jfzhu8023"
+    },
+    {
+      "run": "2026-09-17T02-34-50-067Z",
+      "id": "TABS-LINKS",
+      "status": "FAIL",
+      "message": "Expected values to be strictly deep-equal:\n+ actual - expected\n\n  [\n+   NaN,\n+   NaN,\n-   4352,\n-   1673,\n    38.44\n  ]\n",
+      "stack": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:\n+ actual - expected\n\n  [\n+   NaN,\n+   NaN,\n-   4352,\n-   1673,\n    38.44\n  ]\n\n    at analysisMatches (D:\\PythonTEST\\My_Other_Tool_System\\get_data\\get_data_cursor\\backend\\scripts\\verify_main_record_tabs_ui.js:26:10)\n    at async D:\\PythonTEST\\My_Other_Tool_System\\get_data\\get_data_cursor\\backend\\scripts\\verify_main_record_tabs_ui.js:61:102\n    at async check (D:\\PythonTEST\\My_Other_Tool_System\\get_data\\get_data_cursor\\backend\\scripts\\verify_main_record_tabs_ui.js:32:72)\n    at async run (D:\\PythonTEST\\My_Other_Tool_System\\get_data\\get_data_cursor\\backend\\scripts\\verify_main_record_tabs_ui.js:53:5)",
+      "body": "锋\n\t\nAI质量\n\t\n16\n\n\n103\n\t\nv4.944.0-策略模板配置，用例输出\n\t\n朱俊锋\n\t\nAI质量\n\t\n6\n\n\n104\n\t\n【IVR+AI语音】策略模板配置\n\t\n刘君\n\t\nAI开发\n\t\n24\n\n\n105\n\t\nv4.894.0\n\t\n智能体自动重乎进阶线验收\n\t\n艾婉\n\t\nAI质量\n\t\n2\n\n\n106\n\t\nv4.944.0\n\t\nv4.944.0-策略模板配置\n\t\n郑家成\n\t\nAI开发\n\t\n8\n\n\n107\n\t\nv4.894.0\n\t\nv4.894.0-自动重呼设置优化（智能体进阶配置）\n\t\n朱俊锋\n\t\nAI质量\n\t\n24\n\n\n108\n\t\n自动重呼设置优化编写测试用例\n\t\n艾婉\n\t\nAI质量\n\t\n6\n\n\n109\n\t\n自动重呼设置优化功能测试\n\t\n艾婉\n\t\nAI质量\n\t\n28\n\n\n110\n\t\n☆ArK【AI语音-应用层】v4.894.0-自动重呼设置优化（智能体进阶配置）\n\t\n唐兵\n\t\nAI开发\n\t\n8\n\n\n111\n\t\n自动重呼设置优化（智能体进阶配置）\n\t\n温嘉敦\n\t\nAI开发\n\t\n16\n\n\n\t\n合计\n399小时\n\n\n112\n\t\n不在上述\n\t\n-\n\t\n线上问题跟进\n\t\n艾婉\n\t\nAI质量\n\t\n4\n🥉\n\n\n113\n\t\n-\n\t\nAI测试小工具\n\t\n艾婉\n\t\nAI质量\n\t\n8\n🥈\n\n\n114\n\t\n-\n\t\n巴基斯坦本地服务器SKS服务部署2套\n\t\n赖香山\n\t\nVOIP\n\t\n3\n\n\n115\n\t\n-\n\t\n其他临时需求及内容\n\t\n朱俊锋\n\t\nAI质量\n\t\n12\n🥇\n\n\n\t\n合计\n27小时\n\n\n116\n\t\n罗思宇\n\t\nv4.940.0\n\t\n语音C客户-v1.1（ai总结报告）\n\t\n温嘉敦\n\t\nAI开发\n\t\n16\n\n\n117\n\t\nC客户-v1.1（ai总结报告+送量规律）编写测试用例\n\t\n艾婉\n\t\nAI质量\n\t\n5\n\n\n118\n\t\nC客户-V1.1（ai总结报告+送量规律）功能测试\n\t\n艾婉\n\t\nAI质量\n\t\n20\n🥉\n\n\n119\n\t\nv4.864.0\n\t\n☆ArK【OKR】v4.864.0语音客户：生命周期管理【研发反讲+测试用例评审】\n\t\n唐兵\n\t\nAI开发\n\t\n50\n🥇\n\n\n120\n\t\nV4.864.0\n\t\n语音客户看板功能测试\n\t\n艾婉\n\t\nAI质量\n\t\n35\n🥈\n\n\n121\n\t\n客户看板需求编写测试用例\n\t\n艾婉\n\t\nAI质量\n\t\n6\n\n\n122\n\t\n客户看板1.1需求评审\n\t\n艾婉\n\t\nAI质量\n\t\n2\n\n\n123\n\t\nv4.864.0\n\t\n语音客户：生命周期管理\n\t\n温嘉敦\n\t\nAI开发\n\t\n16\n\n\n124\n\t\nv4.864.0语音客户：生命周期管理\n\t\n朱俊锋\n\t\nAI质量\n\t\n6\n\n\n125\n\t\n客户：生命周期管理功能测试\n\t\n艾婉\n\t\nAI质量\n\t\n16\n\n\n126\n\t\n客户：生命周期管理用例评审\n\t\n艾婉\n\t\nAI质量\n\t\n3\n\n\n127\n\t\n☆ArK【OKR】v4.864.0语音客户：生命周期管理【研发反讲+测试用例评审】\n\t\n唐兵\n\t\nAI开发\n\t\n50\n🥇\n\n\n\t\n合计\n225小时\n\n\n128\n\t\n汪晨\n\t\n-\n\t\n复核录音下载\n\t\n赖香山\n\t\nVOIP\n\t\n4\n🥈\n\n\n129\n\t\nv4.871.1\n\t\nv4.871.1-R端语音资源新增需求\n\t\n朱俊锋\n\t\nAI质量\n\t\n24\n🥇\n\n\n\t\n合计\n28小时\n2026年 Q3 / Q3｜部门工时明细\n部门\n当前周期\n当前周期应交付工时\n4,352h\n含版本号已交付\n1,673h\n交付率\n38.44%\n总工时 2504.0h\n记录 147\n需求 142\n收集任务 7\n\n有版本工时计入交付率，无版本仅记录。\n\n人员交付情况\n16 人 · 工时单位 h\n姓名\t应交付\t含版本号已交付\t交付率\n李四\t280\t24\t8.57%\n王五\t280\t30\t10.71%\n赵六\t280\t36\t12.86%\n陈七\t280\t42\t15%\n张三\t280\t0\t0%\n朱俊锋\t280\t199\t71.07%\n任选\t280\t400\t142.86%\n赵鲁鹏\t280\t18\t6.43%\n赖香山\t280\t0\t0%\n刘君\t280\t240\t85.71%\n唐兵\t280\t204\t72.86%\n温嘉敦\t280\t184\t65.71%\n艾婉\t280\t216\t77.14%\n郑家成\t280\t80\t28.57%\n张希亮\t152\t0\t0%\n邬涛\t280\t0\t0%\n当前周期\n2026-06-29 至 2026-08-16 · 部门\n导出 Excel\n打开完整报告页\nAI开发\n724.0h\nVOIP\n490.0h\nAI质量\n489.0h\n嵌入式\n400.0h\nAI产品\n401.0h\n总览\n人员\n工时记录\n全部追踪和进度\n普通版本（有版本号）\n无版本号版本\nAI产品经理\n周期\n版本\n需求\n关键词\n数据质量\n需求进度\n人员\n\t\n应交付工时/h\n\t\n含版本号已交付/h\n\t\n交付率\n\t\n已填总工时/h\n\t\n工时占比\n\t\n记录数\n\t\n周期数\n\t\n需求数\n李四（AI产品）\n\t\n280\n\t\n24\n\t\n8.57%\n\t\n32\n\t\n1.3%\n\t\n4\n\t\n1\n\t\n4\n\n\n王五（AI产品）\n\t\n280\n\t\n30\n\t\n10.71%\n\t\n40\n\t\n1.6%\n\t\n4\n\t\n1\n\t\n4\n\n\n赵六（AI产品）\n\t\n280\n\t\n36\n\t\n12.86%\n\t\n48\n\t\n1.9%\n\t\n4\n\t\n1\n\t\n4\n\n\n陈七（AI产品）\n\t\n280\n\t\n42\n\t\n15%\n\t\n56\n\t\n2.2%\n\t\n4\n\t\n1\n\t\n4\n\n\n张三（AI产品）\n\t\n280\n\t\n0\n\t\n0%\n\t\n225\n\t\n9%\n\t\n2\n\t\n1\n\t\n2\n\n\n朱俊锋（AI质量）\n\t\n280\n\t\n199\n\t\n71.07%\n\t\n261\n\t\n10.4%\n\t\n22\n\t\n6\n\t\n22\n\n\n任选（嵌入式）\n\t\n280\n\t\n400\n\t\n142.86%\n\t\n400\n\t\n16%\n\t\n2\n\t\n1\n\t\n2\n\n\n赵鲁鹏（VOIP）\n\t\n280\n\t\n18\n\t\n6.43%\n\t\n297\n\t\n11.9%\n\t\n27\n\t\n6\n\t\n27\n\n\n赖香山（VOIP）\n\t\n280\n\t\n0\n\t\n0%\n\t\n193\n\t\n7.7%\n\t\n18\n\t\n6\n\t\n18\n\n\n刘君（AI开发）\n\t\n280\n\t\n240\n\t\n85.71%\n\t\n240\n\t\n9.6%\n\t\n12\n\t\n6\n\t\n12\n\n\n唐兵（AI开发）\n\t\n280\n\t\n204\n\t\n72.86%\n\t\n204\n\t\n8.1%\n\t\n9\n\t\n4\n\t\n9\n\n\n温嘉敦（AI开发）\n\t\n280\n\t\n184\n\t\n65.71%\n\t\n200\n\t\n8%\n\t\n15\n\t\n5\n\t\n15\n\n\n艾婉（AI质量）\n\t\n280\n\t\n216\n\t\n77.14%\n\t\n228\n\t\n9.1%\n\t\n20\n\t\n5\n\t\n20\n\n\n郑家成（AI开发）\n\t\n280\n\t\n80\n\t\n28.57%\n\t\n80\n\t\n3.2%\n\t\n4\n\t\n3\n\t\n4\n\n\n张希亮（AI开发）\n\t\n152\n\t\n0\n\t\n0%\n\t\n0\n\t\n0%\n\t\n0\n\t\n0\n\t\n0\n\n\n邬涛（AI开发）\n\t\n280\n\t\n0\n\t\n0%\n\t\n0\n\t\n0%\n\t\n0\n\t\n0\n\t\n0\n共 16 条\n20条/页\n1\n前往\n页\nDevTracker v3.0.2© 2026   2698-jfzhu8023"
+    },
+    {
+      "run": "2026-09-17T02-34-50-067Z",
+      "id": "TABS-MOBILE",
+      "status": "PASS",
+      "evidence": {
+        "observations": [
+          {
+            "source": "engineering",
+            "bounds": [
+              {
+                "text": "研发及其他人员",
+                "x": 44,
+                "right": 162,
+                "width": 118,
+                "y": 401.71875
+              },
+              {
+                "text": "AI产品经理",
+                "x": 162,
+                "right": 251.96875,
+                "width": 89.96875,
+                "y": 401.71875
+              }
+            ]
+          },
+          {
+            "source": "product_manager",
+            "bounds": [
+              {
+                "text": "研发及其他人员",
+                "x": 44,
+                "right": 162,
+                "width": 118,
+                "y": 401.71875
+              },
+              {
+                "text": "AI产品经理",
+                "x": 162,
+                "right": 251.96875,
+                "width": 89.96875,
+                "y": 401.71875
+              }
+            ]
+          }
+        ],
+        "errors": [],
+        "writes": []
+      }
+    }
+  ],
+  "errors": [],
+  "writes": []
+}

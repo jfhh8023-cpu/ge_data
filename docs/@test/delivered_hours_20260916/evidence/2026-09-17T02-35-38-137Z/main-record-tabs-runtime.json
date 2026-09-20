@@ -1,0 +1,361 @@
+{
+  "run": "2026-09-17T02-35-38-137Z",
+  "results": [
+    {
+      "run": "2026-09-17T02-35-38-137Z",
+      "id": "TABS-DATA",
+      "status": "PASS",
+      "evidence": {
+        "data": {
+          "engineering": {
+            "records": 129,
+            "hours": 2103,
+            "groups": 9,
+            "mergedCells": 18,
+            "medals": 38,
+            "ids": [
+              "4278c3e8-b544-40b6-b0f9-19120df07a81",
+              "8d69046c-086b-48a0-aaf0-5f000aa08a5d",
+              "9007d26e-ebeb-4d01-84b6-90e015137184",
+              "3241b453-c803-4acf-bf0d-57fa0f1a8a51",
+              "8da7030a-adf4-44af-94c5-9434ab6f936e",
+              "3cd7ebf3-64d2-4319-a264-0b28c572da70",
+              "c0af6640-cba6-4cb3-b98f-7f6ee0661442",
+              "e45f6f59-9364-4814-a3f4-059cf81ba58b",
+              "2e447164-22a6-4756-bbb6-0b47f420f6c5",
+              "9a7b3385-0d76-4a9e-a7dc-9dc50e8695d0",
+              "1784f662-8564-4273-9079-0f33c0a6c553",
+              "50a7f566-2287-4ed6-a5f6-2e33fa15caed",
+              "13ceb324-ebaa-46ec-b230-2bd5ccc61881",
+              "59537733-1142-4023-9e87-20fe810c2b22",
+              "62809e0a-0e04-4d1c-ae07-a91113f627b6",
+              "6b17c874-b15c-4079-9f50-bc3a140e7264",
+              "419c4cdc-7029-4d0d-9410-c13546e8b63a",
+              "4f1bed6c-c655-4005-869b-14e714b59cae",
+              "559abef7-004d-4324-8671-77cf3b5c0e76",
+              "6036f290-68e9-4acf-b7b5-26df89f1c0eb",
+              "82a1c0b2-3e55-402e-89fc-e9e5d3859273",
+              "9a231db4-3589-4c5f-9882-e937fefc3001",
+              "064ad96c-6f8c-4f3d-8066-95427f1c2bf8",
+              "0bfbbb69-274a-4070-a013-af5c3c9d4e8a",
+              "2dd39a7f-3812-4ede-a931-32f42fd605dc",
+              "4e159b67-6ffa-4e8f-8086-64f11270c11f",
+              "69e3f09c-dbf3-451f-8cd8-8a9dbd0f80c8",
+              "3723d4b1-1b25-44b9-9df8-deaadd26d097",
+              "58f8ce0c-f36e-4808-a5ab-3c90774c05f8",
+              "c05e3332-3d82-43e6-b1e6-3114619c1dcc",
+              "0ade7d9d-e9f3-44b7-9f84-35c3a0144572",
+              "64036411-ca57-4233-b341-251de215fabf",
+              "8a09616e-f9be-4ef5-8ef1-ed6ca76f698f",
+              "9e60ac3e-0b74-4264-8083-9d4d7d229bdb",
+              "4171e564-7114-4681-b4ab-c66b89a6d279",
+              "4c2db689-2752-4696-b2ff-b4ad86f1095d",
+              "8cb727f7-f37c-4816-821d-75f83071aba0",
+              "fb94ac1f-cf20-42d7-ab1c-6f533c45cfcd",
+              "03d7cbe2-d529-426f-8795-175754330ccf",
+              "0d02e66c-3e2e-4a98-86d1-18ef843cdb85",
+              "8604e93b-239a-4432-aaa6-06cc33a34a3e",
+              "c9f839fb-7a6d-43a4-92da-eed21187f9e5",
+              "f4b4e0ea-efb3-450b-822e-4e9df9f1c690",
+              "5f91e336-71da-4d95-9ee1-6aaf3e078865",
+              "e685aeff-fe10-4954-8003-2d01cca7e63d",
+              "eb184e26-a7aa-4b9b-8c04-a5717f0d0c74",
+              "17bb9980-7849-451e-a17a-c0ced0a89f92",
+              "2ae4794c-29d7-4cc9-b8ac-27199c822adf",
+              "0c7d7f28-289f-4f60-a548-0bdf977ee420",
+              "cc0a0164-284c-4abb-b3d5-826e3c49c0bf",
+              "f7697269-b661-4642-b7ad-95e6be31f13a",
+              "1fdc6b57-6a09-433f-b0ec-6412f2731d62",
+              "cc2783aa-4f53-4ca5-8f7f-5b59d80dd5f4",
+              "b59522c0-0b9d-4972-bf6d-b3ed59fbd57c",
+              "bb169836-3e4f-4577-a04a-5626a7724dd3",
+              "757e675e-c67f-4c55-a943-31da1a93f3aa",
+              "01b40dcb-cf0a-4c31-8dbe-05060f4947fe",
+              "4f5d511b-381d-4d6f-99df-23661aee2469",
+              "96f2717c-ed84-4fe1-bfc0-df9d4c4c8018",
+              "05d7ffa5-e997-496a-8f4f-2bd1fd090674",
+              "243e8b8d-9126-4157-8ef8-cc93c2fa1792",
+              "37318062-abe5-46b3-91a8-d4ff86c457d4",
+              "54ae8d5d-fae6-451f-8a2c-39babfa155d8",
+              "9b1849f6-825f-4589-8d94-43ad31cd1b2e",
+              "0033410b-bbb2-4eb8-abfd-5876cf469059",
+              "5f6611ca-d57f-41cb-a2c9-864d6b8b75bd",
+              "8567879c-c723-400b-bc8d-b60a07558c91",
+              "3e80778f-a5bc-4f93-9418-69562b70f707",
+              "fd45f921-4465-4ffd-965e-eabdfcabb55f",
+              "4936412c-9b8a-4039-8ff7-50f9916f4e07",
+              "3844115c-0066-41d2-9278-21132c71b0c3",
+              "ccfd1cb6-e683-4c3f-a54b-9a38b420c819",
+              "575878ea-9c82-4535-8c90-a61af6a3505a",
+              "0fc5d7c1-95a5-458c-aa8e-a6ab41154360",
+              "06ca37f2-d6e1-4c37-828e-1c50a653649b",
+              "e113498b-d6df-4230-b8d2-154c6cebc7e1",
+              "573ae759-c928-4c06-9b06-b3692bf5055d",
+              "b19ea46d-0495-434f-8958-c1a220e836a5",
+              "2e939b27-f12c-4ee7-80b4-e078a2fb64c2",
+              "3ba25021-1e1a-43b2-ab74-30b6ae535071",
+              "b326c45e-ae83-4d29-84ac-c25eed352950",
+              "d9131280-d7c8-42d6-a4f0-31bd37cd2d87",
+              "9f0fa75c-9bd7-415e-bb63-17e21de29322",
+              "6bede8e4-cbd0-4a47-8169-ab8a8d5571b8",
+              "2b88105c-6acf-4f9b-b944-963e7b9d92a8",
+              "d65706c3-7d79-47fd-88fb-76862db52606",
+              "e75c578c-e094-4253-b96b-dc6185ddbb93",
+              "33850f60-92e5-438c-9efa-76fa2dd3baaf",
+              "3c334f7a-7913-4d0c-84f4-46b77a4db633",
+              "27c1a16f-0e87-465f-9aa8-e9af1a161359",
+              "ca50ac57-0646-4c77-bba9-e6693d278a2e",
+              "0fced9b4-2e77-4f4e-a980-25c5c6840c31",
+              "0e61eca9-f4b3-440f-ab00-723786b01fe0",
+              "9ae98b8d-a51b-4272-95ee-4e003c4dfd89",
+              "9428d7e2-6d3d-4669-b354-50452aeefcf9",
+              "ea744e29-4c05-4402-92be-c2b00322fb25",
+              "c5938dbf-09f5-465e-9f61-d3653084659f",
+              "df8eb66b-56fd-47a5-a406-ce0354321b71",
+              "c8317a46-c800-418d-a251-a3cdaf1a5030",
+              "04837629-30f1-4c6d-aa68-8a69c6902b5a",
+              "48e3214a-b8b8-4a0d-b010-94560d5fd2b6",
+              "d0705e27-0d52-4bca-a396-4945214aa12b",
+              "f8f1c515-4f36-4b71-ab02-630c4819128d",
+              "61665469-2dd3-4222-8908-0be720b5ad3c",
+              "3c4f1875-5915-4760-89f1-8c6d45a9692d",
+              "b0ec7be2-33d6-4ede-8e28-7a4dfee45f6a",
+              "24c4cab3-53c2-4cd9-a875-e46a1cf950be",
+              "0b0da5fb-deef-42e7-a122-1093eb321a83",
+              "2b848849-0402-4ad6-b413-f2c0c4550e69",
+              "e89b7021-7fad-45aa-85b4-d81da6d9c9a8",
+              "9f350666-1ea9-4952-8a4c-49d3a1cbeed7",
+              "66e6cbb7-9d5b-4d3e-9c24-549a5a45e663",
+              "7ed77d73-df6a-40f3-87be-ed13dcc7f2f4",
+              "8a6b94ad-0fd5-446a-91c1-76692700c802",
+              "9a16ff62-d7dc-4fc0-be34-b721cec71398",
+              "8d1b255b-767a-4caa-b802-b3d77e93613f",
+              "640e1ef6-bd0d-488c-9cc0-6e71c606c4e9",
+              "7a89c183-8591-4387-a7c1-bfa7eed6c362",
+              "f79a894a-df2a-4b6b-9a48-1ac51ae26c63",
+              "17e505a8-004b-4a77-bcab-65bcc56cb42f",
+              "741422b3-dd2d-4c90-8025-133914dc230e",
+              "fcf1893c-83cc-474f-8b67-93884ac49b8f",
+              "4b16a0fd-5f31-495a-956c-57f9332b02be",
+              "a3a469af-0a41-4ac7-861a-616cc28df27c",
+              "0e01211f-7459-4724-91ac-3db4d855b0dd",
+              "733c9373-c939-4c83-85c0-3097a3d18495",
+              "2d6b6db3-4544-4c4d-98f9-cf3d4d0a5cc5",
+              "57a72adc-5567-4142-9409-529ce9386199",
+              "6e941969-99f5-4042-bf51-87adbee1ff95"
+            ],
+            "geometry": {
+              "tabs": [
+                {
+                  "text": "研发及其他人员",
+                  "selected": "true",
+                  "x": 56,
+                  "right": 174,
+                  "width": 118,
+                  "y": 309.5
+                },
+                {
+                  "text": "AI产品经理",
+                  "selected": "false",
+                  "x": 174,
+                  "right": 263.96875,
+                  "width": 89.96875,
+                  "y": 309.5
+                }
+              ],
+              "bar": {
+                "x": 56,
+                "right": 154,
+                "width": 98,
+                "y": 347.5
+              }
+            }
+          },
+          "product_manager": {
+            "records": 18,
+            "hours": 401,
+            "groups": 5,
+            "mergedCells": 9,
+            "medals": 18,
+            "ids": [
+              "6aa62701-e185-5c4e-bc44-8ab7ee907ef5",
+              "b63cb5b9-399d-5ff7-8dde-f1dbbd240ac8",
+              "77ce1f7e-b620-5409-874a-24aee355f063",
+              "0b47547a-2358-528b-8705-60739a72742d",
+              "71bb2691-cfb0-55fd-9e0f-7a7dc62587f8",
+              "08afd98f-f46b-5272-842d-35efabbb9e8a",
+              "0438dca6-1d86-503f-a68b-0baee1a2c72c",
+              "682e7b3c-5e0d-5e4b-908e-ca0397c24ea0",
+              "de541427-3168-5477-ab78-2d5bd7e179fa",
+              "46ea4f96-822f-5f06-920f-915280e48904",
+              "35cbf151-f7ed-5b3a-b013-f48542a4c045",
+              "c9fa00fe-093b-5841-bc66-cf2eff203e38",
+              "11c46b3e-9150-51f7-9d0b-a9c381f50988",
+              "da0fe08a-7e49-55ff-b80f-9e1536529899",
+              "a99f7e83-6408-515e-890e-7434d5e71756",
+              "2048d7ca-da1c-5173-ad41-bfa25cf71c54",
+              "6c6e342a-97cf-4a77-b550-51f1f9a8a132",
+              "991d6739-0081-4d00-84f7-29063eb2f9ec"
+            ],
+            "geometry": {
+              "tabs": [
+                {
+                  "text": "研发及其他人员",
+                  "selected": "false",
+                  "x": 56,
+                  "right": 174,
+                  "width": 118,
+                  "y": 176.5
+                },
+                {
+                  "text": "AI产品经理",
+                  "selected": "true",
+                  "x": 174,
+                  "right": 263.96875,
+                  "width": 89.96875,
+                  "y": 176.5
+                }
+              ],
+              "bar": {
+                "x": 194,
+                "right": 264,
+                "width": 70,
+                "y": 214.5
+              }
+            }
+          }
+        },
+        "analysis": [
+          {
+            "params": {
+              "sourceType": "engineering"
+            },
+            "records": 129,
+            "standardHours": 2952,
+            "deliveredHours": 1541,
+            "rate": 52.2
+          },
+          {
+            "params": {
+              "sourceType": "product_manager"
+            },
+            "records": 18,
+            "standardHours": 1400,
+            "deliveredHours": 132,
+            "rate": 9.43
+          }
+        ],
+        "partitionCount": 147,
+        "partitionHours": 2504,
+        "overlap": 0
+      }
+    },
+    {
+      "run": "2026-09-17T02-35-38-137Z",
+      "id": "TABS-LINKS",
+      "status": "PASS",
+      "evidence": {
+        "observations": [
+          {
+            "params": {
+              "sourceType": "product_manager",
+              "staffId": "1e087bd2-eda4-4671-a422-20e74184aae2"
+            },
+            "records": 2,
+            "standardHours": 280,
+            "deliveredHours": 0,
+            "rate": 0
+          },
+          {
+            "params": {},
+            "records": 147,
+            "standardHours": 4352,
+            "deliveredHours": 1673,
+            "rate": 38.44
+          },
+          {
+            "params": {},
+            "records": 147,
+            "standardHours": 4352,
+            "deliveredHours": 1673,
+            "rate": 38.44
+          }
+        ],
+        "roleCard": "ai_dev→engineering; ai_pm→product_manager",
+        "chart": "张三→product_manager + staffId",
+        "crossTabFiltersCleared": true
+      }
+    },
+    {
+      "run": "2026-09-17T02-35-38-137Z",
+      "id": "TABS-MOBILE",
+      "status": "PASS",
+      "evidence": {
+        "observations": [
+          {
+            "source": "engineering",
+            "geometry": {
+              "tabs": [
+                {
+                  "text": "研发及其他人员",
+                  "selected": "true",
+                  "x": 44,
+                  "right": 162,
+                  "width": 118,
+                  "y": 401.71875
+                },
+                {
+                  "text": "AI产品经理",
+                  "selected": "false",
+                  "x": 162,
+                  "right": 251.96875,
+                  "width": 89.96875,
+                  "y": 401.71875
+                }
+              ],
+              "bar": {
+                "x": 44,
+                "right": 142,
+                "width": 98,
+                "y": 439.71875
+              }
+            }
+          },
+          {
+            "source": "product_manager",
+            "geometry": {
+              "tabs": [
+                {
+                  "text": "研发及其他人员",
+                  "selected": "false",
+                  "x": 44,
+                  "right": 162,
+                  "width": 118,
+                  "y": 401.71875
+                },
+                {
+                  "text": "AI产品经理",
+                  "selected": "true",
+                  "x": 162,
+                  "right": 251.96875,
+                  "width": 89.96875,
+                  "y": 401.71875
+                }
+              ],
+              "bar": {
+                "x": 182,
+                "right": 252,
+                "width": 70,
+                "y": 439.71875
+              }
+            }
+          }
+        ],
+        "errors": [],
+        "writes": []
+      }
+    }
+  ],
+  "errors": [],
+  "writes": []
+}

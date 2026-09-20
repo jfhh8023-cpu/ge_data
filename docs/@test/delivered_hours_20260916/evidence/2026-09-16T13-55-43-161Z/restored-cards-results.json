@@ -1,0 +1,1015 @@
+{
+  "run": "2026-09-16T13-55-43-161Z",
+  "results": [
+    {
+      "case": "product",
+      "status": "PASS",
+      "product": {
+        "viewport": {
+          "width": 1600,
+          "height": 900,
+          "scrollWidth": 1600
+        },
+        "cards": [
+          {
+            "label": "Q3 · AI产品经理",
+            "total": "401.0h",
+            "delivered": "132h",
+            "rate": "9.43%",
+            "card": {
+              "x": 40,
+              "y": 197,
+              "width": 330,
+              "height": 110.671875,
+              "right": 370,
+              "bottom": 307.671875
+            },
+            "labelRect": {
+              "x": 51,
+              "y": 206,
+              "width": 90.703125,
+              "height": 21,
+              "right": 141.703125,
+              "bottom": 227
+            },
+            "totalRect": {
+              "x": 281.40625,
+              "y": 206,
+              "width": 77.59375,
+              "height": 47,
+              "right": 359,
+              "bottom": 253
+            },
+            "deliveryRect": {
+              "x": 51,
+              "y": 257,
+              "width": 308,
+              "height": 41.671875,
+              "right": 359,
+              "bottom": 298.671875
+            }
+          }
+        ],
+        "counts": [
+          {
+            "key": "records",
+            "value": 18,
+            "box": {
+              "x": 1347,
+              "y": 206,
+              "width": 96,
+              "height": 43,
+              "right": 1443,
+              "bottom": 249
+            }
+          },
+          {
+            "key": "requirements",
+            "value": 15,
+            "box": {
+              "x": 1453,
+              "y": 206,
+              "width": 96,
+              "height": 43,
+              "right": 1549,
+              "bottom": 249
+            }
+          },
+          {
+            "key": "tasks",
+            "value": 1,
+            "box": {
+              "x": 1347,
+              "y": 253,
+              "width": 96,
+              "height": 43,
+              "right": 1443,
+              "bottom": 296
+            }
+          },
+          {
+            "key": "staff",
+            "value": 5,
+            "box": {
+              "x": 1453,
+              "y": 253,
+              "width": 96,
+              "height": 43,
+              "right": 1549,
+              "bottom": 296
+            }
+          }
+        ],
+        "countsCard": {
+          "x": 1336,
+          "y": 197,
+          "width": 224,
+          "height": 108,
+          "right": 1560,
+          "bottom": 305
+        },
+        "charts": []
+      },
+      "requirements": 15
+    },
+    {
+      "case": "engineering",
+      "status": "PASS",
+      "engineering": {
+        "viewport": {
+          "width": 1600,
+          "height": 900,
+          "scrollWidth": 1600
+        },
+        "cards": [
+          {
+            "label": "Q3 · AI研发",
+            "total": "2,103.0h",
+            "delivered": "1,541h",
+            "rate": "52.2%",
+            "card": {
+              "x": 40,
+              "y": 197,
+              "width": 249.1875,
+              "height": 110.671875,
+              "right": 289.1875,
+              "bottom": 307.671875
+            },
+            "labelRect": {
+              "x": 51,
+              "y": 206,
+              "width": 66.703125,
+              "height": 21,
+              "right": 117.703125,
+              "bottom": 227
+            },
+            "totalRect": {
+              "x": 178.03125,
+              "y": 206,
+              "width": 100.15625,
+              "height": 47,
+              "right": 278.1875,
+              "bottom": 253
+            },
+            "deliveryRect": {
+              "x": 51,
+              "y": 257,
+              "width": 227.1875,
+              "height": 41.671875,
+              "right": 278.1875,
+              "bottom": 298.671875
+            }
+          },
+          {
+            "label": "AI开发工程师",
+            "total": "724.0h",
+            "delivered": "708h",
+            "rate": "45.62%",
+            "card": {
+              "x": 299.1875,
+              "y": 197,
+              "width": 249.203125,
+              "height": 110.671875,
+              "right": 548.390625,
+              "bottom": 307.671875
+            },
+            "labelRect": {
+              "x": 310.1875,
+              "y": 206,
+              "width": 73.0625,
+              "height": 21,
+              "right": 383.25,
+              "bottom": 227
+            },
+            "totalRect": {
+              "x": 459.796875,
+              "y": 206,
+              "width": 77.59375,
+              "height": 47,
+              "right": 537.390625,
+              "bottom": 253
+            },
+            "deliveryRect": {
+              "x": 310.1875,
+              "y": 257,
+              "width": 227.203125,
+              "height": 41.671875,
+              "right": 537.390625,
+              "bottom": 298.671875
+            }
+          },
+          {
+            "label": "VOIP工程师",
+            "total": "490.0h",
+            "delivered": "18h",
+            "rate": "3.21%",
+            "card": {
+              "x": 558.390625,
+              "y": 197,
+              "width": 249.203125,
+              "height": 110.671875,
+              "right": 807.59375,
+              "bottom": 307.671875
+            },
+            "labelRect": {
+              "x": 569.390625,
+              "y": 206,
+              "width": 66.28125,
+              "height": 21,
+              "right": 635.671875,
+              "bottom": 227
+            },
+            "totalRect": {
+              "x": 719,
+              "y": 206,
+              "width": 77.59375,
+              "height": 47,
+              "right": 796.59375,
+              "bottom": 253
+            },
+            "deliveryRect": {
+              "x": 569.390625,
+              "y": 257,
+              "width": 227.203125,
+              "height": 41.671875,
+              "right": 796.59375,
+              "bottom": 298.671875
+            }
+          },
+          {
+            "label": "AI质量工程师",
+            "total": "489.0h",
+            "delivered": "415h",
+            "rate": "74.11%",
+            "card": {
+              "x": 817.59375,
+              "y": 197,
+              "width": 249.203125,
+              "height": 110.671875,
+              "right": 1066.796875,
+              "bottom": 307.671875
+            },
+            "labelRect": {
+              "x": 828.59375,
+              "y": 206,
+              "width": 73.0625,
+              "height": 21,
+              "right": 901.65625,
+              "bottom": 227
+            },
+            "totalRect": {
+              "x": 978.203125,
+              "y": 206,
+              "width": 77.59375,
+              "height": 47,
+              "right": 1055.796875,
+              "bottom": 253
+            },
+            "deliveryRect": {
+              "x": 828.59375,
+              "y": 257,
+              "width": 227.203125,
+              "height": 41.671875,
+              "right": 1055.796875,
+              "bottom": 298.671875
+            }
+          },
+          {
+            "label": "嵌入式工程师",
+            "total": "400.0h",
+            "delivered": "400h",
+            "rate": "142.86%",
+            "card": {
+              "x": 1076.796875,
+              "y": 197,
+              "width": 249.1875,
+              "height": 110.671875,
+              "right": 1325.984375,
+              "bottom": 307.671875
+            },
+            "labelRect": {
+              "x": 1087.796875,
+              "y": 206,
+              "width": 72,
+              "height": 21,
+              "right": 1159.796875,
+              "bottom": 227
+            },
+            "totalRect": {
+              "x": 1237.390625,
+              "y": 206,
+              "width": 77.59375,
+              "height": 47,
+              "right": 1314.984375,
+              "bottom": 253
+            },
+            "deliveryRect": {
+              "x": 1087.796875,
+              "y": 257,
+              "width": 227.1875,
+              "height": 41.671875,
+              "right": 1314.984375,
+              "bottom": 298.671875
+            }
+          }
+        ],
+        "counts": [
+          {
+            "key": "records",
+            "value": 129,
+            "box": {
+              "x": 1347,
+              "y": 206,
+              "width": 96,
+              "height": 43,
+              "right": 1443,
+              "bottom": 249
+            }
+          },
+          {
+            "key": "requirements",
+            "value": 127,
+            "box": {
+              "x": 1453,
+              "y": 206,
+              "width": 96,
+              "height": 43,
+              "right": 1549,
+              "bottom": 249
+            }
+          },
+          {
+            "key": "tasks",
+            "value": 6,
+            "box": {
+              "x": 1347,
+              "y": 253,
+              "width": 96,
+              "height": 43,
+              "right": 1443,
+              "bottom": 296
+            }
+          },
+          {
+            "key": "staff",
+            "value": 9,
+            "box": {
+              "x": 1453,
+              "y": 253,
+              "width": 96,
+              "height": 43,
+              "right": 1549,
+              "bottom": 296
+            }
+          }
+        ],
+        "countsCard": {
+          "x": 1336,
+          "y": 197,
+          "width": 224,
+          "height": 108,
+          "right": 1560,
+          "bottom": 305
+        },
+        "charts": []
+      }
+    },
+    {
+      "case": "viewport-1280",
+      "status": "PASS",
+      "layout": {
+        "viewport": {
+          "width": 1280,
+          "height": 900,
+          "scrollWidth": 1280
+        },
+        "cards": [
+          {
+            "label": "Q3 · 部门",
+            "total": "2,504.0h",
+            "delivered": "1,673h",
+            "rate": "38.44%",
+            "card": {
+              "x": 40,
+              "y": 197,
+              "width": 315.328125,
+              "height": 110.671875,
+              "right": 355.328125,
+              "bottom": 307.671875
+            },
+            "labelRect": {
+              "x": 51,
+              "y": 206,
+              "width": 53.65625,
+              "height": 21,
+              "right": 104.65625,
+              "bottom": 227
+            },
+            "totalRect": {
+              "x": 244.171875,
+              "y": 206,
+              "width": 100.15625,
+              "height": 47,
+              "right": 344.328125,
+              "bottom": 253
+            },
+            "deliveryRect": {
+              "x": 51,
+              "y": 257,
+              "width": 293.328125,
+              "height": 41.671875,
+              "right": 344.328125,
+              "bottom": 298.671875
+            }
+          },
+          {
+            "label": "AI开发工程师",
+            "total": "724.0h",
+            "delivered": "708h",
+            "rate": "45.62%",
+            "card": {
+              "x": 365.328125,
+              "y": 197,
+              "width": 315.328125,
+              "height": 110.671875,
+              "right": 680.65625,
+              "bottom": 307.671875
+            },
+            "labelRect": {
+              "x": 376.328125,
+              "y": 206,
+              "width": 73.0625,
+              "height": 21,
+              "right": 449.390625,
+              "bottom": 227
+            },
+            "totalRect": {
+              "x": 592.0625,
+              "y": 206,
+              "width": 77.59375,
+              "height": 47,
+              "right": 669.65625,
+              "bottom": 253
+            },
+            "deliveryRect": {
+              "x": 376.328125,
+              "y": 257,
+              "width": 293.328125,
+              "height": 41.671875,
+              "right": 669.65625,
+              "bottom": 298.671875
+            }
+          },
+          {
+            "label": "VOIP工程师",
+            "total": "490.0h",
+            "delivered": "18h",
+            "rate": "3.21%",
+            "card": {
+              "x": 690.65625,
+              "y": 197,
+              "width": 315.34375,
+              "height": 110.671875,
+              "right": 1006,
+              "bottom": 307.671875
+            },
+            "labelRect": {
+              "x": 701.65625,
+              "y": 206,
+              "width": 66.28125,
+              "height": 21,
+              "right": 767.9375,
+              "bottom": 227
+            },
+            "totalRect": {
+              "x": 917.40625,
+              "y": 206,
+              "width": 77.59375,
+              "height": 47,
+              "right": 995,
+              "bottom": 253
+            },
+            "deliveryRect": {
+              "x": 701.65625,
+              "y": 257,
+              "width": 293.34375,
+              "height": 41.671875,
+              "right": 995,
+              "bottom": 298.671875
+            }
+          },
+          {
+            "label": "AI质量工程师",
+            "total": "489.0h",
+            "delivered": "415h",
+            "rate": "74.11%",
+            "card": {
+              "x": 40,
+              "y": 317.671875,
+              "width": 315.328125,
+              "height": 110.671875,
+              "right": 355.328125,
+              "bottom": 428.34375
+            },
+            "labelRect": {
+              "x": 51,
+              "y": 326.671875,
+              "width": 73.0625,
+              "height": 21,
+              "right": 124.0625,
+              "bottom": 347.671875
+            },
+            "totalRect": {
+              "x": 266.734375,
+              "y": 326.671875,
+              "width": 77.59375,
+              "height": 47,
+              "right": 344.328125,
+              "bottom": 373.671875
+            },
+            "deliveryRect": {
+              "x": 51,
+              "y": 377.671875,
+              "width": 293.328125,
+              "height": 41.671875,
+              "right": 344.328125,
+              "bottom": 419.34375
+            }
+          },
+          {
+            "label": "嵌入式工程师",
+            "total": "400.0h",
+            "delivered": "400h",
+            "rate": "142.86%",
+            "card": {
+              "x": 365.328125,
+              "y": 317.671875,
+              "width": 315.328125,
+              "height": 110.671875,
+              "right": 680.65625,
+              "bottom": 428.34375
+            },
+            "labelRect": {
+              "x": 376.328125,
+              "y": 326.671875,
+              "width": 72,
+              "height": 21,
+              "right": 448.328125,
+              "bottom": 347.671875
+            },
+            "totalRect": {
+              "x": 592.0625,
+              "y": 326.671875,
+              "width": 77.59375,
+              "height": 47,
+              "right": 669.65625,
+              "bottom": 373.671875
+            },
+            "deliveryRect": {
+              "x": 376.328125,
+              "y": 377.671875,
+              "width": 293.328125,
+              "height": 41.671875,
+              "right": 669.65625,
+              "bottom": 419.34375
+            }
+          },
+          {
+            "label": "AI产品经理",
+            "total": "401.0h",
+            "delivered": "132h",
+            "rate": "9.43%",
+            "card": {
+              "x": 690.65625,
+              "y": 317.671875,
+              "width": 315.34375,
+              "height": 110.671875,
+              "right": 1006,
+              "bottom": 428.34375
+            },
+            "labelRect": {
+              "x": 701.65625,
+              "y": 326.671875,
+              "width": 61.0625,
+              "height": 21,
+              "right": 762.71875,
+              "bottom": 347.671875
+            },
+            "totalRect": {
+              "x": 917.40625,
+              "y": 326.671875,
+              "width": 77.59375,
+              "height": 47,
+              "right": 995,
+              "bottom": 373.671875
+            },
+            "deliveryRect": {
+              "x": 701.65625,
+              "y": 377.671875,
+              "width": 293.34375,
+              "height": 41.671875,
+              "right": 995,
+              "bottom": 419.34375
+            }
+          }
+        ],
+        "counts": [
+          {
+            "key": "records",
+            "value": 147,
+            "box": {
+              "x": 1027,
+              "y": 206,
+              "width": 96,
+              "height": 43,
+              "right": 1123,
+              "bottom": 249
+            }
+          },
+          {
+            "key": "requirements",
+            "value": 86,
+            "box": {
+              "x": 1133,
+              "y": 206,
+              "width": 96,
+              "height": 43,
+              "right": 1229,
+              "bottom": 249
+            }
+          },
+          {
+            "key": "tasks",
+            "value": 7,
+            "box": {
+              "x": 1027,
+              "y": 253,
+              "width": 96,
+              "height": 43,
+              "right": 1123,
+              "bottom": 296
+            }
+          },
+          {
+            "key": "staff",
+            "value": 16,
+            "box": {
+              "x": 1133,
+              "y": 253,
+              "width": 96,
+              "height": 43,
+              "right": 1229,
+              "bottom": 296
+            }
+          }
+        ],
+        "countsCard": {
+          "x": 1016,
+          "y": 197,
+          "width": 224,
+          "height": 108,
+          "right": 1240,
+          "bottom": 305
+        },
+        "charts": [
+          {
+            "x": 40,
+            "y": 460.34375,
+            "width": 744,
+            "height": 525.6875,
+            "right": 784,
+            "bottom": 986.03125
+          },
+          {
+            "x": 800,
+            "y": 460.34375,
+            "width": 440,
+            "height": 525.6875,
+            "right": 1240,
+            "bottom": 986.03125
+          }
+        ]
+      }
+    },
+    {
+      "case": "viewport-390",
+      "status": "PASS",
+      "layout": {
+        "viewport": {
+          "width": 390,
+          "height": 900,
+          "scrollWidth": 390
+        },
+        "cards": [
+          {
+            "label": "Q3 · 部门",
+            "total": "2,504.0h",
+            "delivered": "1,673h",
+            "rate": "38.44%",
+            "card": {
+              "x": 28,
+              "y": 361.96875,
+              "width": 163,
+              "height": 108.375,
+              "right": 191,
+              "bottom": 470.34375
+            },
+            "labelRect": {
+              "x": 37,
+              "y": 370.96875,
+              "width": 46.15625,
+              "height": 39,
+              "right": 83.15625,
+              "bottom": 409.96875
+            },
+            "totalRect": {
+              "x": 89.15625,
+              "y": 370.96875,
+              "width": 92.84375,
+              "height": 46,
+              "right": 182,
+              "bottom": 416.96875
+            },
+            "deliveryRect": {
+              "x": 37,
+              "y": 420.96875,
+              "width": 145,
+              "height": 40.375,
+              "right": 182,
+              "bottom": 461.34375
+            }
+          },
+          {
+            "label": "AI开发工程师",
+            "total": "724.0h",
+            "delivered": "708h",
+            "rate": "45.62%",
+            "card": {
+              "x": 199,
+              "y": 361.96875,
+              "width": 163,
+              "height": 108.375,
+              "right": 362,
+              "bottom": 470.34375
+            },
+            "labelRect": {
+              "x": 208,
+              "y": 370.96875,
+              "width": 66.90625,
+              "height": 39,
+              "right": 274.90625,
+              "bottom": 409.96875
+            },
+            "totalRect": {
+              "x": 280.90625,
+              "y": 370.96875,
+              "width": 72.09375,
+              "height": 46,
+              "right": 353,
+              "bottom": 416.96875
+            },
+            "deliveryRect": {
+              "x": 208,
+              "y": 420.96875,
+              "width": 145,
+              "height": 40.375,
+              "right": 353,
+              "bottom": 461.34375
+            }
+          },
+          {
+            "label": "VOIP工程师",
+            "total": "490.0h",
+            "delivered": "18h",
+            "rate": "3.21%",
+            "card": {
+              "x": 28,
+              "y": 478.34375,
+              "width": 163,
+              "height": 108.375,
+              "right": 191,
+              "bottom": 586.71875
+            },
+            "labelRect": {
+              "x": 37,
+              "y": 487.34375,
+              "width": 66.28125,
+              "height": 21,
+              "right": 103.28125,
+              "bottom": 508.34375
+            },
+            "totalRect": {
+              "x": 109.90625,
+              "y": 487.34375,
+              "width": 72.09375,
+              "height": 46,
+              "right": 182,
+              "bottom": 533.34375
+            },
+            "deliveryRect": {
+              "x": 37,
+              "y": 537.34375,
+              "width": 145,
+              "height": 40.375,
+              "right": 182,
+              "bottom": 577.71875
+            }
+          },
+          {
+            "label": "AI质量工程师",
+            "total": "489.0h",
+            "delivered": "415h",
+            "rate": "74.11%",
+            "card": {
+              "x": 199,
+              "y": 478.34375,
+              "width": 163,
+              "height": 108.375,
+              "right": 362,
+              "bottom": 586.71875
+            },
+            "labelRect": {
+              "x": 208,
+              "y": 487.34375,
+              "width": 66.90625,
+              "height": 39,
+              "right": 274.90625,
+              "bottom": 526.34375
+            },
+            "totalRect": {
+              "x": 280.90625,
+              "y": 487.34375,
+              "width": 72.09375,
+              "height": 46,
+              "right": 353,
+              "bottom": 533.34375
+            },
+            "deliveryRect": {
+              "x": 208,
+              "y": 537.34375,
+              "width": 145,
+              "height": 40.375,
+              "right": 353,
+              "bottom": 577.71875
+            }
+          },
+          {
+            "label": "嵌入式工程师",
+            "total": "400.0h",
+            "delivered": "400h",
+            "rate": "142.86%",
+            "card": {
+              "x": 28,
+              "y": 594.71875,
+              "width": 163,
+              "height": 108.375,
+              "right": 191,
+              "bottom": 703.09375
+            },
+            "labelRect": {
+              "x": 37,
+              "y": 603.71875,
+              "width": 66.90625,
+              "height": 39,
+              "right": 103.90625,
+              "bottom": 642.71875
+            },
+            "totalRect": {
+              "x": 109.90625,
+              "y": 603.71875,
+              "width": 72.09375,
+              "height": 46,
+              "right": 182,
+              "bottom": 649.71875
+            },
+            "deliveryRect": {
+              "x": 37,
+              "y": 653.71875,
+              "width": 145,
+              "height": 40.375,
+              "right": 182,
+              "bottom": 694.09375
+            }
+          },
+          {
+            "label": "AI产品经理",
+            "total": "401.0h",
+            "delivered": "132h",
+            "rate": "9.43%",
+            "card": {
+              "x": 199,
+              "y": 594.71875,
+              "width": 163,
+              "height": 108.375,
+              "right": 362,
+              "bottom": 703.09375
+            },
+            "labelRect": {
+              "x": 208,
+              "y": 603.71875,
+              "width": 61.0625,
+              "height": 21,
+              "right": 269.0625,
+              "bottom": 624.71875
+            },
+            "totalRect": {
+              "x": 280.90625,
+              "y": 603.71875,
+              "width": 72.09375,
+              "height": 46,
+              "right": 353,
+              "bottom": 649.71875
+            },
+            "deliveryRect": {
+              "x": 208,
+              "y": 653.71875,
+              "width": 145,
+              "height": 40.375,
+              "right": 353,
+              "bottom": 694.09375
+            }
+          }
+        ],
+        "counts": [
+          {
+            "key": "records",
+            "value": 147,
+            "box": {
+              "x": 39,
+              "y": 722.09375,
+              "width": 151,
+              "height": 43,
+              "right": 190,
+              "bottom": 765.09375
+            }
+          },
+          {
+            "key": "requirements",
+            "value": 86,
+            "box": {
+              "x": 200,
+              "y": 722.09375,
+              "width": 151,
+              "height": 43,
+              "right": 351,
+              "bottom": 765.09375
+            }
+          },
+          {
+            "key": "tasks",
+            "value": 7,
+            "box": {
+              "x": 39,
+              "y": 769.09375,
+              "width": 151,
+              "height": 43,
+              "right": 190,
+              "bottom": 812.09375
+            }
+          },
+          {
+            "key": "staff",
+            "value": 16,
+            "box": {
+              "x": 200,
+              "y": 769.09375,
+              "width": 151,
+              "height": 43,
+              "right": 351,
+              "bottom": 812.09375
+            }
+          }
+        ],
+        "countsCard": {
+          "x": 28,
+          "y": 713.09375,
+          "width": 334,
+          "height": 108,
+          "right": 362,
+          "bottom": 821.09375
+        },
+        "charts": [
+          {
+            "x": 28,
+            "y": 853.09375,
+            "width": 334,
+            "height": 520.8125,
+            "right": 362,
+            "bottom": 1373.90625
+          },
+          {
+            "x": 28,
+            "y": 1389.90625,
+            "width": 334,
+            "height": 548.8125,
+            "right": 362,
+            "bottom": 1938.71875
+          }
+        ]
+      }
+    }
+  ],
+  "errors": [],
+  "failures": [],
+  "writes": []
+}

@@ -1,0 +1,63 @@
+{
+  "run": "2026-09-17T03-01-37-190Z",
+  "results": [
+    {
+      "run": "2026-09-17T03-01-37-190Z",
+      "id": "SYNC-API",
+      "status": "PASS",
+      "evidence": {
+        "history": {
+          "records": 880,
+          "hours": 11273.5,
+          "tasks": 34
+        },
+        "entities": {
+          "tasks": 34,
+          "staff": 13,
+          "productManagers": 14
+        },
+        "quarter": {
+          "records": 314,
+          "hours": 4085,
+          "tasks": 11,
+          "productRecords": 0
+        },
+        "excelListAPI": "not implemented; DB count/file integrity verified separately by parent"
+      }
+    },
+    {
+      "run": "2026-09-17T03-01-37-190Z",
+      "id": "SYNC-STATS",
+      "status": "PASS",
+      "evidence": {
+        "records": 314,
+        "hours": 4085,
+        "groupTotal": 4085,
+        "productRecords": 0,
+        "emptyChart": "AI产品经理工时分布（按人员与需求方） — Q3\n隐藏零值\n放大\n内部需求\n客户需求\n对外服务\n其他需求\n总计（折线）\n当前范围暂无AI产品经理工时",
+        "productTotals": "0 条记录\n总工时 0h\n含版本号已交付 0h\n无版本工时 0h"
+      }
+    },
+    {
+      "run": "2026-09-17T03-01-37-190Z",
+      "id": "SYNC-TASKS",
+      "status": "PASS",
+      "evidence": {
+        "quarterCounts": {
+          "Q1": 10,
+          "Q2": 13,
+          "Q3": 11,
+          "Q4": 0
+        },
+        "visibleQuarter": "Q3",
+        "visibleTasks": 11,
+        "errors": [],
+        "writes": [],
+        "failedResponses": []
+      }
+    }
+  ],
+  "errors": [],
+  "writes": [],
+  "failedResponses": []
+}

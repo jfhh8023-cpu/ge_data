@@ -1,0 +1,192 @@
+{
+  "seed": "local-product-demo-20260916",
+  "status": "committed",
+  "task": {
+    "id": "b025fb94-4a06-43a8-8d17-716a8c88e5bc",
+    "title": "语音业务线-2026年第33周工时统计",
+    "start_date": "2026-08-10",
+    "end_date": "2026-08-16"
+  },
+  "created": {
+    "staff": [
+      "b570a217-91f9-550c-a3dc-ff55e6e1054a",
+      "8b8882e7-7be2-5ba0-b01c-3ad8880f60ed",
+      "3999b684-3dd7-5d03-a388-ff71ba404078",
+      "233c01f8-c0e2-55dd-88a6-1318160d4ce6"
+    ],
+    "statusHistory": [
+      "31116563-0a0a-5e26-9bc4-f424c2b96031",
+      "054601a1-2031-56c2-a621-ca938cc7beaa",
+      "82855c4f-2799-515c-b2a3-e0903c60626e",
+      "067db3c7-02da-57ca-9bbc-43fa908ca5ec"
+    ],
+    "staffFillLinks": [
+      "42bd638f-b7d1-56a1-875f-6cbb6b2b317b",
+      "0c1332bc-357b-5268-9c43-592baab754f5",
+      "f802c9be-8e3c-55e5-aa14-393ff3e7165f",
+      "d1245988-9aa9-5b84-9ab3-afffa1d01e91"
+    ],
+    "fillLinks": [
+      "36d09a5b-6812-5581-bc3d-079e3fc449e1",
+      "42c35860-823a-53f2-9683-7bf93a55576e",
+      "623331ec-6340-5692-be43-ae5ead398210",
+      "5bc0594c-5c95-5d9f-8c04-a7523242a3c2"
+    ],
+    "records": [
+      "6aa62701-e185-5c4e-bc44-8ab7ee907ef5",
+      "b63cb5b9-399d-5ff7-8dde-f1dbbd240ac8",
+      "77ce1f7e-b620-5409-874a-24aee355f063",
+      "0b47547a-2358-528b-8705-60739a72742d",
+      "71bb2691-cfb0-55fd-9e0f-7a7dc62587f8",
+      "08afd98f-f46b-5272-842d-35efabbb9e8a",
+      "0438dca6-1d86-503f-a68b-0baee1a2c72c",
+      "682e7b3c-5e0d-5e4b-908e-ca0397c24ea0",
+      "de541427-3168-5477-ab78-2d5bd7e179fa",
+      "46ea4f96-822f-5f06-920f-915280e48904",
+      "35cbf151-f7ed-5b3a-b013-f48542a4c045",
+      "c9fa00fe-093b-5841-bc66-cf2eff203e38",
+      "11c46b3e-9150-51f7-9d0b-a9c381f50988",
+      "da0fe08a-7e49-55ff-b80f-9e1536529899",
+      "a99f7e83-6408-515e-890e-7434d5e71756",
+      "2048d7ca-da1c-5173-ad41-bfa25cf71c54"
+    ]
+  },
+  "demoStaff": [
+    {
+      "id": "b570a217-91f9-550c-a3dc-ff55e6e1054a",
+      "name": "示例产品-李四",
+      "hours": 32,
+      "recordIds": [
+        "6aa62701-e185-5c4e-bc44-8ab7ee907ef5",
+        "b63cb5b9-399d-5ff7-8dde-f1dbbd240ac8",
+        "77ce1f7e-b620-5409-874a-24aee355f063",
+        "0b47547a-2358-528b-8705-60739a72742d"
+      ]
+    },
+    {
+      "id": "8b8882e7-7be2-5ba0-b01c-3ad8880f60ed",
+      "name": "示例产品-王五",
+      "hours": 40,
+      "recordIds": [
+        "71bb2691-cfb0-55fd-9e0f-7a7dc62587f8",
+        "08afd98f-f46b-5272-842d-35efabbb9e8a",
+        "0438dca6-1d86-503f-a68b-0baee1a2c72c",
+        "682e7b3c-5e0d-5e4b-908e-ca0397c24ea0"
+      ]
+    },
+    {
+      "id": "3999b684-3dd7-5d03-a388-ff71ba404078",
+      "name": "示例产品-赵六",
+      "hours": 48,
+      "recordIds": [
+        "de541427-3168-5477-ab78-2d5bd7e179fa",
+        "46ea4f96-822f-5f06-920f-915280e48904",
+        "35cbf151-f7ed-5b3a-b013-f48542a4c045",
+        "c9fa00fe-093b-5841-bc66-cf2eff203e38"
+      ]
+    },
+    {
+      "id": "233c01f8-c0e2-55dd-88a6-1318160d4ce6",
+      "name": "示例产品-陈七",
+      "hours": 56,
+      "recordIds": [
+        "11c46b3e-9150-51f7-9d0b-a9c381f50988",
+        "da0fe08a-7e49-55ff-b80f-9e1536529899",
+        "a99f7e83-6408-515e-890e-7434d5e71756",
+        "2048d7ca-da1c-5173-ad41-bfa25cf71c54"
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "id": "b3830f3a-7d48-48da-b536-0e3e45d55454",
+      "name": "内部需求"
+    },
+    {
+      "id": "c504fa9a-a8cf-4edf-817d-2b01171e6e02",
+      "name": "客户需求"
+    },
+    {
+      "id": "3bcafe9a-a3ec-496a-8aba-7ecb55037200",
+      "name": "对外服务"
+    },
+    {
+      "id": "d8bc93f5-fb5f-484e-8166-59814c944128",
+      "name": "其他需求"
+    }
+  ],
+  "runs": [
+    {
+      "at": "2026-09-16T13:30:00.529Z",
+      "created": {
+        "staff": [
+          "b570a217-91f9-550c-a3dc-ff55e6e1054a",
+          "8b8882e7-7be2-5ba0-b01c-3ad8880f60ed",
+          "3999b684-3dd7-5d03-a388-ff71ba404078",
+          "233c01f8-c0e2-55dd-88a6-1318160d4ce6"
+        ],
+        "statusHistory": [
+          "31116563-0a0a-5e26-9bc4-f424c2b96031",
+          "054601a1-2031-56c2-a621-ca938cc7beaa",
+          "82855c4f-2799-515c-b2a3-e0903c60626e",
+          "067db3c7-02da-57ca-9bbc-43fa908ca5ec"
+        ],
+        "staffFillLinks": [
+          "42bd638f-b7d1-56a1-875f-6cbb6b2b317b",
+          "0c1332bc-357b-5268-9c43-592baab754f5",
+          "f802c9be-8e3c-55e5-aa14-393ff3e7165f",
+          "d1245988-9aa9-5b84-9ab3-afffa1d01e91"
+        ],
+        "fillLinks": [
+          "36d09a5b-6812-5581-bc3d-079e3fc449e1",
+          "42c35860-823a-53f2-9683-7bf93a55576e",
+          "623331ec-6340-5692-be43-ae5ead398210",
+          "5bc0594c-5c95-5d9f-8c04-a7523242a3c2"
+        ],
+        "records": [
+          "6aa62701-e185-5c4e-bc44-8ab7ee907ef5",
+          "b63cb5b9-399d-5ff7-8dde-f1dbbd240ac8",
+          "77ce1f7e-b620-5409-874a-24aee355f063",
+          "0b47547a-2358-528b-8705-60739a72742d",
+          "71bb2691-cfb0-55fd-9e0f-7a7dc62587f8",
+          "08afd98f-f46b-5272-842d-35efabbb9e8a",
+          "0438dca6-1d86-503f-a68b-0baee1a2c72c",
+          "682e7b3c-5e0d-5e4b-908e-ca0397c24ea0",
+          "de541427-3168-5477-ab78-2d5bd7e179fa",
+          "46ea4f96-822f-5f06-920f-915280e48904",
+          "35cbf151-f7ed-5b3a-b013-f48542a4c045",
+          "c9fa00fe-093b-5841-bc66-cf2eff203e38",
+          "11c46b3e-9150-51f7-9d0b-a9c381f50988",
+          "da0fe08a-7e49-55ff-b80f-9e1536529899",
+          "a99f7e83-6408-515e-890e-7434d5e71756",
+          "2048d7ca-da1c-5173-ad41-bfa25cf71c54"
+        ]
+      },
+      "counts": {
+        "staff": 4,
+        "statusHistory": 4,
+        "staffFillLinks": 4,
+        "fillLinks": 4,
+        "records": 16
+      }
+    },
+    {
+      "at": "2026-09-16T13:30:16.020Z",
+      "created": {
+        "staff": [],
+        "statusHistory": [],
+        "staffFillLinks": [],
+        "fillLinks": [],
+        "records": []
+      },
+      "counts": {
+        "staff": 0,
+        "statusHistory": 0,
+        "staffFillLinks": 0,
+        "fillLinks": 0,
+        "records": 0
+      }
+    }
+  ],
+  "note": "Only local demo rows. Tokens and DB credentials intentionally omitted. Remove only created IDs, child tables before staff."
+}
