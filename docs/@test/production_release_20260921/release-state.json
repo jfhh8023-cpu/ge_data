@@ -1,0 +1,10 @@
+{
+  "backupRemoteDir": "/opt/devtracker/.release-backups/20260921_122848",
+  "backupLocalDir": "D:\\PythonTEST\\My_Other_Tool_System\\get_data\\get_data_cursor\\deploy\\backups\\release_20260921_122848",
+  "backupTs": "20260921_122848",
+  "releasedAt": "2026-09-21T12:30:48Z",
+  "version": "3.5.0",
+  "commit": "a9189c9771945cbf28758f13f275f46df3341d14",
+  "stage": "/opt/devtracker/.release-stage/a9189c977194",
+  "prevSuffix": "20260921_123030"
+}

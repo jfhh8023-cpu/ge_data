@@ -254,11 +254,13 @@ def phase_backup() -> None:
 # ----------------------------------------------------------------------------- deploy
 def build_frontend() -> str:
     print('[deploy] building frontend')
-    proc = subprocess.run('npm run build', cwd=ROOT / 'frontend', shell=True, capture_output=True, text=True)
-    (EVIDENCE / 'build.log').write_text(proc.stdout + proc.stderr, encoding='utf-8')
+    proc = subprocess.run('npm run build', cwd=ROOT / 'frontend', shell=True, capture_output=True)
+    log = (proc.stdout + proc.stderr).decode('utf-8', 'replace')
+    EVIDENCE.mkdir(parents=True, exist_ok=True)
+    (EVIDENCE / 'build.log').write_text(log, encoding='utf-8')
     if proc.returncode != 0 or not (ROOT / 'frontend' / 'dist' / 'index.html').exists():
         raise RuntimeError('frontend build failed, see build.log')
-    return proc.stdout.strip().splitlines()[-1]
+    return next((l for l in reversed(log.strip().splitlines()) if 'built in' in l), log.strip().splitlines()[-1])
 
 
 def sftp_mkdirs(sftp, path: str) -> None:

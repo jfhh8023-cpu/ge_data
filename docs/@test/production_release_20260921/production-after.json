@@ -1,0 +1,75 @@
+{
+  "capturedAt": "2026-09-21T12:31:55Z",
+  "tables": {
+    "access_links": 1,
+    "auto_task_child_notifications": 3,
+    "auto_task_messages": 395,
+    "auto_task_rules": 4,
+    "auto_task_run_logs": 165,
+    "collection_tasks": 35,
+    "demand_sources": 4,
+    "duty_calendar_revisions": 2,
+    "duty_holiday_snapshots": 2,
+    "duty_schedule_exceptions": 0,
+    "duty_schedule_swaps": 2,
+    "duty_special_notification_logs": 0,
+    "excel_files": 30,
+    "fill_links": 0,
+    "link_permissions": 43,
+    "match_groups": 605,
+    "product_manager_status_history": 16,
+    "product_manager_work_records": 0,
+    "product_managers": 14,
+    "quote_configs": 1,
+    "quotes": 387,
+    "staff": 17,
+    "staff_fill_links": 17,
+    "staff_roles": 5,
+    "staff_status_history": 20,
+    "work_records": 916
+  },
+  "workRecords": {
+    "count": 916,
+    "hours": 11749.5,
+    "nullProgress": 881,
+    "zeroProgress": 0,
+    "fieldChecksum": "1992344318310"
+  },
+  "nginxHashes": [
+    "e4738898934192107ef7131c72a3910bd785b6f275ab685d2ab51808fa79db63  /etc/nginx/conf.d/unified.conf",
+    "1136d1b94ea7c0a0fd226fc2bdd8a9216d67045ee09f751b6f7795311183f7b4  /etc/nginx/conf.d/sandilizi-ssl.conf"
+  ],
+  "pm2": {
+    "name": "devtracker",
+    "pid": 30234,
+    "status": "online",
+    "restart_time": 3,
+    "pm_uptime": 1789993850751
+  },
+  "health": {
+    "code": 0,
+    "message": "DevTracker API is running",
+    "version": "3.5.0"
+  },
+  "public": {
+    "/api/health": {
+      "status": 200,
+      "bytes": 66
+    },
+    "/": {
+      "status": 200,
+      "bytes": 1583
+    },
+    "/stats": {
+      "status": 200,
+      "bytes": 1583
+    },
+    "/tasks": {
+      "status": 200,
+      "bytes": 1583
+    }
+  },
+  "errorLogModifiedSinceStart": "False",
+  "errorLogTail": "2026-09-15 19:59:11: [auto-task] 调度检查失败: connect ECONNREFUSED 127.0.0.1:3306\n2026-09-15 19:59:12: [auto-task] 调度检查失败: connect ECONNREFUSED 127.0.0.1:3306\n2026-09-15 19:59:13: [auto-task] 调度检查失败: connect ECONNREFUSED 127.0.0.1:3306\n2026-09-15 19:59:14: [auto-task] 调度检查失败: connect ECONNREFUSED 127.0.0.1:3306\n2026-09-15 19:59:15: [auto-task] 调度检查失败: connect ECONNREFUSED 127.0.0.1:3306",
+  "otherPm2Processes": "[('tianji-zeji', 'online'), ('devtracker', 'online')]"
+}
