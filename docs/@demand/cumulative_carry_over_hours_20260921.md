@@ -1,6 +1,6 @@
-# REQ-072 跨周需求累计工时口径（冻结需求）
+﻿# REQ-072 跨周需求累计工时口径（冻结需求）
 
-2026-09-21。状态：四轮设计反哺完成，按用户"四轮后按最小改动开发"授权采用默认决策 D1~D6，进入开发。四轮记录：[R1](../@test/cumulative_carry_over_hours_20260921/round1.md) [R2](../@test/cumulative_carry_over_hours_20260921/round2.md) [R3](../@test/cumulative_carry_over_hours_20260921/round3.md) [R4 矩阵](../@test/cumulative_carry_over_hours_20260921/round4.md) · [冻结计划](../@plan/cumulative_carry_over_hours_20260921.md)。
+2026-09-21。状态：四轮设计反哺完成，按用户"四轮后按最小改动开发"授权采用默认决策 D1~D6，进入开发；本地实施验收完成，见 `docs/@test/cumulative_carry_over_hours_20260921/execution.md`。四轮记录：[R1](../@test/cumulative_carry_over_hours_20260921/round1.md) [R2](../@test/cumulative_carry_over_hours_20260921/round2.md) [R3](../@test/cumulative_carry_over_hours_20260921/round3.md) [R4 矩阵](../@test/cumulative_carry_over_hours_20260921/round4.md) · [冻结计划](../@plan/cumulative_carry_over_hours_20260921.md)。
 
 ## 1. 用户原始需求
 

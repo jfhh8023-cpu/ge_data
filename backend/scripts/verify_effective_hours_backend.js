@@ -5,7 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const effective = require('../src/services/EffectiveHoursService');
 const { buildWorkHours } = require('../src/services/WorkHoursCompletionService');
-const { buildDeliverySummary, versionTypeOf } = require('../src/services/DeliverySummaryService');
+const { buildDeliverySummary, versionTypeOf, buildCarryOverRows } = require('../src/services/DeliverySummaryService');
 // Two controlled five-day weeks; official holiday/makeup behavior is covered by verify_work_hours_completion.js.
 const calendar = new Map([[2026, { days: [] }]]);
 const tasks = [
@@ -131,7 +131,10 @@ async function run() {
 
   const entries = { engineering: [], product: [] };
   let failure = false, nextId = 0;
-  const matches = (record, where = {}) => Object.entries(where).every(([key, value]) => Array.isArray(value) ? value.includes(record[key]) : value && typeof value === 'object' && value.in ? value.in.includes(record[key]) : record[key] === value);
+  const matches = (record, where = {}) => Object.entries(where).every(([key, value]) => Array.isArray(value) ? value.includes(record[key])
+    : value && typeof value === 'object' && value.in ? value.in.includes(record[key])
+    : value && typeof value === 'object' && Object.hasOwn(value, 'ne') ? record[key] !== value.ne
+    : record[key] === value);
   const plain = value => JSON.parse(JSON.stringify(value));
   function model(table) {
     return { sequelize: { async transaction(run) {
@@ -146,14 +149,15 @@ async function run() {
   function wrap(record) { return { ...record, toJSON() { const { toJSON, save, ...value } = this; return value; }, async save() { Object.assign(record, this.toJSON()); } }; }
   const WorkRecord = model('engineering'), ProductManagerWorkRecord = model('product');
   const person = { id: 'a', name: '甲', role: 'ai_dev', employment_status: 'active' };
-  const task = { ...tasks[1], status: 'active' };
+  const task = { ...tasks[1], status: 'active', week_number: 38, title: 'W38', toJSON() { const { toJSON, ...value } = this; return value; } };
   const sfl = { id: 'sfl', staff_id: 'a', staff: person, draft_data: [], draft_task_id: null, async save() {} };
   const link = { id: 'legacy', staff_id: 'a', task_id: 'now', staff: person, task, draft_data: [], async save() {} };
   let legacy = false;
   const models = { WorkRecord, ProductManagerWorkRecord,
     Staff: { findByPk: async () => person, findAll: async () => [person] },
     StaffFillLink: { findOne: async () => legacy ? null : sfl }, FillLink: { findOne: async () => link },
-    CollectionTask: { findByPk: async () => task, findOne: async () => task },
+    CollectionTask: { findByPk: async id => (id === 'old' ? { ...tasks[0], week_number: 37, title: 'W37' } : task), findOne: async () => task,
+      findAll: async ({ where } = {}) => [{ ...tasks[0], week_number: 37, title: 'W37' }, task].filter(item => matches(item, where)) },
     MatchGroup: { findAll: async () => [], destroy: async () => {}, create: async () => {} } };
   const personService = { STAFF_RESIGNED_MESSAGE: '已离职', assertStaffCanWrite(p) { if (p.employment_status === 'resigned') { const e = new Error('已离职'); e.status = 403; throw e; } },
     buildCurrentStatusPayload: () => ({}), getPmStatusContextByName: async () => new Map(), isNonResigned: p => p.employment_status !== 'resigned',
@@ -161,7 +165,7 @@ async function run() {
   const dependencies = {
     '../models': models, uuid: { v4: () => `new-${++nextId}` }, sequelize: { Op: { in: 'in', ne: 'ne' } },
     '../services/EffectiveHoursService': effective, '../services/MatchService': { matchRecords: () => [] },
-    '../services/DeliverySummaryService': { buildCarryOverRows: () => [] },
+    '../services/DeliverySummaryService': { buildCarryOverRows },
     '../services/PersonStatusService': personService,
     '../services/DemandSourceService': { getDemandSourceDefinitions: async () => [], resolveDemandSources: async sources => ({ names: Array.isArray(sources) ? sources : [], ids: [] }) },
     '../services/WorkHoursCompletionService': { buildWorkHours, getWorkHours: async options => buildWorkHours({ ...options, snapshots: calendar }), loadWorkHoursContext: async options => options },
@@ -199,6 +203,43 @@ async function run() {
     entries.engineering = entries.engineering.filter(row => row.task_id === 'now');
     const rejected = await invoke(fill, 'post /:token/submit', { task_id: 'now', records: [{ requirement_title: '培训', hours: '' }] });
     assert.match(rejected.error.message, /手动填写/); assert.equal(entries.engineering.length, 1);
+  });
+  await check('REQ072 GET returns carry_over_history even when the current task already has records; carry_over_records only when empty', async () => {
+    entries.engineering = [{ id: 'h1', task_id: 'old', staff_id: 'a', requirement_title: '需求X', version: 'V1', hours: 10, delivery_progress: 70, product_managers: ['PM'], created_at: '2026-09-08T02:00:00Z' }];
+    const fresh = await invoke(fill, 'get /:token', {});
+    assert.ifError(fresh.error); assert.equal(fresh.result.data.carry_over_records.length, 1);
+    assert.deepEqual(fresh.result.data.carry_over_history.map(item => [item.requirement_title, item.version, item.previous_hours, item.previous_progress]), [['需求X', 'V1', 10, 70]]);
+    assert.deepEqual(fresh.result.data.carry_over_history[0].history_weeks.map(week => [week.week_number, week.hours]), [[37, 10]]);
+    entries.engineering.push({ id: 'c1', task_id: 'now', staff_id: 'a', requirement_title: '需求X', version: 'V1', hours: 5, delivery_progress: 80, product_managers: ['PM'], created_at: '2026-09-15T02:00:00Z' });
+    const again = await invoke(fill, 'get /:token', {});
+    assert.equal(again.result.data.carry_over_records.length, 0); assert.equal(again.result.data.carry_over_history[0].previous_hours, 10, 'history excludes the current task');
+    legacy = true;
+    const legacyGet = await invoke(fill, 'get /:token', {});
+    assert.equal(legacyGet.result.data.carry_over_history[0].previous_hours, 10);
+    legacy = false;
+  });
+  await check('REQ072 submit/draft: cumulative_hours must equal previous + hours for a carried group; zero delta allowed; legacy clients and unmatched titles skip the check', async () => {
+    entries.engineering = [{ id: 'h1', task_id: 'old', staff_id: 'a', requirement_title: '需求X', version: 'V1', hours: 10, delivery_progress: 70, product_managers: ['PM'], created_at: '2026-09-08T02:00:00Z' }];
+    const base = { requirement_title: '需求X', version: 'V1', product_managers: ['PM'] };
+    const ok = await invoke(fill, 'post /:token/submit', { task_id: 'now', records: [{ ...base, hours: 5, cumulative_hours: 15, delivery_progress: 80 }] });
+    assert.ifError(ok.error); assert.equal(ok.status, 200);
+    const saved = entries.engineering.find(row => row.task_id === 'now');
+    assert.equal(saved.hours, 5); assert.equal(saved.delivery_progress, 80); assert.equal('cumulative_hours' in saved, false);
+    const bad = await invoke(fill, 'post /:token/submit', { task_id: 'now', records: [{ ...base, hours: 7, cumulative_hours: 15, delivery_progress: 80 }] });
+    assert.equal(bad.status, 400); assert.match(bad.result.message, /累计工时与此前周期已填 10h 不一致/);
+    assert.equal(entries.engineering.find(row => row.task_id === 'now').hours, 5, 'rejected submit leaves saved rows untouched');
+    const zero = await invoke(fill, 'post /:token/submit', { task_id: 'now', records: [{ ...base, hours: 0, cumulative_hours: 10, delivery_progress: 100 }] });
+    assert.ifError(zero.error); assert.equal(entries.engineering.find(row => row.task_id === 'now').hours, 0);
+    assert.deepEqual(buildCarryOverRows(entries.engineering, [tasks[0], tasks[1], { id: 'next', start_date: '2026-09-21', end_date: '2026-09-27' }], { id: 'next', start_date: '2026-09-21' }), [], 'group finished at 100 is not carried further');
+    const legacyClient = await invoke(fill, 'post /:token/submit', { task_id: 'now', records: [{ ...base, hours: 7, delivery_progress: 80 }] });
+    assert.ifError(legacyClient.error); assert.equal(legacyClient.status, 200);
+    const unmatched = await invoke(fill, 'post /:token/submit', { task_id: 'now', records: [{ ...base, requirement_title: '需求Y', hours: 7, cumulative_hours: 99, delivery_progress: 80 }] });
+    assert.ifError(unmatched.error); assert.equal(unmatched.status, 200);
+    const draftBad = await invoke(fill, 'put /:token/draft', { task_id: 'now', draft_records: [{ ...base, draft_row_id: 'd1', hours: 7, cumulative_hours: 15, delivery_progress: 80 }] });
+    assert.equal(draftBad.status, 400);
+    const draftOk = await invoke(fill, 'put /:token/draft', { task_id: 'now', draft_records: [{ ...base, draft_row_id: 'd1', hours: 5, cumulative_hours: 15, delivery_progress: 80 }] });
+    assert.ifError(draftOk.error); assert.equal('cumulative_hours' in sfl.draft_data[0], false); assert.equal(sfl.draft_data[0].hours, 5);
+    sfl.draft_data = []; sfl.draft_task_id = null;
   });
   await check('actual fill: original special version survives edits and historical ordinary null remains null', async () => {
     entries.engineering = [{ id: 'special', task_id: 'now', staff_id: 'a', requirement_title: '请假', hours: 8, version: 'v260901', created_at: '2026-09-01T02:00:00Z' },

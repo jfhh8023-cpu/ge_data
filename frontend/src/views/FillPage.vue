@@ -19,6 +19,7 @@ import HoursCompletion from '../components/HoursCompletion.vue'
 import { summarizeWorkHours, WORK_HOURS_TIP, WORK_HOURS_SCOPE_TIP } from '../utils/workHours'
 import { sortRecordsByCreatedAt } from '../utils/recordOrder'
 import { FULL_CREDIT_NOTE, POSITIVE_PROGRESS_OPTIONS, isValidSubmittedProgress, isFullCreditRecord, initializeSpecialRow, syncSpecialRow, normalizeProgress, summarizeDraftWeightedHours } from '../utils/effectiveHours'
+import { isCarryOverModified, effectivePreviousHours, periodHours, toPeriodRows, attachCarryOverHistory, hoursBreakdown, excludedPreviousHours } from '../utils/carryOverHours'
 
 const route = useRoute()
 const demandSourceStore = useDemandSourceStore()
@@ -129,13 +130,13 @@ onMounted(async () => {
     if (fillData.value?.task) {
       // 有首选任务时，尝试恢复草稿或已提交记录
       if (Array.isArray(fillRes.data.draft_records) && fillRes.data.draft_records.length > 0) {
-        rows.value = normalizeRows(fillRes.data.draft_records)
+        rows.value = normalizeRows(fillRes.data.draft_records, { history: true })
         ElMessage.success('已恢复上次暂存的草稿')
       } else if (fillRes.data.records?.length > 0) {
-        rows.value = normalizeRows(fillRes.data.records)
+        rows.value = normalizeRows(fillRes.data.records, { history: true })
       } else if (fillRes.data.carry_over_records?.length > 0) {
-        rows.value = normalizeRows(fillRes.data.carry_over_records, { newRows: true })
-        ElMessage.info(`已带出 ${rows.value.length} 条上周未完成需求，请填写本周工时并更新进度`)
+        rows.value = normalizeRows(fillRes.data.carry_over_records, { newRows: true, history: true })
+        ElMessage.info(`已带出 ${rows.value.length} 条上周未完成需求，工时框为累计值，请在上次基础上继续填写并更新进度`)
       } else {
         rows.value = [createEmptyRow()]
       }
@@ -150,8 +151,8 @@ onMounted(async () => {
   }
 })
 
-function normalizeRows(list, { newRows = false } = {}) {
-  return list.map(r => {
+function normalizeRows(list, { newRows = false, history = false } = {}) {
+  const result = list.map(r => {
     const existingId = newRows ? '' : r.id || r.existing_record_id || ''
     const original = r.id ? r : (fillData.value?.records || []).find(saved => saved.id === existingId)
     const originalProgressMissing = !newRows && Boolean(existingId) && (original
@@ -185,18 +186,30 @@ function normalizeRows(list, { newRows = false } = {}) {
       hours: (r.hours === null || r.hours === undefined || r.hours === '') ? null : parseFloat(r.hours)
     }, new Date(), { newRow: newRows })
   })
+  // REQ-072: stored/draft/carried hours are period deltas; the input shows the cumulative value.
+  if (history) attachCarryOverHistory(result, fillData.value?.carry_over_history || [])
+  for (const row of result) row._last_valid_hours = row.hours
+  return result
 }
+
+/** REQ-072: the cumulative input may not fall below what earlier periods already recorded. */
+function handleHoursChange(row, value) {
+  const previous = effectivePreviousHours(row)
+  if (previous > 0 && Number.isFinite(Number(value)) && Number(value) < previous) {
+    row.hours = Number.isFinite(Number(row._last_valid_hours)) && Number(row._last_valid_hours) >= previous ? row._last_valid_hours : previous
+    ElMessage.warning(`累计工时不能小于此前周期已填 ${previous}h，已恢复为 ${row.hours}h`)
+    return
+  }
+  row._last_valid_hours = value
+}
+const excludedHistory = computed(() => excludedPreviousHours(rows.value))
+const currentWeekLabel = computed(() => (currentTask.value?.week_number ? `第${currentTask.value.week_number}周（本周）` : '本周'))
 
 /** REQ-070: 带出行标签 */
 function carryOverSourceLabel(row) {
   const info = row?._carry_over
   if (!info) return ''
   return info.source_week_number ? `第${info.source_week_number}周未完成` : `${info.source_task_title || '上周'}未完成`
-}
-function isCarryOverModified(row) {
-  const info = row?._carry_over
-  if (!info) return false
-  return String(row.requirement_title || '').trim() !== info.original_title || String(row.version || '').trim() !== info.original_version
 }
 
 /** 新增行 */
@@ -209,19 +222,20 @@ function removeRow(index) {
 }
 
 /** 工时总计 */
+const periodRows = computed(() => toPeriodRows(rows.value))
 const totalHours = computed(() =>
-  rows.value.reduce((sum, r) => sum + (parseFloat(r.hours) || 0), 0).toFixed(2)
+  periodRows.value.reduce((sum, r) => sum + (parseFloat(r.hours) || 0), 0).toFixed(2)
 )
 const draftWorkHours = computed(() => {
   const baseline = currentTask.value?.workHours
   if (!baseline || !Array.isArray(baseline.units)) return null
   return {
     ...baseline,
-    ...summarizeWorkHours(rows.value, baseline.units),
+    ...summarizeWorkHours(periodRows.value, baseline.units),
     scopeNote: typeof baseline.scopeNote === 'string' ? baseline.scopeNote : ''
   }
 })
-const draftWeightedHours = computed(() => summarizeDraftWeightedHours(rows.value, draftWorkHours.value?.standardHours))
+const draftWeightedHours = computed(() => summarizeDraftWeightedHours(periodRows.value, draftWorkHours.value?.standardHours))
 
 function hasSelectedProductManager(row) {
   return Array.isArray(row.product_managers)
@@ -309,7 +323,8 @@ async function handleSubmit() {
     demand_sources: row.demand_sources,
     demand_source_weights: isProductManager.value ? normalizedDemandSourceWeights(row) : undefined,
     delivery_progress: normalizeProgress(row.delivery_progress),
-    hours: row.hours
+    hours: periodHours(row),
+    ...(effectivePreviousHours(row) > 0 ? { cumulative_hours: row.hours } : {})
   }))
 
   submitting.value = true
@@ -351,7 +366,7 @@ async function handleSaveDraft() {
   if (savingDraft.value) return
   savingDraft.value = true
   try {
-    const draftSnapshot = rows.value.map(row => ({ ...row }))
+    const draftSnapshot = rows.value.map(row => ({ ...row, hours: periodHours(row), ...(effectivePreviousHours(row) > 0 ? { cumulative_hours: row.hours } : {}) }))
     const payload = { draft_records: draftSnapshot }
     if (fillData.value?.linkType === 'system' && currentTask.value) {
       payload.task_id = currentTask.value.id
@@ -398,11 +413,11 @@ function returnToPreferred() {
   editingHistoryTask.value = null
   const preferred = fillData.value?.task
   if (preferred && Array.isArray(fillData.value?.draft_records) && fillData.value.draft_records.length > 0) {
-    rows.value = normalizeRows(fillData.value.draft_records)
+    rows.value = normalizeRows(fillData.value.draft_records, { history: true })
   } else if (preferred && fillData.value?.records?.length > 0) {
-    rows.value = normalizeRows(fillData.value.records)
+    rows.value = normalizeRows(fillData.value.records, { history: true })
   } else if (preferred && fillData.value.carry_over_records?.length > 0) {
-    rows.value = normalizeRows(fillData.value.carry_over_records, { newRows: true })
+    rows.value = normalizeRows(fillData.value.carry_over_records, { newRows: true, history: true })
   } else {
     rows.value = [createEmptyRow()]
   }
@@ -851,7 +866,7 @@ function exportHistory() {
                     <el-input :model-value="row.requirement_title" @update:model-value="value => handleRequirementTitle(row, value)" placeholder="输入需求名称" size="small"
                       :disabled="!isEditable" @focus="handleInputFocus" />
                     <div v-if="row._carry_over" class="fill-carry-over-tag" :title="row._carry_over.source_task_title">
-                      {{ carryOverSourceLabel(row) }} · 上次进度 {{ row._carry_over.previous_progress }}%<span v-if="isCarryOverModified(row)">（已修改，将作为新需求统计）</span>
+                      {{ carryOverSourceLabel(row) }} · 上次进度 {{ row._carry_over.previous_progress }}%<span v-if="isCarryOverModified(row)">（已修改，将作为新需求统计，工时按当前值全额计入本周）</span><span v-else-if="row._carry_over_duplicate">（同名同版本已在上方按累计填写，本行按本周工时）</span>
                     </div>
                   </template>
                 </el-table-column>
@@ -902,10 +917,19 @@ function exportHistory() {
                     </div>
                   </template>
                 </el-table-column>
-                <el-table-column label="工时/h" width="100">
+                <el-table-column label="工时/h" width="150">
+                  <template #header>
+                    <el-tooltip content="带出的未完成需求填累计工时（含此前周期已填），系统只把新增部分记入本周；不能小于此前已填工时。普通新行填本周工时。" placement="top">
+                      <span tabindex="0">工时/h ⓘ</span>
+                    </el-tooltip>
+                  </template>
                   <template #default="{ row }">
-                    <el-input-number v-model="row.hours" :min="0.01" :max="200" :precision="2" :step="0.5"
-                      controls-position="right" size="small" style="width:100%;" :disabled="!isEditable" />
+                    <el-input-number v-model="row.hours" :min="effectivePreviousHours(row) > 0 ? 0 : 0.01" :max="999" :precision="2" :step="0.5"
+                      controls-position="right" size="small" style="width:100%;" :disabled="!isEditable" @change="value => handleHoursChange(row, value)"
+                      :title="effectivePreviousHours(row) > 0 ? `累计工时，此前周期已填 ${effectivePreviousHours(row)}h` : undefined" />
+                    <div v-if="effectivePreviousHours(row) > 0" class="fill-hours-breakdown" :title="hoursBreakdown(row, currentWeekLabel).map(part => part.text).join(' + ')">
+                      含<template v-for="(part, index) in hoursBreakdown(row, currentWeekLabel)" :key="index"><span v-if="index > 0">{{ part.previous ? '、' : ' + ' }}</span><span :class="{ 'fill-hours-previous': part.previous }">{{ part.text }}</span></template>
+                    </div>
                   </template>
                 </el-table-column>
                 <el-table-column label="交付进度" width="120">
@@ -939,6 +963,7 @@ function exportHistory() {
               <span style="font-size:13px; color:var(--color-text-2);">
                 共 <strong>{{ rows.length }}</strong> 条，总工时
                 <strong style="color:var(--color-primary);">{{ totalHours }}</strong> 小时
+                <span v-if="excludedHistory.hours > 0" class="fill-hours-excluded">仅含本周期工时，不含此前周期已填 {{ excludedHistory.hours }}h<template v-if="excludedHistory.weeks.length">（{{ excludedHistory.weeks.map(week => `第${week}周`).join('、') }}）</template></span>
               </span>
               <div class="fill-submit-actions" style="display:flex; gap:12px;">
                 <el-button
@@ -1091,6 +1116,9 @@ function exportHistory() {
 .fill-fixed-version :deep(.el-input__wrapper) { background: var(--color-bg-2); }
 .fill-fixed-version :deep(input) { color: var(--color-text-3); cursor: default; }
 .fill-not-applicable { color: var(--color-text-3); font-size: 12px; }
+.fill-hours-breakdown { margin-top: 4px; font-size: 11px; line-height: 1.4; color: var(--color-text-3, #86909C); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fill-hours-previous { color: var(--color-warning, #FF7D00); font-weight: 600; }
+.fill-hours-excluded { display: block; margin-top: 2px; font-size: 11px; color: var(--color-text-3, #86909C); }
 .fill-carry-over-tag { margin-top: 4px; font-size: 11px; line-height: 1.4; color: var(--color-warning, #FF7D00); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fill-history-hours { padding: 8px 12px; border-top: 1px solid var(--color-border-light); }
 .fill-metric-note { margin: 6px 0; font-size: 12px; line-height: 1.6; color: var(--color-text-3); }

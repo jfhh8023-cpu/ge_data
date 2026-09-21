@@ -157,7 +157,7 @@ async function loadFullCreditVersions(Model, staffId, rows) {
 function normalizeSavedRows(rows, existingRecords = [], savedDrafts = [], allowedVersions = new Set()) {
   const originals = new Map(existingRecords.map(record => [record.id, record]));
   const drafts = new Map((Array.isArray(savedDrafts) ? savedDrafts : []).filter(row => row.draft_row_id).map(row => [row.draft_row_id, row]));
-  return rows.map(row => {
+  return rows.map(({ cumulative_hours, ...row }) => {
     const original = originals.get(row.existing_record_id);
     const draft = drafts.get(row.draft_row_id);
     const previous = original && isFullCreditRecord(original) ? original : draft;
@@ -185,15 +185,41 @@ async function replaceSavedRecords(Model, where, rows, baseFields, product = fal
 }
 
 /* ======================================================
- * REQ-070：当前任务无记录且无草稿时，按 staff_id 只读汇总更早任务中最新进度 <100 的需求
+ * REQ-070/072：按 staff_id 只读汇总更早任务中最新进度 <100 的需求。
+ * carry_over_records 仅当前任务无记录且无草稿时返回；carry_over_history（历史工时）始终返回。
  * ====================================================== */
-async function loadCarryOverRows(Model, staffId, currentTask, { records, draftRecords }) {
-  if (!currentTask || records.length > 0 || (Array.isArray(draftRecords) && draftRecords.length > 0)) return [];
+const carryOverKey = (title, version) => `${String(title || '').trim()}\u0000${String(version || '').trim()}`;
+async function loadCarryOverContext(Model, staffId, currentTask, { records = [], draftRecords = null } = {}) {
+  const empty = { carry_over_records: [], carry_over_history: [] };
+  if (!currentTask) return empty;
   const history = await Model.findAll({ where: { staff_id: staffId, task_id: { [Op.ne]: currentTask.id } } });
-  if (history.length === 0) return [];
+  if (history.length === 0) return empty;
   const taskIds = [...new Set(history.map(record => record.task_id).filter(Boolean))];
   const tasks = await CollectionTask.findAll({ where: { id: { [Op.in]: taskIds } } });
-  return buildCarryOverRows(history, tasks, currentTask);
+  const rows = buildCarryOverRows(history, tasks, currentTask);
+  const fresh = records.length === 0 && !(Array.isArray(draftRecords) && draftRecords.length > 0);
+  return {
+    carry_over_records: fresh ? rows : [],
+    carry_over_history: rows.map(row => ({ requirement_title: row.requirement_title, version: row.version, ...row._carry_over }))
+  };
+}
+
+/** REQ-072 D5: a row that declares its cumulative hours must equal previous_hours + hours for a group this author already carries. */
+async function validateCumulativeHours(Model, staffId, currentTask, rows) {
+  const declared = (Array.isArray(rows) ? rows : []).map((row, index) => ({ row, index }))
+    .filter(({ row }) => row && row.cumulative_hours !== undefined && row.cumulative_hours !== null && String(row.cumulative_hours).trim() !== '');
+  if (declared.length === 0 || !currentTask) return null;
+  const { carry_over_history } = await loadCarryOverContext(Model, staffId, currentTask);
+  const previousByKey = new Map(carry_over_history.map(item => [carryOverKey(item.requirement_title, item.version), item.previous_hours]));
+  for (const { row, index } of declared) {
+    const previous = previousByKey.get(carryOverKey(row.requirement_title, row.version));
+    if (previous === undefined) continue;
+    const cumulative = Number(row.cumulative_hours), hours = Number(row.hours);
+    if (!Number.isFinite(cumulative) || !Number.isFinite(hours) || Math.abs(cumulative - previous - hours) > 0.005) {
+      return `第 ${index + 1} 条记录累计工时与此前周期已填 ${previous}h 不一致，请刷新后重新填写`;
+    }
+  }
+  return null;
 }
 
 /* ======================================================
@@ -281,7 +307,7 @@ router.get('/:token', async (req, res, next) => {
       }
 
       const workHours = await getWorkHours({ tasks: currentTask ? [currentTask] : [], records, staff: [sfl.staff], includeEmptyStaff: true });
-      const carry_over_records = await loadCarryOverRows(isProductManagerStaff(sfl.staff) ? ProductManagerWorkRecord : WorkRecord,
+      const { carry_over_records, carry_over_history } = await loadCarryOverContext(isProductManagerStaff(sfl.staff) ? ProductManagerWorkRecord : WorkRecord,
         sfl.staff_id, currentTask, { records, draftRecords: draft_records });
       return res.json({
         code: 0,
@@ -294,7 +320,8 @@ router.get('/:token', async (req, res, next) => {
           draft_records,
           draft_saved_at,
           is_submitted,
-          carry_over_records
+          carry_over_records,
+          carry_over_history
           , demandSources
         }
       });
@@ -323,7 +350,7 @@ router.get('/:token', async (req, res, next) => {
     const Model = isProductManagerStaff(link.staff) ? ProductManagerWorkRecord : WorkRecord;
     const records = await Model.findAll({ where: { link_id: link.id } });
     const workHours = await getWorkHours({ tasks: [link.task], records, staff: [link.staff], includeEmptyStaff: true });
-    const carry_over_records = await loadCarryOverRows(Model, link.staff_id, link.task, { records, draftRecords: link.draft_data });
+    const { carry_over_records, carry_over_history } = await loadCarryOverContext(Model, link.staff_id, link.task, { records, draftRecords: link.draft_data });
     return res.json({
       code: 0,
       data: {
@@ -336,7 +363,8 @@ router.get('/:token', async (req, res, next) => {
         draft_records: link.draft_data || null,
         draft_saved_at: link.draft_saved_at || null,
         is_submitted: link.is_submitted || false,
-        carry_over_records
+        carry_over_records,
+        carry_over_history
         , demandSources
       }
     });
@@ -372,6 +400,8 @@ router.put('/:token/draft', async (req, res, next) => {
       }
       const Model = isProductManagerStaff(writeStaff) ? ProductManagerWorkRecord : WorkRecord;
       const originals = taskId ? await Model.findAll({ where: { task_id: taskId, staff_id: sfl.staff_id } }) : [];
+      const cumulativeError = taskId ? await validateCumulativeHours(Model, sfl.staff_id, await CollectionTask.findByPk(taskId), draft_records) : null;
+      if (cumulativeError) return res.status(400).json({ code: 1, message: cumulativeError });
       sfl.draft_data = normalizeSavedRows(draft_records, originals, previousDrafts, await loadFullCreditVersions(Model, sfl.staff_id, draft_records));
       sfl.draft_saved_at = new Date();
       sfl.last_action = 'drafted';
@@ -387,6 +417,8 @@ router.put('/:token/draft', async (req, res, next) => {
     }
     const Model = isProductManagerStaff(writeStaff) ? ProductManagerWorkRecord : WorkRecord;
     const originals = await Model.findAll({ where: { link_id: link.id } });
+    const legacyCumulativeError = await validateCumulativeHours(Model, link.staff_id, link.task, draft_records);
+    if (legacyCumulativeError) return res.status(400).json({ code: 1, message: legacyCumulativeError });
     link.draft_data = normalizeSavedRows(draft_records, originals, link.draft_data, await loadFullCreditVersions(Model, link.staff_id, draft_records));
     link.draft_saved_at = new Date();
     link.last_action = 'drafted';
@@ -420,6 +452,9 @@ router.post('/:token/submit', async (req, res, next) => {
     const savedDrafts = resolved.type === 'system'
       ? (resolved.sfl.draft_task_id === task_id ? resolved.sfl.draft_data : []) : resolved.link.draft_data;
     const submitStaffId = resolved.type === 'system' ? resolved.sfl.staff_id : resolved.link.staff_id;
+    const submitTask = resolved.type === 'system' ? (task_id ? await CollectionTask.findByPk(task_id) : null) : resolved.link.task;
+    const cumulativeError = await validateCumulativeHours(existingModel, submitStaffId, submitTask, records);
+    if (cumulativeError) return res.status(400).json({ code: 1, message: cumulativeError });
     records = normalizeSavedRows(records, existingRecords, savedDrafts, await loadFullCreditVersions(existingModel, submitStaffId, records));
     for (let index = 0; index < records.length; index += 1) {
       validateManualHours(records[index], `第 ${index + 1} 条记录`);

@@ -122,7 +122,7 @@ function buildCarryOverRows(records = [], tasks = [], currentTask = null) {
   }
   if (earlierTasks.size === 0) return [];
   const periodByTask = new Map([...earlierTasks].map(([id, task]) => [id, { endDate: task.end_date }]));
-  const latest = new Map();
+  const latest = new Map(), hoursByTask = new Map();
   for (const value of records) {
     const record = toPlain(value);
     if (!record || !earlierTasks.has(String(record.task_id))) continue;
@@ -130,12 +130,20 @@ function buildCarryOverRows(records = [], tasks = [], currentTask = null) {
     const key = groupKey(record);
     const existing = latest.get(key);
     if (!existing || isLater(record, existing, periodByTask)) latest.set(key, record);
+    // REQ-072: every earlier period stores its own delta, so the group's history is the plain sum.
+    if (!hoursByTask.has(key)) hoursByTask.set(key, new Map());
+    const perTask = hoursByTask.get(key), taskId = String(record.task_id);
+    perTask.set(taskId, (perTask.get(taskId) || 0) + nonNegativeHours(record.hours));
   }
   const rows = [];
-  for (const record of latest.values()) {
+  for (const [key, record] of latest) {
     const previous = normalizeProgress(record.delivery_progress);
     if (previous === null || previous >= CARRY_OVER_MAX_PROGRESS) continue;
     const task = earlierTasks.get(String(record.task_id));
+    const historyWeeks = [...(hoursByTask.get(key) || new Map())]
+      .map(([taskId, hours]) => ({ task: earlierTasks.get(taskId), hours }))
+      .sort((a, b) => String(a.task.end_date || '').localeCompare(String(b.task.end_date || '')))
+      .map(({ task: source, hours }) => ({ task_id: source.id, task_title: source.title || '', week_number: source.week_number ?? null, end_date: source.end_date || '', hours: round(hours) }));
     rows.push({
       requirement_title: String(record.requirement_title || '').trim(),
       version: String(record.version || '').trim(),
@@ -146,7 +154,8 @@ function buildCarryOverRows(records = [], tasks = [], currentTask = null) {
       delivery_progress: previous === 0 ? null : previous,
       _carry_over: {
         source_task_id: task.id, source_task_title: task.title || '', source_task_end_date: task.end_date || '',
-        source_week_number: task.week_number ?? null, previous_progress: previous
+        source_week_number: task.week_number ?? null, previous_progress: previous,
+        previous_hours: round(historyWeeks.reduce((sum, week) => sum + week.hours, 0)), history_weeks: historyWeeks
       }
     });
   }

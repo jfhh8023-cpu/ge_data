@@ -70,6 +70,21 @@ check('CO4-D-003 Sequelize-like instances (toJSON) are accepted', () => {
   const wrapped = buildCarryOverRows(records.map(wrap), tasks.map(wrap), wrap(current));
   assert.strictEqual(wrapped.length, 4);
 });
+check('CH4-P-001 previous_hours sums all earlier periods of the group; history_weeks ascend by end_date', () => {
+  assert.strictEqual(byTitle['B需求']._carry_over.previous_hours, 16);
+  assert.deepStrictEqual(byTitle['B需求']._carry_over.history_weeks.map(week => [week.week_number, week.hours]), [[36, 8], [37, 8]]);
+  assert.strictEqual(byTitle['G需求']._carry_over.previous_hours, 8);
+  assert.deepStrictEqual(byTitle['G需求']._carry_over.history_weeks.map(week => [week.week_number, week.hours]), [[36, 8]]);
+});
+check('CH4-P-002/003 zero-hour rows appear in the breakdown, string hours parse, invalid hours count as 0', () => {
+  const rows = buildCarryOverRows([
+    rec('z1', 'w1', 'Z需求', 'V9', 50, { hours: '4.50' }), rec('z2', 'w2', 'Z需求', 'V9', 70, { hours: 0 }),
+    rec('y1', 'w1', 'Y需求', 'V8', 30, { hours: 'abc' }), rec('y2', 'w2', 'Y需求', 'V8', 40, { hours: 2 })
+  ], tasks, current);
+  const z = rows.find(row => row.requirement_title === 'Z需求')._carry_over, y = rows.find(row => row.requirement_title === 'Y需求')._carry_over;
+  assert.strictEqual(z.previous_hours, 4.5); assert.deepStrictEqual(z.history_weeks.map(week => week.hours), [4.5, 0]);
+  assert.strictEqual(y.previous_hours, 2); assert.deepStrictEqual(y.history_weeks.map(week => week.hours), [0, 2]);
+});
 check('CO4-D-001 product manager records keep demand sources and weights', () => {
   const pm = buildCarryOverRows([rec('p1', 'w2', 'P需求', 'V5.0', 50, { demand_sources: ['甲', '乙'], demand_source_ids: [1, 2], demand_source_weights: '{"甲":60,"乙":40}' })], tasks, current);
   assert.deepStrictEqual(pm[0].demand_sources, ['甲', '乙']);

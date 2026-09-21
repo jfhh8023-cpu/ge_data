@@ -166,5 +166,22 @@ check('REQ071 suffixed five-category rows weight by their latest progress (40% -
   assert.equal(compare(twoWeeks, capacityFor(twoWeeks, staff, [week37, week38])).weightedDeliveredHours, 16)
   assert.equal(compare(twoWeeks, capacityFor(twoWeeks, staff, [week37])).weightedDeliveredHours, 3.2)
 })
+check('REQ072 per-period deltas 10/70 + 5/80 + 3/100 accumulate to 18h at 100; selecting the first two weeks gives 15h at 80', () => {
+  const week39 = { id: 'w39', title: 'W39', start_date: '2026-09-21', end_date: '2026-09-27', time_dimension: 'week' }
+  const rows = [record('a', '需求X', 10, 70, { version: 'V1', task_id: 'w37' }), record('b', '需求X', 5, 80, { version: 'V1', task_id: 'w38' }), record('c', '需求X', 3, 100, { version: 'V1', task_id: 'w39' })]
+  const all = capacityFor(rows, staff, [week37, week38, week39])
+  const group = groupRequirementProgress(rows, all)[0]
+  assert.equal(group.hours, 18); assert.equal(group.progress, 100)
+  const m = compare(rows, all)
+  assert.equal(m.deliveredHours, 18); assert.equal(m.weightedDeliveredHours, 18); assert.equal(m.requirementProgress, 100)
+  const twoWeeks = rows.slice(0, 2), partial = capacityFor(twoWeeks, staff, [week37, week38])
+  assert.equal(groupRequirementProgress(twoWeeks, partial)[0].hours, 15); assert.equal(groupRequirementProgress(twoWeeks, partial)[0].progress, 80)
+  assert.equal(compare(twoWeeks, partial).weightedDeliveredHours, 12)
+  // zero-delta week still moves the group to 100 and keeps the total at 10
+  const zeroDelta = [record('a', '需求X', 10, 70, { version: 'V1', task_id: 'w37' }), record('z', '需求X', 0, 100, { version: 'V1', task_id: 'w38' })]
+  const zeroCapacity = capacityFor(zeroDelta, staff, [week37, week38])
+  assert.deepEqual([groupRequirementProgress(zeroDelta, zeroCapacity)[0].hours, groupRequirementProgress(zeroDelta, zeroCapacity)[0].progress], [10, 100])
+  assert.equal(compare(zeroDelta, zeroCapacity).weightedDeliveredHours, 10)
+})
 console.log(`${passed} passed; ${failed} failed`)
 process.exitCode = failed ? 1 : 0
