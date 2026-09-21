@@ -203,6 +203,10 @@ function handleHoursChange(row, value) {
   row._last_valid_hours = value
 }
 const excludedHistory = computed(() => excludedPreviousHours(rows.value))
+/** A row reserves one hint line in every cell when any of its cells shows a hint, so inputs stay aligned. */
+function fillRowClassName({ row }) {
+  return row?._carry_over || effectivePreviousHours(row) > 0 ? 'fill-row-with-hint' : ''
+}
 const currentWeekLabel = computed(() => (currentTask.value?.week_number ? `第${currentTask.value.week_number}周（本周）` : '本周'))
 
 /** REQ-070: 带出行标签 */
@@ -851,7 +855,7 @@ function exportHistory() {
               <div v-if="isEditable" style="background:var(--color-bg-2); border-radius:8px; padding:14px; margin-bottom:14px; border:1px solid var(--color-border-light);">
                 <p style="font-size:12px; color:var(--color-text-3); margin-bottom:6px;">
                   <span v-if="isProductManager">粘贴文本，每行一条。格式：<code style="background:var(--color-bg-white); padding:2px 6px; border-radius:4px;">V4.633.0 | 用户中心改版 | 客户需求,内部需求 | 5h | 80%</code>；对外服务包含售前、运营、业务培训等服务事项。</span>
-                  <span v-else>粘贴文本，每行一条。格式：<code style="background:var(--color-bg-white); padding:2px 6px; border-radius:4px;">V4.633.0 用户中心改版 杨瑞 5h 80%</code></span>
+                  <span v-else>粘贴文本，每行一条。格式：<code style="background:var(--color-bg-white); padding:2px 6px; border-radius:4px;">V4.633.0 用户中心改版 张三 5h 80%</code></span>
                 </p>
                 <el-input v-model="recognizeText" type="textarea" :rows="2" placeholder="在此粘贴文本内容..." />
                 <div style="display:flex; justify-content:flex-end; margin-top:6px;">
@@ -859,7 +863,7 @@ function exportHistory() {
                 </div>
               </div>
 
-              <el-table :data="rows" border size="small" style="width:100%;">
+              <el-table :data="rows" border size="small" style="width:100%;" :row-class-name="fillRowClassName">
                 <el-table-column type="index" label="#" width="45" align="center" />
                 <el-table-column label="需求标题" min-width="260">
                   <template #default="{ row }">
@@ -1116,10 +1120,14 @@ function exportHistory() {
 .fill-fixed-version :deep(.el-input__wrapper) { background: var(--color-bg-2); }
 .fill-fixed-version :deep(input) { color: var(--color-text-3); cursor: default; }
 .fill-not-applicable { color: var(--color-text-3); font-size: 12px; }
-.fill-hours-breakdown { margin-top: 4px; font-size: 11px; line-height: 1.4; color: var(--color-text-3, #86909C); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fill-hours-breakdown { font-size: 11px; line-height: 1.4; color: var(--color-text-3, #86909C); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fill-hours-previous { color: var(--color-warning, #FF7D00); font-weight: 600; }
 .fill-hours-excluded { display: block; margin-top: 2px; font-size: 11px; color: var(--color-text-3, #86909C); }
-.fill-carry-over-tag { margin-top: 4px; font-size: 11px; line-height: 1.4; color: var(--color-warning, #FF7D00); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fill-carry-over-tag { font-size: 11px; line-height: 1.4; color: var(--color-warning, #FF7D00); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Rows with any hint reserve one hint line in every cell; hints sit in that reserved strip so inputs stay level. */
+:deep(.fill-row-with-hint > td > .cell) { position: relative; padding-bottom: calc(11px * 1.4 + 4px); }
+:deep(.fill-row-with-hint .fill-carry-over-tag),
+:deep(.fill-row-with-hint .fill-hours-breakdown) { position: absolute; left: 10px; right: 10px; bottom: 0; margin: 0; }
 .fill-history-hours { padding: 8px 12px; border-top: 1px solid var(--color-border-light); }
 .fill-metric-note { margin: 6px 0; font-size: 12px; line-height: 1.6; color: var(--color-text-3); }
 
