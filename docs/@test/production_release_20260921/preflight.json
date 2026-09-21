@@ -1,0 +1,66 @@
+{
+  "ref": "v3.4.0",
+  "health": "{\"code\":0,\"message\":\"DevTracker API is running\",\"version\":\"3.4.0\"}",
+  "pm2": "[{\"pid\": 31937, \"status\": \"online\", \"restarts\": 2, \"uptime\": 1789638981367}]",
+  "layout": "/opt/devtracker:\ntotal 196\ndrwxr-xr-x  10 root root   4096 Sep 17 17:53 .\ndrwxr-xr-x. 14 root root   4096 Sep 16 00:16 ..\ndrwxr-xr-x   5 root root   4096 Sep 17 17:56 backend\ndrwxr-xr-x   2 root root   4096 Aug  4 19:34 backups\ndrwxr-xr-x   3 root root   4096 Jun 22 16:15 .codex-local\ndrwxr-xr-x   3 root root   4096 May 20 13:02 deploy\n-rw-r--r--   1 root root 145551 Apr 16 18:24 devtracker_full.sql\n-rw-r--r--   1 root root    487 Sep  8 09:45 ecosystem.config.js\n-rw-r--r--   1 root root   2787 Sep  8 09:45 ensure_nginx_devtracker.py\ndrwxr-xr-x   5 root root   4096 Sep 17 17:56 frontend\ndrwxr-xr-x   2 root root   4096 Apr 16 17:42 logs\n-rw-r--r--   1 root root   2555 Sep  8 09:45 nginx-devtracker.conf\ndrwx------   3 root root   4096 Sep 17 17:45 .release-backups\ndrwxr-xr-x   3 root root   4096 Sep 17 17:53 .release-stage\n\n/opt/devtracker/frontend:\ntotal 20\ndrwxr-xr-x  5 root root 4096 Sep 17 17:56 .\ndrwxr-xr-x 10 root root 4096 Sep 17 17:53 ..\ndrwxr-xr-x  3 root root 4096 Sep 17 17:53 dist\ndrwxr-xr-x  3 root root 4096 May 20 11:35 dist.__previous_20260520_130158\ndrwxr-xr-x  3 root root 4096 May 20 13:02 dist.__previous_20260520_140217\n\n/opt/devtracker/.release-backups:\ntotal 12\ndrwx------  3 root root 4096 Sep 17 17:45 .\ndrwxr-xr-x 10 root root 4096 Sep 17 17:53 ..\ndrwx------  5 root root 4096 Sep 17 17:56 20260917_094527",
+  "node": "v16.20.2",
+  "disk": "/dev/vda1        40G   11G   27G  30% /",
+  "tables": {
+    "access_links": 1,
+    "auto_task_child_notifications": 3,
+    "auto_task_messages": 395,
+    "auto_task_rules": 4,
+    "auto_task_run_logs": 165,
+    "collection_tasks": 35,
+    "demand_sources": 4,
+    "duty_calendar_revisions": 2,
+    "duty_holiday_snapshots": 2,
+    "duty_schedule_exceptions": 0,
+    "duty_schedule_swaps": 2,
+    "duty_special_notification_logs": 0,
+    "excel_files": 30,
+    "fill_links": 0,
+    "link_permissions": 43,
+    "match_groups": 605,
+    "product_manager_status_history": 16,
+    "product_manager_work_records": 0,
+    "product_managers": 14,
+    "quote_configs": 1,
+    "quotes": 387,
+    "staff": 17,
+    "staff_fill_links": 17,
+    "staff_roles": 5,
+    "staff_status_history": 20,
+    "work_records": 916
+  },
+  "work_hours": "916\t11749.50",
+  "code_vs_ref": {
+    "backend/src": {
+      "remote_files": 67,
+      "ref_files": 67,
+      "mismatch": []
+    },
+    "backend/package.json": {
+      "remote_files": 1,
+      "ref_files": 1,
+      "mismatch": []
+    },
+    "backend/scripts": {
+      "remote_files": 25,
+      "ref_files": 35,
+      "mismatch": [
+        "backend/scripts/verify_child_notifications_and_duty_switch.js",
+        "backend/scripts/verify_delivery_status_notice.mjs",
+        "backend/scripts/verify_delivery_summary.js",
+        "backend/scripts/verify_effective_hours_backend.js",
+        "backend/scripts/verify_effective_hours_fill.mjs",
+        "backend/scripts/verify_effective_hours_fingerprint.js",
+        "backend/scripts/verify_effective_hours_stats.mjs",
+        "backend/scripts/verify_effective_hours_ui.js",
+        "backend/scripts/verify_stats_details_race.js",
+        "backend/scripts/verify_weighted_delivery_refinement_ui.js",
+        "backend/scripts/verify_work_hours_completion.js"
+      ]
+    }
+  }
+}

@@ -25,6 +25,7 @@ logs/
 .codex-local/
 
 # Deploy (contains credentials / data)
+deploy/__init__.py
 deploy/deploy.py
 deploy/export_db.py
 deploy/fix_week_dates.py

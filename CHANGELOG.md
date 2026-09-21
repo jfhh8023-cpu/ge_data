@@ -1,5 +1,30 @@
 # Changelog
 
+## v3.5.0 — 未完成需求跨周带出 / 五类后缀匹配 / 累计工时 (2026-09-21)
+
+生产发布记录见 `docs/@development/production_release_20260921.md`。
+
+### 新增
+
+- **REQ-070 未完成需求跨周带出**：上一周期进度 <100% 的需求在下次填写页自动回显（标题、版本、上次进度、"上周带出"标签），继续填写后新进度记入当前周期，历史周期记录保持不变
+- **REQ-071 五类标题后缀匹配**：请假/培训/公司会议/出差/团建 改为"标题末尾最近汉字"匹配（忽略尾部符号与数字，繁体归一），默认版本 vYYMMDD，交付进度默认 100% 且可编辑；进度 <100% 时与普通需求同样进入未完成列表与带出逻辑
+- **REQ-072 累计工时展示、按周期存增量**：带出行的工时输入框显示累计值，提交/草稿仅保存本周期增量；行内橙色明细"含 Wxx 周 10h + 本周 5h"；累计值不得小于历史工时（失焦自动恢复上次有效值）；页脚总工时注明不含历史工时
+- 填写页：任一列有提示的行为整行每列预留一行提示高度，输入框横向齐平；识别示例 PM 改为"张三"
+
+### 后端
+
+- `EffectiveHoursService`：后缀匹配、`fullCreditProgress`、版本沿用校验
+- `DeliverySummaryService`：五类记录纳入加权交付；`buildCarryOverRows` 返回 `previous_hours` / `history_weeks`
+- `routes/fill.js`：`loadCarryOverContext`（`carry_over_records` + `carry_over_history`）、`validateCumulativeHours`、草稿/提交剥离 `cumulative_hours` 仅存增量
+- `routes/records.js` / `routes/stats.js`：五类进度默认 100 可编辑，历史 null 读作 100
+- `models/FillLink.js` / `StaffFillLink.js`：MariaDB `draft_data` 文本 JSON getter，草稿可恢复
+- 无表结构变更，无数据迁移
+
+### 前端
+
+- `utils/carryOverHours.js`（新）、`utils/effectiveHours.js`、`utils/deliverySummary.js`、`utils/progress.js`
+- `FillPage.vue`：带出行回显、累计/增量换算、最小值校验、行级提示预留
+
 ## v3.4.0 — 进度跟踪 / 有效工时 / 周期加权交付率 / 交付状态提示 (2026-09-17)
 
 生产发布：2026-09-17 17:56（北京时间），源提交 `c1b19af`，详见 `docs/@development/production_release_20260917.md`。
