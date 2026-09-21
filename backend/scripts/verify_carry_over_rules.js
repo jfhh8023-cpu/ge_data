@@ -1,5 +1,5 @@
 /**
- * REQ-070 CO4-D-001~003: pure-function checks for buildCarryOverRows (no DB, no network).
+ * REQ-070 CO4-D-001~003 (+ REQ-071 FC4-S-002): pure-function checks for buildCarryOverRows (no DB, no network).
  * Usage: node scripts/verify_carry_over_rules.js
  */
 const assert = require('assert');
@@ -20,7 +20,8 @@ const records = [
   rec('b1', 'w1', 'B需求', 'V1.1', 100), rec('b2', 'w2', 'B需求', 'V1.1', 40, { product_managers: '["PM甲"]' }), // B: latest 40 -> carried (JSON string column)
   rec('c1', 'w2', 'C需求', 'V2.0', 0),                                                    // C: 0 -> carried, progress null, previous 0
   rec('d1', 'w2', 'D需求', 'V2.1', null),                                                 // D: historical null -> excluded
-  rec('e1', 'w2', '请假', 'v260907', 50),                                                 // E: full credit -> excluded
+  rec('e1', 'w2', '请假', 'v260907', 50),                                                 // E: full credit 50 -> carried (REQ-071)
+  rec('e2', 'w2', '张三培训', 'v260907', null),                                           // E2: full credit null -> excluded
   rec('f1', 'w2', 'F需求', '-', 30),                                                      // F: no version -> excluded
   rec('g1', 'w1', 'G需求', 'V3.0', 60, { product_managers: ['PM乙'] }),                  // G: only in w1 -> carried 60
   rec('h1', 'w3', 'H需求', 'V4.0', 20)                                                    // H: in current task -> ignored
@@ -35,8 +36,10 @@ function check(name, fn) {
 const rows = buildCarryOverRows(records, tasks, current);
 const byTitle = Object.fromEntries(rows.map(row => [row.requirement_title, row]));
 
-check('CO4-D-001 candidate set is exactly B, C, G', () => {
-  assert.deepStrictEqual(Object.keys(byTitle).sort(), ['B需求', 'C需求', 'G需求']);
+check('CO4-D-001 candidate set is exactly B, C, G + five-category E (REQ-071)', () => {
+  assert.deepStrictEqual(Object.keys(byTitle).sort(), ['B需求', 'C需求', 'G需求', '请假']);
+  assert.strictEqual(byTitle['请假'].delivery_progress, 50);
+  assert.strictEqual(byTitle['请假'].version, 'v260907');
 });
 check('CO4-D-001 B carries latest 40 with parsed product_managers and source week 37', () => {
   assert.strictEqual(byTitle['B需求'].delivery_progress, 40);
@@ -56,7 +59,7 @@ check('CO4-A-003 rows have no id / existing_record_id', () => {
   for (const row of rows) { assert.ok(!('id' in row)); assert.ok(!('existing_record_id' in row)); }
 });
 check('CO4-D-001 ordering: newer source week first', () => {
-  assert.deepStrictEqual(rows.map(row => row._carry_over.source_task_id), ['w2', 'w2', 'w1']);
+  assert.deepStrictEqual(rows.map(row => row._carry_over.source_task_id), ['w2', 'w2', 'w2', 'w1']);
 });
 check('CO4-D-002 no current task / no earlier tasks -> []', () => {
   assert.deepStrictEqual(buildCarryOverRows(records, tasks, null), []);
@@ -65,7 +68,7 @@ check('CO4-D-002 no current task / no earlier tasks -> []', () => {
 check('CO4-D-003 Sequelize-like instances (toJSON) are accepted', () => {
   const wrap = value => ({ toJSON: () => value });
   const wrapped = buildCarryOverRows(records.map(wrap), tasks.map(wrap), wrap(current));
-  assert.strictEqual(wrapped.length, 3);
+  assert.strictEqual(wrapped.length, 4);
 });
 check('CO4-D-001 product manager records keep demand sources and weights', () => {
   const pm = buildCarryOverRows([rec('p1', 'w2', 'P需求', 'V5.0', 50, { demand_sources: ['甲', '乙'], demand_source_ids: [1, 2], demand_source_weights: '{"甲":60,"乙":40}' })], tasks, current);

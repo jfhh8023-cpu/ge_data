@@ -3,14 +3,24 @@ import { normalizeProgress } from './progress.js'
 export { normalizeProgress }
 export const FULL_CREDIT_TITLES = Object.freeze(['请假', '培训', '公司会议', '出差', '团建'])
 export const POSITIVE_PROGRESS_OPTIONS = Object.freeze([100, 90, 80, 70, 60, 50, 40, 30, 20, 10, 1])
-export const FULL_CREDIT_NOTE = `${FULL_CREDIT_TITLES.join('、')}：工时手填，版本自动锁定为 vYYMMDD，按完整工时计入有效交付及加权工时；普通无版本工时仅记录。`
-export const isFullCreditRecord = value => FULL_CREDIT_TITLES.includes(String(typeof value === 'object' ? value?.requirement_title ?? value?.title ?? '' : value ?? '').trim())
+export const FULL_CREDIT_DEFAULT_PROGRESS = 100
+export const FULL_CREDIT_NOTE = `${FULL_CREDIT_TITLES.join('、')}（含以其结尾的标题）：工时手填，版本自动锁定为 vYYMMDD，进度默认100%可编辑；全额计入有效交付，按填报进度计入加权工时；普通无版本工时仅记录。`
+const TRADITIONAL_TO_SIMPLIFIED = { '請': '请', '訓': '训', '會': '会', '議': '议', '團': '团' }
+const TRAILING_NON_HAN = /[^\u3400-\u4dbf\u4e00-\u9fff]+$/u
+/** REQ-071: the nearest Han text at the end of the title decides; trailing digits, symbols and letters are ignored. */
+export function fullCreditCategoryOf(value) {
+  const raw = value !== null && typeof value === 'object' ? value.requirement_title ?? value.title ?? '' : value ?? ''
+  const core = String(raw).trim().replace(TRAILING_NON_HAN, '').replace(/[\u8acb\u8a13\u6703\u8b70\u5718]/g, char => TRADITIONAL_TO_SIMPLIFIED[char])
+  if (!core) return null
+  return FULL_CREDIT_TITLES.find(title => core.endsWith(title)) || null
+}
+export const isFullCreditRecord = value => fullCreditCategoryOf(value) !== null
 const round = value => Number(value.toFixed(2))
 const canPreserveHistoricalNull = row => Boolean(row?.existing_record_id && row?._original_progress_missing === true)
 
-/** A saved null may be retained; an explicitly resubmitted ordinary progress must be positive. */
+/** A saved null may be retained; an explicitly resubmitted ordinary progress must be positive. Five categories need a selectable value (default 100). */
 export function isValidSubmittedProgress(row) {
-  if (isFullCreditRecord(row)) return true
+  if (isFullCreditRecord(row)) return POSITIVE_PROGRESS_OPTIONS.includes(normalizeProgress(row?.delivery_progress))
   const raw = row?.delivery_progress
   const empty = raw === null || raw === undefined || (typeof raw === 'string' && raw.trim() === '')
   if (empty) return canPreserveHistoricalNull(row)
@@ -42,12 +52,14 @@ export function initializeSpecialRow(row, now = new Date(), { newRow = false } =
   row._special_active = isFullCreditRecord(row)
   if (!row._special_active) return row
   row._ordinary_fields = row._ordinary_fields || emptyOrdinaryFields()
-  const savedVersion = !newRow && /^v\d{6}$/i.test(String(row.version || '')) ? row.version : null
+  // A carried row (REQ-070) keeps its source version so the server can merge it with the same group.
+  const savedVersion = (!newRow || row._carry_over) && /^v\d{6}$/i.test(String(row.version || '')) ? row.version : null
   row.automatic_version_date = savedVersion
     ? `20${savedVersion.slice(1, 3)}-${savedVersion.slice(3, 5)}-${savedVersion.slice(5, 7)}`
     : chinaDate(newRow ? now : row.automatic_version_date || row.created_at || now)
   row.version = savedVersion || dateVersion(row.automatic_version_date)
-  row.delivery_progress = null
+  const progress = normalizeProgress(row.delivery_progress)
+  row.delivery_progress = progress === null && !(row._carry_over && row._carry_over.previous_progress === 0) ? FULL_CREDIT_DEFAULT_PROGRESS : progress
   row.product_managers = []
   row.demand_sources = []
   row.demand_source_weights = {}
@@ -60,7 +72,7 @@ export function syncSpecialRow(row, now = new Date()) {
     row._ordinary_fields = ordinaryFields(row)
     row.automatic_version_date ||= chinaDate(now)
     row.version = dateVersion(row.automatic_version_date)
-    row.delivery_progress = null
+    row.delivery_progress = FULL_CREDIT_DEFAULT_PROGRESS
     row.product_managers = []
     row.demand_sources = []
     row.demand_source_weights = {}
@@ -79,7 +91,7 @@ export function summarizeDraftWeightedHours(rows = [], standardHours = 0) {
     if (!Number.isFinite(hours) || hours <= 0) continue
     if (isFullCreditRecord(row)) {
       fullCreditHours += hours
-      weightedDeliveredHours += hours
+      weightedDeliveredHours += hours * (normalizeProgress(row.delivery_progress) ?? FULL_CREDIT_DEFAULT_PROGRESS) / 100
       continue
     }
     const version = String(row.version || '').trim()

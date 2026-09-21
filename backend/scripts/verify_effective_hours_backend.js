@@ -33,11 +33,13 @@ function loadModule(relative, dependencies) {
 }
 
 async function run() {
-  await check('five exact trimmed titles retain manually entered decimal hours and ignore forged version/progress', () => {
+  await check('five trimmed/suffixed titles retain manually entered decimal hours, ignore forged version and keep progress (REQ-071 default 100)', () => {
     for (const title of effective.FULL_CREDIT_TITLES) {
       const result = effective.normalizeFullCreditRecord({ requirement_title: ` ${title} `, hours: 3.5, version: 'v990101', delivery_progress: 10 }, null, new Date('2026-09-16T16:01:00Z'));
-      assert.equal(result.hours, 3.5); assert.equal(result.version, 'v260917'); assert.equal(result.delivery_progress, null);
+      assert.equal(result.hours, 3.5); assert.equal(result.version, 'v260917'); assert.equal(result.delivery_progress, 10);
+      assert.equal(effective.normalizeFullCreditRecord({ requirement_title: `张三${title}【【23`, hours: 1 }, null, new Date('2026-09-16T16:01:00Z')).delivery_progress, 100);
       assert.equal(versionTypeOf({ requirement_title: title, version: '' }), 'versioned');
+      assert.equal(versionTypeOf({ requirement_title: `张三“${title}`, version: '' }), 'versioned');
     }
     for (const title of ['培训系统开发', '公司会议纪要', '请假审批']) assert.equal(effective.isFullCreditRecord({ requirement_title: title }), false);
   });
@@ -177,12 +179,24 @@ async function run() {
       { status(value) { status = value; return this; }, json(value) { result = value; } }, value => { error = value; });
     return { result, error, status };
   }
-  await check('actual fill: new special row bypasses normal PM/progress requirements, cannot forge version, and hours stay manual', async () => {
+  await check('actual fill: new special row bypasses PM requirement, cannot forge version, hours stay manual, progress defaults 100 / editable / 0 rejected (REQ-071)', async () => {
     for (const title of effective.FULL_CREDIT_TITLES) {
-      const response = await invoke(fill, 'post /:token/submit', { task_id: 'now', records: [{ requirement_title: title, hours: 3.5, version: 'v000000', delivery_progress: 0 }] });
+      const response = await invoke(fill, 'post /:token/submit', { task_id: 'now', records: [{ requirement_title: `张三${title}【【23`, hours: 3.5, version: 'v000000' }] });
       assert.ifError(response.error); assert.equal(response.status, 200);
-      const saved = entries.engineering[0]; assert.equal(saved.hours, 3.5); assert.equal(saved.version, effective.dateVersion()); assert.equal(saved.delivery_progress, null);
+      const saved = entries.engineering[0]; assert.equal(saved.hours, 3.5); assert.equal(saved.version, effective.dateVersion()); assert.equal(saved.delivery_progress, 100);
+      assert.equal(saved.requirement_title, `张三${title}【【23`);
     }
+    const partial = await invoke(fill, 'post /:token/submit', { task_id: 'now', records: [{ requirement_title: '请假', hours: 2, delivery_progress: 40 }] });
+    assert.ifError(partial.error); assert.equal(entries.engineering[0].delivery_progress, 40);
+    const zero = await invoke(fill, 'post /:token/submit', { task_id: 'now', records: [{ requirement_title: '请假', hours: 2, delivery_progress: 0 }] });
+    assert.equal(zero.status, 400); assert.match(zero.result.message, /1%或10%至100%/);
+    // REQ-071 carried version: only a (title, version) this author already saved may be reused
+    entries.engineering = [{ id: 'old', task_id: 'old', staff_id: 'a', requirement_title: '张三请假', hours: 8, version: 'v260901', delivery_progress: 40, created_at: '2026-09-01T02:00:00Z' }];
+    const carried = await invoke(fill, 'post /:token/submit', { task_id: 'now', records: [{ requirement_title: '张三请假', hours: 4, version: 'v260901', delivery_progress: 100 }] });
+    assert.ifError(carried.error); assert.equal(entries.engineering.find(row => row.task_id === 'now').version, 'v260901');
+    const forgedVersion = await invoke(fill, 'post /:token/submit', { task_id: 'now', records: [{ requirement_title: '张三请假', hours: 4, version: 'v250101', delivery_progress: 100 }] });
+    assert.ifError(forgedVersion.error); assert.equal(entries.engineering.find(row => row.task_id === 'now').version, effective.dateVersion());
+    entries.engineering = entries.engineering.filter(row => row.task_id === 'now');
     const rejected = await invoke(fill, 'post /:token/submit', { task_id: 'now', records: [{ requirement_title: '培训', hours: '' }] });
     assert.match(rejected.error.message, /手动填写/); assert.equal(entries.engineering.length, 1);
   });
@@ -271,7 +285,14 @@ async function run() {
     const created = await invoke(crud, 'post /', { task_id: 'now', staff_id: 'a', requirement_title: '培训', hours: 1.5, version: 'v000000' });
     assert.ifError(created.error); const id = created.result.data.id;
     const edited = await invoke(crud, 'put /:id', { version: 'v000000', hours: 2 }, { id });
-    assert.ifError(edited.error); assert.equal(edited.result.data.version, effective.dateVersion()); assert.equal(edited.result.data.delivery_progress, null);
+    assert.ifError(edited.error); assert.equal(edited.result.data.version, effective.dateVersion()); assert.equal(edited.result.data.delivery_progress, 100, 'REQ-071 special create defaults to 100 and PUT without progress keeps it');
+    const specialPartial = await invoke(crud, 'put /:id', { delivery_progress: 40 }, { id });
+    assert.ifError(specialPartial.error); assert.equal(specialPartial.result.data.delivery_progress, 40);
+    const specialInvalid = await invoke(crud, 'put /:id', { delivery_progress: 5 }, { id });
+    assert.match(specialInvalid.error.message, /1%或10%至100%/); assert.equal(entries.engineering.find(row => row.id === id).delivery_progress, 40);
+    entries.engineering.find(row => row.id === id).delivery_progress = null;
+    const keepNull = await invoke(crud, 'put /:id', { hours: 3 }, { id });
+    assert.ifError(keepNull.error); assert.equal(keepNull.result.data.delivery_progress, null, 'historical special null is preserved when progress is not sent');
     const missingPm = await invoke(crud, 'put /:id', { requirement_title: '普通需求' }, { id });
     assert.match(missingPm.error.message, /请选择AI产品经理/);
     const ordinaryNull = await invoke(crud, 'put /:id', { requirement_title: '普通需求', product_managers: ['PM'], delivery_progress: null }, { id });

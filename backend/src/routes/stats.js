@@ -223,12 +223,15 @@ function filterScopedRecords(records, query, definitions) {
 function buildProgressDetails(records, deliverySummary) {
   records = [...records].sort(compareRecordCreationDesc);
   return {
-    records: records.map(record => ({
-      ...record,
-      delivery_progress: isFullCreditRecord(record) ? null : normalizeProgress(record.delivery_progress),
-      progress_status: isFullCreditRecord(record) ? '不适用' : normalizeProgress(record.delivery_progress) === null
-        ? '未填写' : Number(record.delivery_progress) >= 100 ? '已完成' : Number(record.delivery_progress) > 0 ? '部分完成' : '未开始'
-    })),
+    records: records.map(record => {
+      // REQ-071: a five-category row without a saved progress reads as its default 100; the stored value is untouched.
+      const progress = isFullCreditRecord(record) ? normalizeProgress(record.delivery_progress) ?? 100 : normalizeProgress(record.delivery_progress);
+      return {
+        ...record,
+        delivery_progress: progress,
+        progress_status: progress === null ? '未填写' : progress >= 100 ? '已完成' : progress > 0 ? '部分完成' : '未开始'
+      };
+    }),
     weightedProgress: deliverySummary.requirementProgress,
     effectiveHours: deliverySummary.progressKnownHours,
     missingProgressCount: deliverySummary.missingProgressCount,

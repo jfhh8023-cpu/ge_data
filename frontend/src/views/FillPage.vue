@@ -308,7 +308,7 @@ async function handleSubmit() {
     product_managers: row.product_managers,
     demand_sources: row.demand_sources,
     demand_source_weights: isProductManager.value ? normalizedDemandSourceWeights(row) : undefined,
-    delivery_progress: isFullCreditRecord(row) ? null : normalizeProgress(row.delivery_progress),
+    delivery_progress: normalizeProgress(row.delivery_progress),
     hours: row.hours
   }))
 
@@ -857,7 +857,7 @@ function exportHistory() {
                 </el-table-column>
                 <el-table-column label="版本号" width="120">
                   <template #default="{ row }">
-                    <el-tooltip :disabled="!isFullCreditRecord(row)" content="五类有效工时的版本号按首次填报日期自动生成并锁定（vYYMMDD），工时仍由本人填写。" placement="top">
+                    <el-tooltip :disabled="!isFullCreditRecord(row)" content="五类有效工时（标题为或以请假、培训、公司会议、出差、团建结尾）的版本号按首次填报日期自动生成并锁定（vYYMMDD），工时仍由本人填写。" placement="top">
                       <el-input v-model="row.version" :placeholder="isFullCreditRecord(row) ? '自动版本' : 'V4.633.0'" size="small"
                         :readonly="isFullCreditRecord(row)" :class="{ 'fill-fixed-version': isFullCreditRecord(row) }" :disabled="!isEditable" @focus="handleInputFocus" />
                     </el-tooltip>
@@ -910,13 +910,13 @@ function exportHistory() {
                 </el-table-column>
                 <el-table-column label="交付进度" width="120">
                   <template #header>
-                    <el-tooltip content="普通需求提交时进度须选择1%或10%至100%（每10%一档），选项按100%、90%…10%、1%排列，不能为0%；已有历史空进度可原样保留，计算按100%。五类有效工时进度不适用，按完整工时计入。" placement="top">
+                    <el-tooltip content="普通需求提交时进度须选择1%或10%至100%（每10%一档），选项按100%、90%…10%、1%排列，不能为0%；已有历史空进度可原样保留，计算按100%。五类有效工时进度默认100%，可按实际修改，不到100%时与其他未完成需求同样处理。" placement="top">
                       <span tabindex="0">交付进度 ⓘ <span style="color:#F53F3F;">*</span></span>
                     </el-tooltip>
                   </template>
                   <template #default="{ row }">
-                    <span v-if="isFullCreditRecord(row)" class="fill-not-applicable">不适用</span>
-                    <el-select v-else v-model="row.delivery_progress" placeholder="请选择" size="small" style="width:100%;" :disabled="!isEditable">
+                    <el-select v-model="row.delivery_progress" placeholder="请选择" size="small" style="width:100%;" :disabled="!isEditable"
+                      :title="isFullCreditRecord(row) ? '五类工时进度默认100%，可按实际修改' : undefined">
                       <el-option v-for="progress in PROGRESS_OPTIONS" :key="progress" :label="`${progress}%`" :value="progress" />
                       <el-option v-if="row.existing_record_id && normalizeProgress(row.delivery_progress) === 0" label="0%（历史，提交前修改）" :value="0" disabled />
                     </el-select>

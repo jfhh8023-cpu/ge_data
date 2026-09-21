@@ -152,5 +152,19 @@ check('same-period latest timestamp compares instants, not date string spelling'
   assert.equal(m.requirementProgress, 100, '11:00 China time is later than09:30')
   compare(rows, capacity)
 })
+check('REQ071 suffixed five-category rows weight by their latest progress (40% -> 3.2h), null stays 100, requirement progress excludes them', () => {
+  const rows = [record('a', '张三请假【【23', 8, 40, { version: 'v260914' }), record('b', '培训', 4, null, { version: 'v260914' }), record('c', '需求X', 8, 50)]
+  const capacity = capacityFor(rows), m = compare(rows, capacity)
+  assert.equal(m.fullCreditHours, 12); assert.equal(m.deliveredHours, 20)
+  assert.equal(m.weightedDeliveredHours, 11.2); assert.equal(m.knownWeightedDeliveredHours, 11.2)
+  assert.equal(m.requirementProgress, 50); assert.equal(m.progressCoverage, 100); assert.equal(m.missingProgressCount, 0)
+  const groups = groupRequirementProgress(rows, capacity)
+  assert.equal(groups.find(group => group.fullCredit && group.latest.id === 'a').progress, 40)
+  assert.equal(groups.find(group => group.fullCredit && group.latest.id === 'b').progress, 100)
+  // two weeks of the same five-category group: latest period decides for both
+  const twoWeeks = [record('d', '张三请假', 8, 40, { version: 'v260907', task_id: 'w37' }), record('e', '张三请假', 8, 100, { version: 'v260907' })]
+  assert.equal(compare(twoWeeks, capacityFor(twoWeeks, staff, [week37, week38])).weightedDeliveredHours, 16)
+  assert.equal(compare(twoWeeks, capacityFor(twoWeeks, staff, [week37])).weightedDeliveredHours, 3.2)
+})
 console.log(`${passed} passed; ${failed} failed`)
 process.exitCode = failed ? 1 : 0

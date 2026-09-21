@@ -11,7 +11,7 @@ const { v4: uuidv4 } = require('uuid');
 const { Op } = require('sequelize');
 const { WorkRecord, Staff, CollectionTask } = require('../models');
 const { safeParseJsonArray } = require('../utils/parseJson');
-const { isFullCreditRecord, normalizeFullCreditRecord, normalizeProgress, validateManualHours, VALID_PROGRESS } = require('../services/EffectiveHoursService');
+const { isFullCreditRecord, normalizeFullCreditRecord, fullCreditProgress, normalizeProgress, validateManualHours, VALID_PROGRESS } = require('../services/EffectiveHoursService');
 const {
   STAFF_RESIGNED_MESSAGE,
   collectPmNamesFromRecords,
@@ -130,7 +130,7 @@ router.post('/', async (req, res, next) => {
     }
     validateManualHours(normalized);
     const normalizedPms = isFullCreditRecord(normalized) ? [] : requireProductManagers(product_managers);
-    const progress = isFullCreditRecord(normalized) ? null : requireDeliveryProgress(delivery_progress);
+    const progress = isFullCreditRecord(normalized) ? fullCreditProgress(delivery_progress) : requireDeliveryProgress(delivery_progress);
     await assertRecordParticipantsWritable({ task_id, staff_id, product_managers: normalizedPms });
     const record = await WorkRecord.create({
       id: uuidv4(), link_id, task_id, staff_id,
@@ -154,6 +154,11 @@ router.put('/:id', async (req, res, next) => {
     validateManualHours(input);
     const fields = ['requirement_title', 'version', 'hours', 'delivery_progress'];
     fields.forEach(f => { if (input[f] !== undefined) rec[f] = input[f]; });
+    if (isFullCreditRecord(input)) {
+      // A saved five-category null stays null unless the request states a progress; explicit values are validated.
+      rec.delivery_progress = req.body.delivery_progress === undefined && isFullCreditRecord(previous)
+        ? previous.delivery_progress : fullCreditProgress(req.body.delivery_progress);
+    }
     if (isFullCreditRecord(input)) rec.product_managers = [];
     else if (req.body.product_managers !== undefined || isFullCreditRecord(previous)) {
       rec.product_managers = requireProductManagers(input.product_managers);
@@ -199,7 +204,7 @@ router.post('/import', async (req, res, next) => {
         if (!staff) continue;
         validateManualHours(row, `第 ${rowIndex + 1} 条记录`);
         const productManagers = isFullCreditRecord(row) ? [] : requireProductManagers(row.product_managers, `第 ${rowIndex + 1} 条记录`);
-        const progress = isFullCreditRecord(row) ? null : requireDeliveryProgress(row.delivery_progress, `第 ${rowIndex + 1} 条记录`);
+        const progress = isFullCreditRecord(row) ? fullCreditProgress(row.delivery_progress, `第 ${rowIndex + 1} 条记录`) : requireDeliveryProgress(row.delivery_progress, `第 ${rowIndex + 1} 条记录`);
         await assertRecordParticipantsWritable({ task_id, staff_id: staff.id, product_managers: productManagers });
         const rec = await WorkRecord.create({
           id: uuidv4(), task_id, staff_id: staff.id,

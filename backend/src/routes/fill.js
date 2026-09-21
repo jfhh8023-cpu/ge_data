@@ -16,7 +16,7 @@ const { FillLink, CollectionTask, Staff, WorkRecord, ProductManagerWorkRecord, M
 const { matchRecords } = require('../services/MatchService');
 const { getDemandSourceDefinitions, resolveDemandSources } = require('../services/DemandSourceService');
 const { buildWorkHours, getWorkHours, loadWorkHoursContext } = require('../services/WorkHoursCompletionService');
-const { isFullCreditRecord, normalizeFullCreditRecord, normalizeProgress, validateManualHours, VALID_PROGRESS: VALID_DELIVERY_PROGRESS } = require('../services/EffectiveHoursService');
+const { isFullCreditRecord, normalizeFullCreditRecord, fullCreditProgress, fullCreditVersionKey, normalizeProgress, validateManualHours, VALID_PROGRESS: VALID_DELIVERY_PROGRESS } = require('../services/EffectiveHoursService');
 const { buildCarryOverRows } = require('../services/DeliverySummaryService');
 const { Op } = require('sequelize');
 const {
@@ -64,9 +64,13 @@ function normalizeDemandSourceWeights(value, sources) {
   return Object.fromEntries(normalized);
 }
 
+function validateFullCreditProgress(record, index) {
+  try { record.delivery_progress = fullCreditProgress(record.delivery_progress, `第 ${index + 1} 条记录`); return ''; } catch (error) { return error.message; }
+}
+
 function validateDeliveryProgress(records) {
   for (let i = 0; i < records.length; i += 1) {
-    if (isFullCreditRecord(records[i])) { records[i].delivery_progress = null; continue; }
+    if (isFullCreditRecord(records[i])) { const error = validateFullCreditProgress(records[i], i); if (error) return error; continue; }
     const progress = records[i]?.delivery_progress;
     // These flags are derived from this author's saved row, never trusted from the request.
     if (records[i]._preserveOriginalProgress) { records[i].delivery_progress = normalizeProgress(progress); continue; }
@@ -83,7 +87,7 @@ function validateDeliveryProgress(records) {
 
 async function validateProductManagerRecords(records) {
   for (let i = 0; i < records.length; i += 1) {
-    if (isFullCreditRecord(records[i])) continue;
+    if (isFullCreditRecord(records[i])) { const error = validateFullCreditProgress(records[i], i); if (error) return error; continue; }
     const resolved = await resolveDemandSources(records[i]?.demand_sources);
     const sources = resolved.names;
     if (sources.length === 0) return `第 ${i + 1} 条记录请选择需求方`;
@@ -142,7 +146,15 @@ async function assertProductManagersCanWrite(records, task) {
   }
 }
 
-function normalizeSavedRows(rows, existingRecords = [], savedDrafts = []) {
+/** REQ-071: a carried five-category row may keep its source version only if this author already saved that (title, version). */
+async function loadFullCreditVersions(Model, staffId, rows) {
+  const needsLookup = Array.isArray(rows) && rows.some(row => isFullCreditRecord(row) && !row?.existing_record_id && /^v\d{6}$/i.test(String(row?.version || '').trim()));
+  if (!needsLookup || !staffId) return new Set();
+  const saved = await Model.findAll({ where: { staff_id: staffId }, attributes: ['requirement_title', 'version'], raw: true });
+  return new Set(saved.filter(isFullCreditRecord).map(record => fullCreditVersionKey(record.requirement_title, record.version)));
+}
+
+function normalizeSavedRows(rows, existingRecords = [], savedDrafts = [], allowedVersions = new Set()) {
   const originals = new Map(existingRecords.map(record => [record.id, record]));
   const drafts = new Map((Array.isArray(savedDrafts) ? savedDrafts : []).filter(row => row.draft_row_id).map(row => [row.draft_row_id, row]));
   return rows.map(row => {
@@ -152,7 +164,7 @@ function normalizeSavedRows(rows, existingRecords = [], savedDrafts = []) {
     const originalOrdinary = original && !isFullCreditRecord(original);
     const preserveOriginalProgress = Boolean(originalOrdinary && !isFullCreditRecord(row) && !Object.prototype.hasOwnProperty.call(row, 'delivery_progress'));
     const input = preserveOriginalProgress ? { ...row, delivery_progress: original.delivery_progress } : row;
-    return { ...normalizeFullCreditRecord(input, previous), existing_record_id: original?.id || '',
+    return { ...normalizeFullCreditRecord(input, previous, new Date(), { allowedVersions }), existing_record_id: original?.id || '',
       _allowMissingProgress: Boolean(originalOrdinary && normalizeProgress(original.delivery_progress) === null),
       _preserveOriginalProgress: preserveOriginalProgress,
       _savedCreatedAt: original?.created_at || null };
@@ -360,7 +372,7 @@ router.put('/:token/draft', async (req, res, next) => {
       }
       const Model = isProductManagerStaff(writeStaff) ? ProductManagerWorkRecord : WorkRecord;
       const originals = taskId ? await Model.findAll({ where: { task_id: taskId, staff_id: sfl.staff_id } }) : [];
-      sfl.draft_data = normalizeSavedRows(draft_records, originals, previousDrafts);
+      sfl.draft_data = normalizeSavedRows(draft_records, originals, previousDrafts, await loadFullCreditVersions(Model, sfl.staff_id, draft_records));
       sfl.draft_saved_at = new Date();
       sfl.last_action = 'drafted';
       sfl.last_action_at = new Date();
@@ -375,7 +387,7 @@ router.put('/:token/draft', async (req, res, next) => {
     }
     const Model = isProductManagerStaff(writeStaff) ? ProductManagerWorkRecord : WorkRecord;
     const originals = await Model.findAll({ where: { link_id: link.id } });
-    link.draft_data = normalizeSavedRows(draft_records, originals, link.draft_data);
+    link.draft_data = normalizeSavedRows(draft_records, originals, link.draft_data, await loadFullCreditVersions(Model, link.staff_id, draft_records));
     link.draft_saved_at = new Date();
     link.last_action = 'drafted';
     link.last_action_at = new Date();
@@ -407,7 +419,8 @@ router.post('/:token/submit', async (req, res, next) => {
       : await existingModel.findAll({ where: existingWhere });
     const savedDrafts = resolved.type === 'system'
       ? (resolved.sfl.draft_task_id === task_id ? resolved.sfl.draft_data : []) : resolved.link.draft_data;
-    records = normalizeSavedRows(records, existingRecords, savedDrafts);
+    const submitStaffId = resolved.type === 'system' ? resolved.sfl.staff_id : resolved.link.staff_id;
+    records = normalizeSavedRows(records, existingRecords, savedDrafts, await loadFullCreditVersions(existingModel, submitStaffId, records));
     for (let index = 0; index < records.length; index += 1) {
       validateManualHours(records[index], `第 ${index + 1} 条记录`);
       if (!String(records[index].requirement_title || '').trim()) return res.status(400).json({ code: 1, message: `第 ${index + 1} 条记录请填写需求标题` });

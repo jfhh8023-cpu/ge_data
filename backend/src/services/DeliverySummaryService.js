@@ -1,5 +1,5 @@
 const { isFullCreditRecord, normalizeProgress, FULL_CREDIT_TITLES } = require('./EffectiveHoursService');
-const DELIVERY_FORMULA = `有效已交付＝普通含版本号工时＋${FULL_CREDIT_TITLES.join('、')}工时（只计一次）；有效交付率＝有效已交付÷应交付工时×100%。加权交付率＝[Σ(同一人员、版本、标题累计有效工时×所选范围最新周期填报进度)＋五类有效工时]÷当前范围应交付工时×100%。历史空进度仅在加权交付计算中按100%，原值仍为空；明确0%仍按0%，进度覆盖反映真实填报。部门、岗位合并加权工时及应交付工时计算，不平均个人百分比；个人仅算本人。无版本普通记录不计交付。应交付按当前非离职且范围有记录的人员、完整所选周期工作日×8小时计算；缺填周仍计应交付，该周加权工时为0。应交付大于0且日历有效时无加权工时显示0%；应交付为0或日历无效显示“—”；超过100%如实显示。`;
+const DELIVERY_FORMULA = `有效已交付＝普通含版本号工时＋${FULL_CREDIT_TITLES.join('、')}（含以其结尾的标题）工时（只计一次）；有效交付率＝有效已交付÷应交付工时×100%。加权交付率＝Σ(同一人员、版本、标题累计有效工时×所选范围最新周期填报进度)÷当前范围应交付工时×100%，五类进度默认100%、可编辑并同样加权。历史空进度仅在加权交付计算中按100%，原值仍为空；明确0%仍按0%，进度覆盖反映真实填报。部门、岗位合并加权工时及应交付工时计算，不平均个人百分比；个人仅算本人。无版本普通记录不计交付。应交付按当前非离职且范围有记录的人员、完整所选周期工作日×8小时计算；缺填周仍计应交付，该周加权工时为0。应交付大于0且日历有效时无加权工时显示0%；应交付为0或日历无效显示“—”；超过100%如实显示。`;
 
 function hasValidVersion(value) {
   const version = String(value ?? '').trim();
@@ -15,7 +15,7 @@ const nonNegativeHours = value => Number.isFinite(Number(value)) && Number(value
 const unitKey = (staffId, taskId) => JSON.stringify([String(staffId || ''), String(taskId || '')]);
 const groupKey = record => JSON.stringify([String(record.staff_id || record.staff?.id || ''), String(record.version || '').trim(), String(record.requirement_title || '').trim()]);
 const emptyTotals = () => ({ deliveredHours: 0, recordedHours: 0, unversionedHours: 0, versionedHours: 0,
-  fullCreditHours: 0, weightedDeliveredHours: 0, knownWeightedDeliveredHours: 0, progressKnownHours: 0, missingProgressHours: 0 });
+  fullCreditHours: 0, fullCreditWeightedHours: 0, weightedDeliveredHours: 0, knownWeightedDeliveredHours: 0, progressKnownHours: 0, missingProgressHours: 0 });
 const roundedTotals = totals => Object.fromEntries(Object.entries(totals).map(([key, value]) => [key, round(value)]));
 const rate = (deliveredHours, standardHours, calendarStatus) => standardHours > 0 && calendarStatus !== 'invalid_period'
   ? round(deliveredHours * 100 / standardHours) : null;
@@ -47,7 +47,7 @@ function buildDeliverySummary(records = [], workHours = {}) {
     if (identity && seenRecords.has(identity)) continue;
     if (identity) seenRecords.add(identity);
     selected.push(record);
-    if (!isFullCreditRecord(record) && hasValidVersion(record.version)) {
+    if (isFullCreditRecord(record) || hasValidVersion(record.version)) {
       const current = groups.get(groupKey(record));
       if (!current || isLater(record, current, periodByTask)) groups.set(groupKey(record), record);
     }
@@ -57,8 +57,11 @@ function buildDeliverySummary(records = [], workHours = {}) {
     const key = unitKey(record.staff_id || record.staff?.id, record.task_id);
     if (!perUnit.has(key)) perUnit.set(key, emptyTotals());
     const hours = nonNegativeHours(record.hours), unit = perUnit.get(key), additions = { recordedHours: hours };
-    if (isFullCreditRecord(record)) Object.assign(additions, { deliveredHours: hours, fullCreditHours: hours, weightedDeliveredHours: hours, knownWeightedDeliveredHours: hours });
-    else if (hasValidVersion(record.version)) {
+    if (isFullCreditRecord(record)) {
+      // REQ-071: five categories follow the latest known progress of their group; a historical null still means 100.
+      const weighted = hours * (normalizeProgress(groups.get(groupKey(record))?.delivery_progress) ?? 100) / 100;
+      Object.assign(additions, { deliveredHours: hours, fullCreditHours: hours, fullCreditWeightedHours: weighted, weightedDeliveredHours: weighted, knownWeightedDeliveredHours: weighted });
+    } else if (hasValidVersion(record.version)) {
       Object.assign(additions, { deliveredHours: hours, versionedHours: hours });
       const progress = normalizeProgress(groups.get(groupKey(record))?.delivery_progress);
       additions.weightedDeliveredHours = hours * (progress ?? 100) / 100;
@@ -79,7 +82,7 @@ function buildDeliverySummary(records = [], workHours = {}) {
       deliveryRate: rate(values.deliveredHours, standardHours, calendarStatus),
       weightedDeliveryRate: rate(values.weightedDeliveredHours, standardHours, calendarStatus),
       missingProgressCount: missingCount,
-      requirementProgress: values.progressKnownHours > 0 ? round((values.knownWeightedDeliveredHours - values.fullCreditHours) * 100 / values.progressKnownHours) : null,
+      requirementProgress: values.progressKnownHours > 0 ? round((values.knownWeightedDeliveredHours - values.fullCreditWeightedHours) * 100 / values.progressKnownHours) : null,
       progressCoverage: values.versionedHours > 0 ? round(values.progressKnownHours * 100 / values.versionedHours) : null };
   }
   const standardHours = nonNegativeHours(workHours.standardHours);
@@ -107,7 +110,7 @@ const parseJsonColumn = value => { if (typeof value !== 'string') return value; 
 const plainArray = value => { const parsed = parseJsonColumn(value); return Array.isArray(parsed) ? parsed : []; };
 const plainObject = value => { const parsed = parseJsonColumn(value); return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}; };
 
-/** REQ-070, read-only: latest known 0..99 progress per (staff, version, title) among tasks earlier than currentTask. */
+/** REQ-070/071, read-only: latest known 0..99 progress per (staff, version, title) among tasks earlier than currentTask; five categories included. */
 function buildCarryOverRows(records = [], tasks = [], currentTask = null) {
   const current = toPlain(currentTask);
   if (!current || !current.start_date) return [];
@@ -123,7 +126,7 @@ function buildCarryOverRows(records = [], tasks = [], currentTask = null) {
   for (const value of records) {
     const record = toPlain(value);
     if (!record || !earlierTasks.has(String(record.task_id))) continue;
-    if (isFullCreditRecord(record) || !hasValidVersion(record.version)) continue;
+    if (!isFullCreditRecord(record) && !hasValidVersion(record.version)) continue;
     const key = groupKey(record);
     const existing = latest.get(key);
     if (!existing || isLater(record, existing, periodByTask)) latest.set(key, record);
