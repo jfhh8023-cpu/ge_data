@@ -1,0 +1,148 @@
+{
+  "checkedAt": "2026-09-28T02:50:53.228Z",
+  "calendar": {
+    "2026-09-18": {
+      "skipped": false,
+      "reasons": []
+    },
+    "2026-09-20": {
+      "skipped": false,
+      "reasons": [
+        "官方补班工作日"
+      ]
+    },
+    "2026-09-24": {
+      "skipped": false,
+      "reasons": []
+    },
+    "2026-09-25": {
+      "skipped": true,
+      "reasons": [
+        "法定节假日"
+      ]
+    },
+    "2026-09-27": {
+      "skipped": true,
+      "reasons": [
+        "法定节假日",
+        "周末"
+      ]
+    },
+    "2026-09-28": {
+      "skipped": false,
+      "reasons": []
+    },
+    "2026-09-30": {
+      "skipped": false,
+      "reasons": []
+    },
+    "2026-10-01": {
+      "skipped": true,
+      "reasons": [
+        "法定节假日"
+      ]
+    },
+    "2026-10-02": {
+      "skipped": true,
+      "reasons": [
+        "法定节假日"
+      ]
+    },
+    "2026-10-07": {
+      "skipped": true,
+      "reasons": [
+        "法定节假日"
+      ]
+    },
+    "2026-10-08": {
+      "skipped": false,
+      "reasons": []
+    },
+    "2026-10-09": {
+      "skipped": false,
+      "reasons": []
+    }
+  },
+  "results": [
+    {
+      "name": "calendar 2026-09-25 mid-autumn skipped",
+      "expected": true,
+      "actual": true
+    },
+    {
+      "name": "calendar 2026-09-20 adjusted workday not skipped",
+      "expected": false,
+      "actual": false
+    },
+    {
+      "name": "calendar 2026-10-02 national day skipped",
+      "expected": true,
+      "actual": true
+    },
+    {
+      "name": "advance sources for 2026-09-24",
+      "expected": "2026-09-24,2026-09-25,2026-09-26,2026-09-27",
+      "actual": "2026-09-24,2026-09-25,2026-09-26,2026-09-27"
+    },
+    {
+      "name": "advance sources for 2026-09-28 (Monday, no pull-back)",
+      "expected": "2026-09-28",
+      "actual": "2026-09-28"
+    },
+    {
+      "name": "advance sources for skipped day is empty",
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "defer sources for 2026-09-28 (child still defers)",
+      "expected": "2026-09-25,2026-09-26,2026-09-27,2026-09-28",
+      "actual": "2026-09-25,2026-09-26,2026-09-27,2026-09-28"
+    },
+    {
+      "name": "normal Friday 09-18 unchanged",
+      "expected": "2026-09-18 14:00:00",
+      "actual": "2026-09-18 14:00:00"
+    },
+    {
+      "name": "09-24 view: mid-autumn Friday advanced to Thu 09-24",
+      "expected": "2026-09-24 14:00:00",
+      "actual": "2026-09-24 14:00:00"
+    },
+    {
+      "name": "09-24 14:00:30 is due",
+      "expected": "2026-09-24 14:00:00",
+      "actual": "2026-09-24 14:00:00"
+    },
+    {
+      "name": "09-25 14:00:30 (holiday) not due",
+      "expected": null,
+      "actual": null
+    },
+    {
+      "name": "09-28 14:00:30 (Monday) not due — no more Monday carry-over",
+      "expected": null,
+      "actual": null
+    },
+    {
+      "name": "09-28 view: next run is Wed 09-30 (national day Fri 10-02 advanced)",
+      "expected": "2026-09-30 14:00:00",
+      "actual": "2026-09-30 14:00:00"
+    },
+    {
+      "name": "10-01 view: next run is Fri 10-09",
+      "expected": "2026-10-09 14:00:00",
+      "actual": "2026-10-09 14:00:00"
+    },
+    {
+      "name": "10-08 (Thu after break) not due",
+      "expected": null,
+      "actual": null
+    },
+    {
+      "name": "child Monday 10-05 (holiday) still defers to 10-08",
+      "expected": "2026-10-08 09:15:00",
+      "actual": "2026-10-08 09:15:00"
+    }
+  ]
+}

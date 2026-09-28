@@ -17,6 +17,7 @@ const {
 const { createPreferredTask } = require('./TaskService');
 const { isNonResigned } = require('./PersonStatusService');
 const {
+  getGlobalScheduleAdvanceSourceDates,
   getGlobalScheduleSourceDates,
   getNextDutyRunAt,
   resolveDutyDate
@@ -1181,8 +1182,10 @@ function isRuleDateMatched(rule, parts) {
   return weekDays.includes(getWeekdayNumber(parts.date));
 }
 
-async function getCalendarAwareScheduledAt(targetDate, executeTime, matchesSourceDate) {
-  const sourceDates = await getGlobalScheduleSourceDates(targetDate, MAX_SCHEDULE_SCAN_DAYS);
+async function getCalendarAwareScheduledAt(targetDate, executeTime, matchesSourceDate, options = {}) {
+  const sourceDates = options.advance
+    ? await getGlobalScheduleAdvanceSourceDates(targetDate, MAX_SCHEDULE_SCAN_DAYS)
+    : await getGlobalScheduleSourceDates(targetDate, MAX_SCHEDULE_SCAN_DAYS);
   if (!sourceDates.some(date => matchesSourceDate(partsFromYmd(date)))) return null;
   return getBeijingScheduledAt(partsFromYmd(targetDate), normalizeTime(executeTime));
 }
@@ -1191,7 +1194,8 @@ async function getRuleScheduledAtForTarget(rule, targetDate) {
   return getCalendarAwareScheduledAt(
     targetDate,
     rule.execute_time,
-    parts => isRuleDateMatched(rule, parts)
+    parts => isRuleDateMatched(rule, parts),
+    { advance: true }
   );
 }
 

@@ -3448,7 +3448,7 @@ onUnmounted(() => {
         <div class="dt-settings-section-head">
           <div>
             <h3>自动执行任务并通知</h3>
-            <p>按北京时间触发，自动生成下一个周维度任务收集任务。</p>
+            <p>按北京时间触发，自动生成下一个周维度任务收集任务；执行日遇法定节假日或周末时，提前到假期前最后一个工作日的同一时间执行。</p>
           </div>
           <el-button v-if="canCreateAutoTasks" type="primary" :icon="Plus" @click="addRule">新增规则</el-button>
         </div>

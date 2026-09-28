@@ -41,6 +41,7 @@ const PARENT_SOURCE_DATE = '2026-10-01';
 const PARENT_TARGET_DATE = '2026-10-08';
 const CHILD_SOURCE_DATE = '2026-10-05';
 const CHILD_TARGET_DATE = '2026-10-08';
+const PARENT_ADVANCE_DATE = '2026-09-30';
 
 const state = {
   pass: 10,
@@ -410,12 +411,13 @@ async function main() {
     });
 
     await runCase('H-013', async () => {
-      const referenceNow = new Date('2026-09-30T09:00:00+08:00');
+      const referenceNow = new Date('2026-09-29T09:00:00+08:00');
       const nextRun = await getNextRunAtAsync(parentRule, referenceNow);
-      assert.strictEqual(nextRun.toISOString(), new Date(`${PARENT_TARGET_DATE}T09:00:00+08:00`).toISOString());
+      assert.strictEqual(nextRun.toISOString(), new Date(`${PARENT_ADVANCE_DATE}T09:00:00+08:00`).toISOString());
       assert.strictEqual(await getDueRuleScheduledAtAsync(parentRule, new Date(`${PARENT_SOURCE_DATE}T09:00:30+08:00`)), null);
-      const due = await getDueRuleScheduledAtAsync(parentRule, new Date(`${PARENT_TARGET_DATE}T09:00:30+08:00`));
-      assert.strictEqual(due.toISOString(), new Date(`${PARENT_TARGET_DATE}T09:00:00+08:00`).toISOString());
+      assert.strictEqual(await getDueRuleScheduledAtAsync(parentRule, new Date(`${PARENT_TARGET_DATE}T09:00:30+08:00`)), null);
+      const due = await getDueRuleScheduledAtAsync(parentRule, new Date(`${PARENT_ADVANCE_DATE}T09:00:30+08:00`));
+      assert.strictEqual(due.toISOString(), new Date(`${PARENT_ADVANCE_DATE}T09:00:00+08:00`).toISOString());
 
       const fakeTaskId = uuidv4();
       const log = await executeRule(parentRule, due, {
@@ -435,14 +437,14 @@ async function main() {
       return {
         evidence: {
           source_date: PARENT_SOURCE_DATE,
-          deferred_run_at: nextRun.toISOString(),
+          advanced_run_at: nextRun.toISOString(),
           source_due: false,
           target_due: due.toISOString(),
           run_status: log.status,
           notify_status: log.notify_status,
           child_status: activatedChild.status
         },
-        assertions: ['自动任务在停排日不执行', '自动任务顺延后只执行一次', '任务创建与主通知链路成功', '主通知成功后激活子通知']
+        assertions: ['自动任务在停排日不执行', '自动任务提前到停排前最后一个工作日且只执行一次', '停排后首个工作日不再补执行', '任务创建与主通知链路成功', '主通知成功后激活子通知']
       };
     });
 
@@ -478,7 +480,7 @@ async function main() {
         week_days: [1]
       };
       const fallback = await childNotificationFallbackMatchAsync(weeklyFallbackRule, {
-        scheduled_at: new Date(`${PARENT_TARGET_DATE}T09:00:00+08:00`),
+        scheduled_at: new Date(`${PARENT_ADVANCE_DATE}T09:00:00+08:00`),
         status: 'success',
         notify_status: 'success'
       }, new Date(`${PARENT_TARGET_DATE}T10:00:00+08:00`));

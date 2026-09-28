@@ -1,5 +1,14 @@
 # Changelog
 
+## v3.5.1 — 自动任务遇假期改为提前执行 (2026-09-28)
+
+### 修复 / 行为调整
+
+- **REQ-073 工时收集自动任务假期策略**：`task_create_notify` 主规则的执行日若为法定节假日/周末/手动停排日，改为**提前**到该停排区间前最后一个工作日的同一时间执行（原为顺延到假期后的首个工作日，导致周五规则在下周一显示倒计时、周任务跨周生成）。值班提醒与子通知维持原顺延逻辑
+- 设置页"自动执行任务并通知"说明补充假期提前规则
+- 新增 `backend/scripts/verify_req073_holiday_advance.js`（16 项只读校验，含 2026 中秋/国庆真实假期）；`verify_duty_calendar_system_integration.js` H-013/H-014 期望同步更新
+- 排查结论：服务器、Node、MariaDB 均为北京时间，无时区偏差；设计记录见 `docs/@development/REQ-073_holiday_advance_20260928.md`
+
 ## v3.5.0 — 未完成需求跨周带出 / 五类后缀匹配 / 累计工时 (2026-09-21)
 
 生产发布记录见 `docs/@development/production_release_20260921.md`。

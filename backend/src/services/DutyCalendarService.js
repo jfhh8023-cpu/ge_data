@@ -573,6 +573,21 @@ async function getGlobalScheduleSourceDates(targetDate, maxDays = MAX_PREVIEW_DA
   return dates;
 }
 
+async function getGlobalScheduleAdvanceSourceDates(targetDate, maxDays = MAX_PREVIEW_DAYS) {
+  if (!isValidYmd(targetDate)) throw httpError('日期格式无效');
+  const target = await getGlobalCalendarDay(targetDate);
+  if (target.effective_skipped) return [];
+
+  const dates = [targetDate];
+  for (let offset = 1; offset <= maxDays; offset += 1) {
+    const candidate = dateToYmd(addDays(targetDate, offset));
+    const day = await getGlobalCalendarDay(candidate);
+    if (!day.effective_skipped) break;
+    dates.push(candidate);
+  }
+  return dates;
+}
+
 async function suggestedEffectiveFrom(rule, yearValue) {
   const year = assertYear(yearValue);
   const today = dateToYmd(getBeijingDate());
@@ -1440,6 +1455,7 @@ module.exports = {
   getDutyCalendar,
   getGlobalCalendarDay,
   getGlobalScheduleSourceDates,
+  getGlobalScheduleAdvanceSourceDates,
   getNextDutyRunAt,
   getNextGlobalWorkDate,
   getDutySwapEditability,
