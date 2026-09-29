@@ -1,7 +1,15 @@
 /**
  * URL and clipboard helpers shared by all link entry points.
- * Keeps generated links protocol-neutral: HTTP pages emit HTTP links, HTTPS pages emit HTTPS links.
+ * Generated links always use HTTPS for public hosts; only local development hosts keep the page protocol.
  */
+
+const LOCAL_HOST_PATTERN = /^(localhost|127\.\d+\.\d+\.\d+|0\.0\.0\.0|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|\[::1\])$/i
+
+export function getPublicOrigin() {
+  const { protocol, hostname, host } = window.location
+  if (protocol === 'https:' || LOCAL_HOST_PATTERN.test(hostname)) return window.location.origin
+  return `https://${host.replace(/:80$/, '')}`
+}
 
 export function getBasePath() {
   const base = import.meta.env.BASE_URL || '/'
@@ -32,7 +40,7 @@ function normalizeQuery(query) {
 }
 
 export function buildAppUrl(path = '', query = null) {
-  return `${window.location.origin}${getBasePath()}${normalizePath(path)}${normalizeQuery(query)}`
+  return `${getPublicOrigin()}${getBasePath()}${normalizePath(path)}${normalizeQuery(query)}`
 }
 
 export async function copyToClipboard(text) {

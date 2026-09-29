@@ -1,5 +1,12 @@
 # Changelog
 
+## v3.5.3 — 链接强制 HTTPS (2026-09-29)
+
+### 变更
+
+- **生成链接一律 https**：`buildAppUrl` 改用 `getPublicOrigin()`，公网域名下无论管理页以 http 还是 https 打开，填写链接 / PM 查看链接 / 权限访问链接均输出 `https://`（仅 localhost / 内网 IP 保持原协议，便于本地开发）
+- **服务端**：Nginx `unified.conf` 的 80 端口 DevTracker 区块改为 `301 https://jfzhu8023.cloud$request_uri`，旧的 http 链接自动跳转（备份 `unified.conf.bak.before-devtracker-https-redirect-20260929180932`）
+
 ## v3.5.2 — 填写链接 http 打开报“链接无效”修复 (2026-09-29)
 
 ### 修复
