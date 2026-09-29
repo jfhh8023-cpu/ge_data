@@ -19,3 +19,11 @@
 - 备份 `/opt/devtracker/.release-backups/20260929_100337`（本机 `deploy/backups/release_20260929_100337`）。
 - health 3.5.2、PM2 online、公网 200、表行数不变。
 - 生产以 **http** 逐个打开 17 条填写链接：**17/17 正常渲染**（isSecureContext=false）。
+
+## 追加：v3.5.3 链接强制 HTTPS（同日 18:10）
+
+- 用户要求链接必须为 https。原 `buildAppUrl` 用 `window.location.origin`，管理页以 http 打开时复制/展示的链接就是 http。
+- 前端：`frontend/src/utils/url.js` 新增 `getPublicOrigin()`，公网域名一律 `https://`；填写 / PM 查看 / 权限访问链接均受益。版本 3.5.3，提交 `7944009`，备份 `20260929_101151`，health 3.5.3。
+- Nginx：`/etc/nginx/conf.d/unified.conf` 80 端口 `BEGIN_DEVTRACKER..END_DEVTRACKER` 区块替换为 `301 https://jfzhu8023.cloud$request_uri`（`location = /devtracker` 与 `location ^~ /devtracker/`），`nginx -t` 通过后 reload；备份 `unified.conf.bak.before-devtracker-https-redirect-20260929180932`。其它站点（rose 等）不受影响。
+- 验证：`http://jfzhu8023.cloud/devtracker/{,personnel,fill/<token>,api/health}` 全部 301 → https；https 200；浏览器以 http 打开团队人员页自动跳到 https，17 条链接 href 全为 https；填写页 `isSecureContext=true`。
+- 回退：`cp unified.conf.bak.before-devtracker-https-redirect-20260929180932 unified.conf && nginx -t && systemctl reload nginx`。

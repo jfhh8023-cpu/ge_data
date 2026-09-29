@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-09-29T10:04:44Z",
+  "capturedAt": "2026-09-29T10:12:57Z",
   "tables": {
     "access_links": 1,
     "auto_task_child_notifications": 3,
@@ -36,14 +36,14 @@
     "fieldChecksum": "2035854872597"
   },
   "nginxHashes": [
-    "0cc88ed969fc282c554e3944623947ee351f73bfa047b558880b688e52962d84  /etc/nginx/conf.d/unified.conf",
+    "6e20e713d7ae338886c0e35d8c0860ca011e8af2480541ce399a7221223a7645  /etc/nginx/conf.d/unified.conf",
     "2673dff738006bf7fb491ef6c36879e4c7ed569e1c9044b919b832336f6b1a08  /etc/nginx/conf.d/sandilizi-ssl.conf"
   ],
   "pm2": {
     "name": "devtracker",
-    "pid": 14565,
+    "pid": 12319,
     "status": "online",
-    "restart_time": 4,
-    "pm_uptime": 1790564029050
+    "restart_time": 5,
+    "pm_uptime": 1790676285729
   }
 }

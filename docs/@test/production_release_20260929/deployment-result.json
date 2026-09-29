@@ -1,19 +1,19 @@
 {
-  "releasedAt": "2026-09-29T10:04:45Z",
-  "version": "3.5.2",
-  "commit": "0b6c0ba13fd204862b9461fb7c24de3c28356ebb",
-  "checkedAt": "2026-09-29T10:04:52Z",
+  "releasedAt": "2026-09-29T10:12:58Z",
+  "version": "3.5.3",
+  "commit": "794400938a02f1d3b010a93ae9eb6e45209e4c80",
+  "checkedAt": "2026-09-29T10:13:05Z",
   "health": {
     "code": 0,
     "message": "DevTracker API is running",
-    "version": "3.5.2"
+    "version": "3.5.3"
   },
   "pm2": {
     "name": "devtracker",
-    "pid": 12319,
+    "pid": 16593,
     "status": "online",
-    "restart_time": 5,
-    "pm_uptime": 1790676285729
+    "restart_time": 6,
+    "pm_uptime": 1790676778932
   },
   "public": {
     "/api/health": {
@@ -52,6 +52,6 @@
   "workRecordsPreserved": true,
   "nginxUnchanged": true,
   "errorLogModifiedSinceStart": "False",
-  "rollbackScript": "/opt/devtracker/.release-backups/20260929_100337/rollback.sh",
-  "previousCodeKept": "backend/src.__prev_20260929_100425, frontend/dist.__prev_20260929_100425"
+  "rollbackScript": "/opt/devtracker/.release-backups/20260929_101151/rollback.sh",
+  "previousCodeKept": "backend/src.__prev_20260929_101238, frontend/dist.__prev_20260929_101238"
 }

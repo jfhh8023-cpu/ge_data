@@ -1,10 +1,10 @@
 {
-  "backupRemoteDir": "/opt/devtracker/.release-backups/20260929_100337",
-  "backupLocalDir": "D:\\PythonTEST\\My_Other_Tool_System\\get_data\\get_data_cursor\\deploy\\backups\\release_20260929_100337",
-  "backupTs": "20260929_100337",
-  "releasedAt": "2026-09-29T10:04:45Z",
-  "version": "3.5.2",
-  "commit": "0b6c0ba13fd204862b9461fb7c24de3c28356ebb",
-  "stage": "/opt/devtracker/.release-stage/0b6c0ba13fd2",
-  "prevSuffix": "20260929_100425"
+  "backupRemoteDir": "/opt/devtracker/.release-backups/20260929_101151",
+  "backupLocalDir": "D:\\PythonTEST\\My_Other_Tool_System\\get_data\\get_data_cursor\\deploy\\backups\\release_20260929_101151",
+  "backupTs": "20260929_101151",
+  "releasedAt": "2026-09-29T10:12:58Z",
+  "version": "3.5.3",
+  "commit": "794400938a02f1d3b010a93ae9eb6e45209e4c80",
+  "stage": "/opt/devtracker/.release-stage/794400938a02",
+  "prevSuffix": "20260929_101238"
 }
