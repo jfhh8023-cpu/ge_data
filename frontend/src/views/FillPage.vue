@@ -20,6 +20,7 @@ import { summarizeWorkHours, WORK_HOURS_TIP, WORK_HOURS_SCOPE_TIP } from '../uti
 import { sortRecordsByCreatedAt } from '../utils/recordOrder'
 import { FULL_CREDIT_NOTE, POSITIVE_PROGRESS_OPTIONS, isValidSubmittedProgress, isFullCreditRecord, initializeSpecialRow, syncSpecialRow, normalizeProgress, summarizeDraftWeightedHours } from '../utils/effectiveHours'
 import { isCarryOverModified, effectivePreviousHours, periodHours, toPeriodRows, attachCarryOverHistory, hoursBreakdown, excludedPreviousHours } from '../utils/carryOverHours'
+import { randomUUID } from '../utils/uuid'
 
 const route = useRoute()
 const demandSourceStore = useDemandSourceStore()
@@ -65,7 +66,7 @@ const isEditable = computed(() => {
 
 /** 创建空行 */
 function createEmptyRow() {
-  return { draft_row_id: crypto.randomUUID(), requirement_title: '', version: '', product_managers: [], demand_sources: [], demand_source_weights: {}, hours: null, delivery_progress: null }
+  return { draft_row_id: randomUUID(), requirement_title: '', version: '', product_managers: [], demand_sources: [], demand_source_weights: {}, hours: null, delivery_progress: null }
 }
 
 function handleRequirementTitle(row, title) {
@@ -144,7 +145,8 @@ onMounted(async () => {
       startEditingKeepAlive()
     }
     loadHistory()
-  } catch {
+  } catch (err) {
+    console.error('[fill] 初始化失败', err)
     error.value = '链接无效或已过期'
   } finally {
     loading.value = false
@@ -171,7 +173,7 @@ function normalizeRows(list, { newRows = false, history = false } = {}) {
       existing_record_id: existingId,
       _original_progress_missing: originalProgressMissing,
       ...(carryOver ? { _carry_over: carryOver } : {}),
-      draft_row_id: r.draft_row_id || crypto.randomUUID(),
+      draft_row_id: r.draft_row_id || randomUUID(),
       created_at: r.created_at,
       automatic_version_date: r.automatic_version_date,
       _ordinary_fields: r._ordinary_fields,

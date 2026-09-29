@@ -1,5 +1,12 @@
 # Changelog
 
+## v3.5.2 — 填写链接 http 打开报“链接无效”修复 (2026-09-29)
+
+### 修复
+
+- **填写页 http:// 打开提示“链接无效或已过期”**：`crypto.randomUUID` 仅在安全上下文（HTTPS/localhost）可用，v3.5.0 起 `draft_row_id` 依赖它，通过 `http://jfzhu8023.cloud/...` 打开时抛 TypeError 被当作链接失效。新增 `frontend/src/utils/uuid.js`（getRandomValues 降级的 UUID v4），填写页改用；链接地址与 token 完全不变
+- 填写页初始化失败时在控制台输出具体错误，便于排查
+
 ## v3.5.1 — 自动任务遇假期改为提前执行 (2026-09-28)
 
 ### 修复 / 行为调整
