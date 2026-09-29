@@ -1,0 +1,46 @@
+{
+  "capturedAt": "2026-09-29T10:04:22Z",
+  "remoteDirectory": "/opt/devtracker/.release-backups/20260929_100337",
+  "localDirectory": "D:\\PythonTEST\\My_Other_Tool_System\\get_data\\get_data_cursor\\deploy\\backups\\release_20260929_100337",
+  "dump": {
+    "sqlBytes": 2205978,
+    "createTableCount": 26,
+    "completed": true
+  },
+  "files": {
+    "database.sql.gz": {
+      "sha256": "89968a19bddfc0bb682b4d4b43abcd3a941aa37ac9209eb140dfbad38d087b1b",
+      "bytes": 362486
+    },
+    "application.tar.gz": {
+      "sha256": "a64be4fbe9c526358238a89480d09d35abccac54c68378ca510ca374caa29205",
+      "bytes": 13198438
+    },
+    "rollback.sh": {
+      "sha256": "34bfb10fc9edcb217a23589471d9f01de3ccb50f74ca0a9263c0a2b60b2b173c",
+      "bytes": 795
+    },
+    "SHA256SUMS": {
+      "sha256": "094659f0d971755d20f9da617d19ec15c46d099c8bc98ce90ffa6402cb8832c5",
+      "bytes": 167
+    }
+  },
+  "archive": {
+    "memberCount": 5269,
+    "requiredFiles": [
+      "backend/src/app.js",
+      "backend/.env",
+      "backend/package.json",
+      "backend/package-lock.json",
+      "frontend/dist/index.html",
+      "ecosystem.config.js"
+    ],
+    "includesDependencies": true
+  },
+  "codeRollbackPreservesDatabase": true,
+  "rollbackCheck": "ROLLBACK_READY: code only; database preserved",
+  "nginxHashes": [
+    "0cc88ed969fc282c554e3944623947ee351f73bfa047b558880b688e52962d84  /etc/nginx/conf.d/unified.conf",
+    "2673dff738006bf7fb491ef6c36879e4c7ed569e1c9044b919b832336f6b1a08  /etc/nginx/conf.d/sandilizi-ssl.conf"
+  ]
+}
