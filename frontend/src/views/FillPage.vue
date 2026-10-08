@@ -31,6 +31,7 @@ const fillData = ref(null)
 const error = ref('')
 const isBlocked = computed(() => fillData.value?.blocked === true)
 const blockMessage = computed(() => fillData.value?.message || '用户已离职，无法填写页面数据')
+const isSystemDisabled = computed(() => isBlocked.value && fillData.value?.reason === 'system_disabled')
 
 /** 产品经理选项列表（从 API 动态获取） */
 const pmOptions = ref([])
@@ -771,12 +772,12 @@ function exportHistory() {
       <p style="font-size:14px; color:var(--color-text-3);">{{ error }}</p>
     </div>
 
-    <!-- 离职阻断：链接可访问，但页面不可操作 -->
+    <!-- 离职 / 系统关闭阻断：链接可访问，但页面不可操作 -->
     <template v-else-if="isBlocked">
       <div class="fill-blocked-shell"></div>
       <el-dialog
         :model-value="true"
-        width="380px"
+        :width="isSystemDisabled ? '560px' : '380px'"
         align-center
         append-to-body
         :show-close="false"
@@ -784,7 +785,7 @@ function exportHistory() {
         :close-on-press-escape="false"
         class="fill-blocked-dialog"
       >
-        <div class="fill-blocked-content">
+        <div class="fill-blocked-content" :class="{ 'is-system-disabled': isSystemDisabled }">
           <div class="fill-blocked-title">{{ blockMessage }}</div>
         </div>
       </el-dialog>
@@ -1107,6 +1108,18 @@ function exportHistory() {
   font-weight: 700;
   color: #1D2129;
   line-height: 1.6;
+}
+.fill-blocked-content.is-system-disabled {
+  text-align: left;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.fill-blocked-content.is-system-disabled .fill-blocked-title {
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* 双栏布局 */

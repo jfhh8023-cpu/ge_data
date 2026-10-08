@@ -5,10 +5,11 @@
  */
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Calendar, Delete, Download, Edit, Plus, Promotion } from '@element-plus/icons-vue'
+import { Calendar, Delete, Download, Edit, Plus, Promotion, SwitchButton } from '@element-plus/icons-vue'
 import api from '../api'
 import BackButton from '../components/BackButton.vue'
 import DutyCalendarDialog from '../components/DutyCalendarDialog.vue'
+import SystemAccessDialog from '../components/SystemAccessDialog.vue'
 import { useAuthStore } from '../stores/auth'
 import { roleLabel } from '../utils/roles'
 
@@ -19,6 +20,7 @@ const testingId = ref('')
 const testingRunId = ref('')
 const dutyLineSendingId = ref('')
 const dutyCalendarDialogVisible = ref(false)
+const systemAccessDialogVisible = ref(false)
 const downloading = ref(false)
 const rules = ref([])
 const logs = ref([])
@@ -3422,15 +3424,24 @@ onUnmounted(() => {
         <h2 class="dt-page-title">设置</h2>
         <p class="dt-page-description">自动任务、钉钉 webhook 通知与需求工时统计备份。</p>
       </div>
-      <el-button
-        v-if="canEditAutoTasks"
-        type="primary"
-        plain
-        :icon="Calendar"
-        @click="openDutyCalendar"
-      >
-        节假日跳过设置
-      </el-button>
+      <div v-if="canEditAutoTasks" class="dt-settings-header-actions">
+        <el-button
+          type="primary"
+          plain
+          :icon="Calendar"
+          @click="openDutyCalendar"
+        >
+          节假日跳过设置
+        </el-button>
+        <el-button
+          type="primary"
+          plain
+          :icon="SwitchButton"
+          @click="systemAccessDialogVisible = true"
+        >
+          系统启用设置
+        </el-button>
+      </div>
     </div>
 
     <DutyCalendarDialog
@@ -3438,6 +3449,8 @@ onUnmounted(() => {
       :rules="rules"
       @saved="handleDutyCalendarSaved"
     />
+
+    <SystemAccessDialog v-model="systemAccessDialogVisible" />
 
     <div v-if="loading" class="dt-page-loading">
       <div class="dt-page-spinner"></div>
@@ -4953,6 +4966,17 @@ onUnmounted(() => {
   padding: 16px;
   margin-bottom: 16px;
   box-shadow: var(--shadow-1);
+}
+
+.dt-settings-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.dt-settings-header-actions .el-button + .el-button {
+  margin-left: 0;
 }
 
 .dt-settings-section-head {

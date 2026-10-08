@@ -14,6 +14,7 @@ const { ensureStaffRoleSchema, ensureMatchGroupRoleSchema } = require('./service
 const { ensureDemandSourceSchema } = require('./services/DemandSourceService');
 const ProductManagerWorkRecord = require('./models/ProductManagerWorkRecord');
 const { ensureDutyCalendarTables } = require('./services/DutyCalendarService');
+const { ensureSystemSettingTable } = require('./services/SystemAccessService');
 const { startOfficialHolidaySyncScheduler } = require('./services/OfficialHolidaySyncService');
 
 const app = express();
@@ -86,6 +87,7 @@ async function start() {
     await ensurePersonStatusTables();
     await ensureAutoTaskTables();
     await ensureDutyCalendarTables();
+    await ensureSystemSettingTable();
     app.listen(PORT, () => {
       console.log(`[API] DevTracker v${require('../package.json').version} 运行在 http://localhost:${PORT}`);
       console.log('[API] 路由: /api/staff | /api/roles | /api/tasks | /api/records | /api/report | /api/fill | /api/stats | /api/permissions | /api/excel | /api/settings');

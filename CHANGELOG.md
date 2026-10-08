@@ -1,5 +1,14 @@
 # Changelog
 
+## v3.6.0 — 系统启用设置 (2026-10-08)
+
+### 新增
+
+- **REQ-074 系统启用设置**：设置页「节假日跳过设置」右侧新增「系统启用设置」按钮，弹窗内为系统开关（开启 = 当前状态）。关闭后需填写展示内容并提交，可随时再次打开修改或重新开启
+- **填写工时页阻断**：系统关闭时，所有填写链接打开后仅显示不可关闭的提示弹窗（无关闭按钮，点遮罩 / Esc 无效，内容保留换行），页面表单不渲染、不可编辑；后端 `GET /api/fill/:token` 返回 `blocked: true, reason: 'system_disabled'`，`draft` / `submit` / `editing` 接口统一 403，不依赖前端遮挡
+- 新增 `system_settings` 键值表（启动时自动建表，不改动既有表）、`SystemAccessService`、`GET/PUT /api/settings/system-access`
+- 新增 `backend/scripts/verify_req074_system_access.js`（8 项校验，运行后自动恢复原状态）
+
 ## v3.5.3 — 链接强制 HTTPS (2026-09-29)
 
 ### 变更

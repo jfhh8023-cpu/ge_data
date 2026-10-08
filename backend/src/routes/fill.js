@@ -26,9 +26,19 @@ const {
   getPmStatusContextByName,
   isNonResigned
 } = require('../services/PersonStatusService');
+const { getSystemAccess, buildDisabledPayload } = require('../services/SystemAccessService');
 
 const EDITING_TIMEOUT_MS = 30000;
 const PRODUCT_MANAGER_ROLE = 'ai_pm';
+
+/** REQ-074：系统关闭时，填写页所有写入接口统一 403 */
+async function rejectIfSystemDisabled(res) {
+  const access = await getSystemAccess();
+  if (access.enabled) return false;
+  const payload = buildDisabledPayload(access);
+  res.status(403).json({ code: 1, message: payload.message, reason: payload.reason });
+  return true;
+}
 
 function isProductManagerStaff(staff) {
   return String(staff?.role || '').trim() === PRODUCT_MANAGER_ROLE;
@@ -257,6 +267,25 @@ router.get('/:token', async (req, res, next) => {
     const resolved = await resolveToken(req.params.token);
     if (!resolved) return res.status(404).json({ code: 1, message: '链接无效' });
 
+    const systemAccess = await getSystemAccess();
+    if (!systemAccess.enabled) {
+      const staff = resolved.type === 'system' ? resolved.sfl.staff : resolved.link.staff;
+      return res.json({
+        code: 0,
+        data: {
+          linkType: resolved.type,
+          ...buildDisabledPayload(systemAccess),
+          staff: staff ? { ...staff.toJSON(), ...buildCurrentStatusPayload(staff) } : null,
+          task: null,
+          records: [],
+          draft_records: null,
+          draft_saved_at: null,
+          is_submitted: false,
+          demandSources
+        }
+      });
+    }
+
     if (resolved.type === 'system') {
       const { sfl } = resolved;
       if (!isNonResigned(sfl.staff)) {
@@ -378,6 +407,7 @@ router.put('/:token/draft', async (req, res, next) => {
   try {
     const resolved = await resolveToken(req.params.token);
     if (!resolved) return res.status(404).json({ code: 1, message: '链接无效' });
+    if (await rejectIfSystemDisabled(res)) return;
 
     const { draft_records, task_id } = req.body || {};
     if (!Array.isArray(draft_records)) {
@@ -436,6 +466,7 @@ router.post('/:token/submit', async (req, res, next) => {
   try {
     const resolved = await resolveToken(req.params.token);
     if (!resolved) return res.status(404).json({ code: 1, message: '链接无效' });
+    if (await rejectIfSystemDisabled(res)) return;
 
     let { records, task_id } = req.body || {};
     if (!Array.isArray(records)) return res.status(400).json({ code: 1, message: 'records 须为数组' });
@@ -599,6 +630,7 @@ router.put('/:token/editing', async (req, res, next) => {
   try {
     const resolved = await resolveToken(req.params.token);
     if (!resolved) return res.status(404).json({ code: 1, message: '链接无效' });
+    if (await rejectIfSystemDisabled(res)) return;
     const writeStaff = resolved.type === 'system' ? resolved.sfl.staff : resolved.link.staff;
     assertStaffCanWrite(writeStaff);
 

@@ -31,6 +31,7 @@ const {
   testChildNotification
 } = require('../services/AutoTaskService');
 const { buildReportBackup } = require('../services/ReportBackupService');
+const { getSystemAccess, updateSystemAccess } = require('../services/SystemAccessService');
 const { safeParseJsonArray } = require('../utils/parseJson');
 
 const HISTORY_PAGE_SIZES = new Set([10, 20, 50, 100, 200, 300, 500, 1000]);
@@ -483,6 +484,24 @@ router.get('/report-backup', async (req, res, next) => {
     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
     res.end(buffer);
   } catch (err) { next(err); }
+});
+
+/* GET /api/settings/system-access — 系统启用状态（REQ-074） */
+router.get('/system-access', async (req, res, next) => {
+  try {
+    res.json({ code: 0, data: await getSystemAccess() });
+  } catch (err) { next(err); }
+});
+
+/* PUT /api/settings/system-access — 更新系统启用状态与关闭提示内容 */
+router.put('/system-access', async (req, res, next) => {
+  try {
+    const data = await updateSystemAccess(req.body || {});
+    res.json({ code: 0, data });
+  } catch (err) {
+    if (err.status === 400) return res.status(400).json({ code: 1, message: err.message });
+    next(err);
+  }
 });
 
 module.exports = router;
