@@ -1,0 +1,62 @@
+{
+  "releasedAt": "2026-10-08T03:04:45Z",
+  "version": "3.6.0",
+  "commit": "dafc152b3ea3f09928bedf2490b6f8d30a07cb25",
+  "checkedAt": "2026-10-08T03:04:52Z",
+  "health": {
+    "code": 0,
+    "message": "DevTracker API is running",
+    "version": "3.6.0"
+  },
+  "pm2": {
+    "name": "devtracker",
+    "pid": 2327,
+    "status": "online",
+    "restart_time": 7,
+    "pm_uptime": 1791428686707
+  },
+  "public": {
+    "/api/health": {
+      "status": 200,
+      "bytes": 66
+    },
+    "/": {
+      "status": 200,
+      "bytes": 1583
+    },
+    "/stats": {
+      "status": 200,
+      "bytes": 1583
+    },
+    "/tasks": {
+      "status": 200,
+      "bytes": 1583
+    }
+  },
+  "healthVersionMatches": true,
+  "tableCountsChanged": {
+    "system_settings": [
+      null,
+      0
+    ]
+  },
+  "workRecordsBefore": {
+    "count": 949,
+    "hours": 12124.5,
+    "nullProgress": 881,
+    "zeroProgress": 0,
+    "fieldChecksum": "2057075339018"
+  },
+  "workRecordsAfter": {
+    "count": 949,
+    "hours": 12124.5,
+    "nullProgress": 881,
+    "zeroProgress": 0,
+    "fieldChecksum": "2057075339018"
+  },
+  "workRecordsPreserved": true,
+  "nginxUnchanged": true,
+  "errorLogModifiedSinceStart": "False",
+  "rollbackScript": "/opt/devtracker/.release-backups/20261008_030322/rollback.sh",
+  "previousCodeKept": "backend/src.__prev_20261008_030425, frontend/dist.__prev_20261008_030425"
+}

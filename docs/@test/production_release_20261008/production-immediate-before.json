@@ -1,0 +1,49 @@
+{
+  "capturedAt": "2026-10-08T03:04:44Z",
+  "tables": {
+    "access_links": 1,
+    "auto_task_child_notifications": 3,
+    "auto_task_messages": 432,
+    "auto_task_rules": 4,
+    "auto_task_run_logs": 176,
+    "collection_tasks": 37,
+    "demand_sources": 4,
+    "duty_calendar_revisions": 2,
+    "duty_holiday_snapshots": 2,
+    "duty_schedule_exceptions": 0,
+    "duty_schedule_swaps": 2,
+    "duty_special_notification_logs": 0,
+    "excel_files": 31,
+    "fill_links": 0,
+    "link_permissions": 43,
+    "match_groups": 632,
+    "product_manager_status_history": 16,
+    "product_manager_work_records": 0,
+    "product_managers": 14,
+    "quote_configs": 1,
+    "quotes": 387,
+    "staff": 17,
+    "staff_fill_links": 17,
+    "staff_roles": 5,
+    "staff_status_history": 20,
+    "work_records": 949
+  },
+  "workRecords": {
+    "count": 949,
+    "hours": 12124.5,
+    "nullProgress": 881,
+    "zeroProgress": 0,
+    "fieldChecksum": "2057075339018"
+  },
+  "nginxHashes": [
+    "6e20e713d7ae338886c0e35d8c0860ca011e8af2480541ce399a7221223a7645  /etc/nginx/conf.d/unified.conf",
+    "2673dff738006bf7fb491ef6c36879e4c7ed569e1c9044b919b832336f6b1a08  /etc/nginx/conf.d/sandilizi-ssl.conf"
+  ],
+  "pm2": {
+    "name": "devtracker",
+    "pid": 16593,
+    "status": "online",
+    "restart_time": 6,
+    "pm_uptime": 1790676778932
+  }
+}
